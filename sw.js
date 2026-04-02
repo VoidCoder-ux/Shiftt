@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shifttrack-v18';
+const CACHE_NAME = 'shifttrack-v19';
 const CORE_ASSETS = ['./', './index.html', './manifest.json'];
 const CDN_ASSETS = [
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap',
