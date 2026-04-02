@@ -245,7 +245,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);c
 .bh-item .bhi-badge.pending{background:rgba(251,191,36,.12);color:var(--acc)}
 
 /* SHIFT CALCULATOR */
-.calc-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:2000;padding:16px}
+.calc-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:2100;padding:16px}
 .calc-overlay.show{display:flex}
 .calc-box{background:var(--bg2);border-radius:var(--rad2);padding:24px;max-width:480px;width:100%;border:1px solid var(--b1);box-shadow:var(--sh3);animation:modalPop .3s cubic-bezier(.16,1,.3,1);max-height:90vh;overflow-y:auto}
 .calc-result{margin-top:14px;padding:14px;background:var(--bg3);border-radius:12px;border:1px solid var(--b1)}
@@ -257,7 +257,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);c
 .calc-detail .cd-lbl{font-size:9px;color:var(--t3);font-weight:600;text-transform:uppercase;margin-top:2px}
 
 /* EMPLOYER MODE */
-.employer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:none;align-items:flex-start;justify-content:center;z-index:2000;padding:16px;overflow-y:auto}
+.employer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:none;align-items:flex-start;justify-content:center;z-index:2200;padding:16px;overflow-y:auto}
 .employer-overlay.show{display:flex}
 .employer-box{background:var(--bg2);border-radius:var(--rad2);padding:24px;max-width:900px;width:100%;border:1px solid var(--b1);box-shadow:var(--sh3);animation:modalPop .3s cubic-bezier(.16,1,.3,1);margin:20px 0}
 .team-grid{display:grid;grid-template-columns:auto repeat(7,1fr);gap:2px;margin:12px 0;font-size:11px}
@@ -6241,11 +6241,12 @@ function renderBankHolidays() {
   let loaded = 0, total = holidays.length;
   let listHtml = '';
   holidays.forEach(h => {
+    const p = parseDS(h.date); if (!p) return;
     const hasShift = u.shifts[h.date];
     const hasLeave = u.leaves[h.date];
     const isLoaded = hasShift || hasLeave;
     if (isLoaded) loaded++;
-    const d = dsToDate(h.date);
+    const d = new Date(p.y, p.m, p.d);
     const dow = d.getDay();
     const dayName = DTR[dow === 0 ? 6 : dow - 1];
     const isPast = d < new Date(new Date().setHours(0,0,0,0));
@@ -6337,8 +6338,7 @@ function runCalc() {
   const dailyHrs = calcHr(start, end, brk);
   if (dailyHrs <= 0) { toast('Geçersiz vardiya', 'error'); return; }
 
-  let totalDays = 0, totalHrs = 0, weeklyHrs = 0, otHrs = 0, holDays = 0, weDays = 0;
-  let weekDayCount = 0; // Hafta içindeki gün sayacı (Pzt=0)
+  let totalDays = 0, totalHrs = 0, otHrs = 0, holWorkedDays = 0, holSkippedDays = 0;
   let currentWeekHrs = 0;
   let lastWeekNum = null;
 
@@ -6351,7 +6351,6 @@ function runCalc() {
     const wk = getISOWeek(d);
 
     if (wk !== lastWeekNum) {
-      // New week — check previous week for OT
       if (lastWeekNum !== null && currentWeekHrs > 45) {
         otHrs += currentWeekHrs - 45;
       }
@@ -6359,13 +6358,13 @@ function runCalc() {
       lastWeekNum = wk;
     }
 
-    if (isWeekend && skipWE) { weDays++; d.setDate(d.getDate() + 1); continue; }
-    if (isHoliday && skipHol) { holDays++; d.setDate(d.getDate() + 1); continue; }
+    if (isWeekend && skipWE) { d.setDate(d.getDate() + 1); continue; }
+    if (isHoliday && skipHol) { holSkippedDays++; d.setDate(d.getDate() + 1); continue; }
 
     totalDays++;
     totalHrs += dailyHrs;
     currentWeekHrs += dailyHrs;
-    if (isHoliday) holDays++;
+    if (isHoliday) holWorkedDays++;
 
     d.setDate(d.getDate() + 1);
   }
@@ -6378,8 +6377,7 @@ function runCalc() {
   const dr = u.netSalary > 0 ? u.netSalary / 30 : 0;
   const basePay = totalDays * dr;
   const otPay = otHrs * hr * 0.5;
-  const holWorkDays = holDays;
-  const holPay = (skipHol ? 0 : holWorkDays) * dailyHrs * hr;
+  const holPay = holWorkedDays * dailyHrs * hr;
   const totalEarn = basePay + otPay + holPay;
 
   const diffMs = toD - fromD;
@@ -6393,7 +6391,7 @@ function runCalc() {
       <div class="cd-item"><div class="cd-val" style="color:var(--p)">${totalDays}</div><div class="cd-lbl">İş Günü</div></div>
       <div class="cd-item"><div class="cd-val" style="color:var(--g)">${totalHrs.toFixed(1)}s</div><div class="cd-lbl">Toplam Saat</div></div>
       <div class="cd-item"><div class="cd-val" style="color:var(--acc)">${otHrs.toFixed(1)}s</div><div class="cd-lbl">Fazla Mesai</div></div>
-      <div class="cd-item"><div class="cd-val" style="color:var(--r)">${holDays}</div><div class="cd-lbl">${skipHol ? 'Atlanan Tatil' : 'Tatil Günü'}</div></div>
+      <div class="cd-item"><div class="cd-val" style="color:var(--r)">${skipHol ? holSkippedDays : holWorkedDays}</div><div class="cd-lbl">${skipHol ? 'Atlanan Tatil' : 'Tatil Çalışma'}</div></div>
       ${u.netSalary > 0 ? `
         <div class="cd-item"><div class="cd-val" style="color:var(--g)">${fm(basePay)}</div><div class="cd-lbl">Baz Maaş</div></div>
         <div class="cd-item"><div class="cd-val" style="color:var(--acc)">${fm(otPay)}</div><div class="cd-lbl">FM Eki</div></div>
@@ -6492,7 +6490,7 @@ function renderTeamView() {
           <span class="tg-time">${labels[lv.type]||''}</span>
         </div>`;
       } else if (hol) {
-        gridHtml += `<div class="tg-cell tg-holiday" title="${getH(ds)}"><span>🏛️</span></div>`;
+        gridHtml += `<div class="tg-cell tg-holiday" title="${getH(ds) || 'Tatil'}"><span>🏛️</span></div>`;
       } else {
         gridHtml += '<div class="tg-cell">—</div>';
       }
@@ -6567,33 +6565,35 @@ function renderTplShare() {
 
 function shareTplQR() {
   const u = cu(); if (!u || !u.weeklyTemplate) return;
-  const data = JSON.stringify({
-    type: 'shifttrack_template',
-    name: u.name || 'Kullanıcı',
-    template: u.weeklyTemplate,
-    presets: u.customPresets || [],
-    exportDate: new Date().toISOString()
-  });
-  const encoded = btoa(encodeURIComponent(data));
-
   const qrEl = $('tplQRCode');
   if (!qrEl) return;
   qrEl.innerHTML = '';
 
-  if (encoded.length > 2900) {
-    qrEl.innerHTML = '<p style="font-size:11px;color:var(--acc)"><i class="fas fa-exclamation-triangle"></i> Şablon QR için çok büyük. "Kodu Kopyala" butonunu kullanın.</p>';
-    return;
-  }
-
-  if (typeof QRCode !== 'undefined') {
-    new QRCode(qrEl, {
-      text: 'STPL:' + encoded,
-      width: 180, height: 180,
-      colorDark: '#1a1625', colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel.L
+  try {
+    const data = JSON.stringify({
+      type: 'shifttrack_template',
+      name: u.name || 'Kullanıcı',
+      template: u.weeklyTemplate,
+      presets: u.customPresets || [],
+      exportDate: new Date().toISOString()
     });
-  }
-  qrEl.innerHTML += '<p style="font-size:10px;color:var(--t3);margin-top:6px">QR kodu diğer kullanıcının kamerasıyla okutun</p>';
+    const encoded = btoa(encodeURIComponent(data));
+
+    if (encoded.length > 2900) {
+      qrEl.innerHTML = '<p style="font-size:11px;color:var(--acc)"><i class="fas fa-exclamation-triangle"></i> Şablon QR için çok büyük. "Kodu Kopyala" butonunu kullanın.</p>';
+      return;
+    }
+
+    if (typeof QRCode !== 'undefined') {
+      new QRCode(qrEl, {
+        text: 'STPL:' + encoded,
+        width: 180, height: 180,
+        colorDark: '#1a1625', colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.L
+      });
+    }
+    qrEl.innerHTML += '<p style="font-size:10px;color:var(--t3);margin-top:6px">QR kodu diğer kullanıcının kamerasıyla okutun</p>';
+  } catch(e) { qrEl.innerHTML = '<p style="font-size:11px;color:var(--r)">QR oluşturulamadı</p>'; }
 }
 
 function copyTplLink() {
