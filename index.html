@@ -7,7 +7,7 @@
 <script>
 // Cache buster — eski service worker'ı temizle
 (function(){
-  var CV = 'stv13';
+  var CV = 'stv14';
   if (localStorage.getItem('st_cache_ver') !== CV) {
     localStorage.setItem('st_cache_ver', CV);
     if ('serviceWorker' in navigator) {
@@ -231,6 +231,59 @@ body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);c
 .cmp-v{font-weight:800;color:var(--t1)}
 .cmp-d{font-weight:700;font-size:11px}
 .cal-legend{display:flex;gap:14px;margin-top:14px;flex-wrap:wrap}
+
+/* BANK HOLIDAYS AUTO-LOAD */
+.bh-section{margin-top:16px;background:var(--card);border-radius:var(--rad);padding:16px;border:1px solid var(--b1)}
+.bh-section h3{font-size:13px;font-weight:700;color:var(--t1);margin:0 0 10px;display:flex;align-items:center;gap:6px}
+.bh-section h3 i{color:var(--r);font-size:12px}
+.bh-list{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.bh-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:var(--bg3);font-size:11px;border:1px solid var(--b1)}
+.bh-item .bhi-date{font-weight:800;color:var(--t1);min-width:65px}
+.bh-item .bhi-name{flex:1;color:var(--t2);font-weight:600}
+.bh-item .bhi-badge{padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700}
+.bh-item .bhi-badge.loaded{background:rgba(52,211,153,.12);color:var(--g)}
+.bh-item .bhi-badge.pending{background:rgba(251,191,36,.12);color:var(--acc)}
+
+/* SHIFT CALCULATOR */
+.calc-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:2000;padding:16px}
+.calc-overlay.show{display:flex}
+.calc-box{background:var(--bg2);border-radius:var(--rad2);padding:24px;max-width:480px;width:100%;border:1px solid var(--b1);box-shadow:var(--sh3);animation:modalPop .3s cubic-bezier(.16,1,.3,1);max-height:90vh;overflow-y:auto}
+.calc-result{margin-top:14px;padding:14px;background:var(--bg3);border-radius:12px;border:1px solid var(--b1)}
+.calc-result .cr-total{font-size:28px;font-weight:900;color:var(--g);text-align:center}
+.calc-result .cr-sub{font-size:11px;color:var(--t2);text-align:center;margin-top:4px}
+.calc-detail{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.calc-detail .cd-item{padding:8px;background:var(--card);border-radius:8px;text-align:center;border:1px solid var(--b1)}
+.calc-detail .cd-val{font-size:16px;font-weight:900}
+.calc-detail .cd-lbl{font-size:9px;color:var(--t3);font-weight:600;text-transform:uppercase;margin-top:2px}
+
+/* EMPLOYER MODE */
+.employer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:none;align-items:flex-start;justify-content:center;z-index:2000;padding:16px;overflow-y:auto}
+.employer-overlay.show{display:flex}
+.employer-box{background:var(--bg2);border-radius:var(--rad2);padding:24px;max-width:900px;width:100%;border:1px solid var(--b1);box-shadow:var(--sh3);animation:modalPop .3s cubic-bezier(.16,1,.3,1);margin:20px 0}
+.team-grid{display:grid;grid-template-columns:auto repeat(7,1fr);gap:2px;margin:12px 0;font-size:11px}
+.team-grid .tg-header{padding:6px 4px;text-align:center;font-weight:800;color:var(--t3);font-size:9px;text-transform:uppercase;background:var(--bg3);border-radius:4px}
+.team-grid .tg-name{padding:6px 8px;font-weight:700;color:var(--t1);display:flex;align-items:center;gap:6px;background:var(--card);border-radius:4px;white-space:nowrap}
+.team-grid .tg-name .tg-av{width:22px;height:22px;border-radius:50%;background:var(--pg);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex-shrink:0}
+.team-grid .tg-cell{padding:4px;text-align:center;border-radius:4px;background:var(--card2);border:1px solid var(--b1);min-height:32px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:10px;cursor:default}
+.team-grid .tg-cell.tg-shift{background:rgba(52,211,153,.06);border-color:rgba(52,211,153,.12)}
+.team-grid .tg-cell.tg-leave{background:rgba(96,165,250,.06);border-color:rgba(96,165,250,.12)}
+.team-grid .tg-cell.tg-holiday{background:rgba(248,113,113,.04);border-color:rgba(248,113,113,.08)}
+.team-grid .tg-cell .tg-hrs{font-weight:800;color:var(--g);font-size:10px}
+.team-grid .tg-cell .tg-time{font-size:8px;color:var(--t3)}
+.team-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-top:12px}
+.team-summary .ts-card{padding:10px;background:var(--card);border-radius:10px;border:1px solid var(--b1)}
+.team-summary .ts-card .ts-name{font-size:11px;font-weight:800;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.team-summary .ts-card .ts-stats{display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px}
+.team-summary .ts-card .ts-stat{display:flex;justify-content:space-between}
+.team-summary .ts-card .ts-sk{color:var(--t3)}
+.team-summary .ts-card .ts-sv{font-weight:800}
+
+/* SHIFT TEMPLATE SHARE */
+.tpl-share-section{margin-top:12px;padding:12px;background:var(--bg3);border-radius:10px;border:1px solid var(--b1)}
+.tpl-share-section h4{font-size:11px;font-weight:700;color:var(--t2);margin:0 0 8px;display:flex;align-items:center;gap:6px}
+.tpl-share-section h4 i{color:var(--p)}
+.tpl-qr-wrap{text-align:center;margin:8px 0}
+.tpl-import-area{margin-top:8px}
 /* Shift Stats */
 .shift-stats{margin-top:16px;background:var(--card2);border-radius:12px;padding:16px;border:1px solid var(--b1)}
 .shift-stats h3{font-size:13px;font-weight:700;color:var(--t1);margin:0 0 12px;display:flex;align-items:center;gap:6px}
@@ -878,6 +931,58 @@ tr:hover td{background:var(--bg3)}
   <div id="dvContent" onclick="event.stopPropagation()"></div>
 </div>
 
+<!-- SHIFT CALCULATOR MODAL -->
+<div class="calc-overlay" id="calcOverlay" onclick="if(event.target===this)closeCalc()">
+  <div class="calc-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="font-size:16px;font-weight:800"><i class="fas fa-calculator" style="color:var(--p);margin-right:6px"></i>Mesai Hesap Makinesi</h3>
+      <button class="modal-x" onclick="closeCalc()"><i class="fas fa-times"></i></button>
+    </div>
+    <p style="font-size:11px;color:var(--t2);margin-bottom:14px">"X tarihten Y tarihine kadar çalışırsam ne kadar kazanırım?" simülasyonu</p>
+    <div class="fg"><label>Başlangıç Tarihi</label><input type="date" id="calcDateFrom"></div>
+    <div class="fg"><label>Bitiş Tarihi</label><input type="date" id="calcDateTo"></div>
+    <div class="time-inputs" style="margin-top:8px">
+      <div class="ti"><label>Giriş</label><input type="time" id="calcStart" value="08:00"></div>
+      <div class="ti"><label>Çıkış</label><input type="time" id="calcEnd" value="16:00"></div>
+      <div class="ti"><label>Mola</label>
+        <select id="calcBreak">
+          <option value="0">Yok</option><option value="15">15dk</option>
+          <option value="30" selected>30dk</option><option value="45">45dk</option><option value="60">1s</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:8px">
+      <label style="font-size:11px;font-weight:700;color:var(--t2);display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="calcSkipWeekends" checked style="accent-color:var(--p)">Haftasonlarını atla
+      </label>
+      <label style="font-size:11px;font-weight:700;color:var(--t2);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px">
+        <input type="checkbox" id="calcSkipHolidays" checked style="accent-color:var(--p)">Resmi tatilleri atla
+      </label>
+    </div>
+    <button class="btn btn-primary" onclick="runCalc()" style="margin-top:12px;width:100%"><i class="fas fa-calculator"></i>Hesapla</button>
+    <div id="calcResult"></div>
+  </div>
+</div>
+
+<!-- EMPLOYER MODE OVERLAY -->
+<div class="employer-overlay" id="employerOverlay" onclick="if(event.target===this)closeEmployer()">
+  <div class="employer-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="font-size:16px;font-weight:800"><i class="fas fa-users" style="color:var(--p);margin-right:6px"></i>İşveren Modu — Takım Görünümü</h3>
+      <button class="modal-x" onclick="closeEmployer()"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="chgTeamWeek(-1)"><i class="fas fa-chevron-left"></i></button>
+        <span class="cal-month-title" id="teamWeekTitle" style="font-size:14px;min-width:200px"></span>
+        <button class="cal-nav-btn" onclick="chgTeamWeek(1)"><i class="fas fa-chevron-right"></i></button>
+      </div>
+      <button class="btn btn-soft btn-sm" onclick="teamGoThisWeek()"><i class="fas fa-crosshairs"></i>Bu Hafta</button>
+    </div>
+    <div id="teamContent"></div>
+  </div>
+</div>
+
 <!-- INSTALL BANNER -->
 <div class="install-banner" id="installBanner">
   <i class="fas fa-download"></i>
@@ -963,7 +1068,7 @@ tr:hover td{background:var(--bg3)}
     <div class="page active" id="pg-dashboard">
       <div class="page-head">
         <div><h1>Kontrol Paneli</h1><p id="dashSub"></p></div>
-        <div style="display:flex;align-items:center;gap:6px"><div id="dashStreak"></div><button class="btn btn-outline btn-sm" onclick="shareMonthReport()" title="Rapor Paylaş"><i class="fas fa-share-alt"></i></button></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><div id="dashStreak"></div><button class="btn btn-soft btn-sm" onclick="openCalc()" title="Mesai Hesap Makinesi"><i class="fas fa-calculator"></i></button><button class="btn btn-soft btn-sm" onclick="openEmployer()" title="İşveren Modu"><i class="fas fa-users"></i></button><button class="btn btn-outline btn-sm" onclick="shareMonthReport()" title="Rapor Paylaş"><i class="fas fa-share-alt"></i></button></div>
       </div>
       <div id="dashTodayWidget"></div>
       <div class="stats" id="statsEl"></div>
@@ -1021,6 +1126,7 @@ tr:hover td{background:var(--bg3)}
         </div>
         <div id="shiftStats"></div>
       </div>
+      <div id="bankHolidaysSection"></div>
     </div>
 
     <!-- STATS -->
@@ -1158,6 +1264,12 @@ tr:hover td{background:var(--bg3)}
         <h3><i class="fas fa-calendar-week"></i>Haftalık Şablon</h3>
         <div class="hint"><i class="fas fa-lightbulb"></i><span>Haftanın her günü için sabit vardiya tanımlayın, sonra bir aya toplu uygulayın.</span></div>
         <div id="weeklyTemplate"></div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-qrcode"></i>Vardiya Şablonu Paylaşımı</h3>
+        <div class="hint"><i class="fas fa-lightbulb"></i><span>Haftalık şablonunuzu QR kod ile başka kullanıcıya aktarın.</span></div>
+        <div id="tplShareSection"></div>
       </div>
 
       <div class="card s-card">
@@ -1894,6 +2006,7 @@ function init() {
       const co = $('confirmOverlay'); if (co) co.classList.remove('show');
       const po = $('pinOverlay'); if (po) po.classList.remove('show');
       const qo = $('qrOverlay'); if (qo) qo.classList.remove('show');
+      closeCalc(); closeEmployer();
     }
     const modal = $('modal'), wtModal = $('wtModal'), cpModal = $('cpModal');
     if ((modal && modal.classList.contains('show')) || (wtModal && wtModal.classList.contains('show')) || (cpModal && cpModal.classList.contains('show'))) return;
@@ -6090,6 +6203,478 @@ async function shareDocWA(doc) {
     toast('Paylaşım başarısız', 'error');
   }
 }
+
+/* ============================================================
+   FEATURE 1: BANKA TATİLLERİ OTOMATİK YÜKLEME
+   Yıla göre Türkiye resmi tatillerini takvime otomatik işaretle
+============================================================ */
+function getAllHolidaysForYear(y) {
+  const holidays = [];
+  // Sabit resmi tatiller
+  FH.forEach(h => {
+    const ds = `${y}-${String(h.m).padStart(2,'0')}-${String(h.d).padStart(2,'0')}`;
+    holidays.push({ date: ds, name: h.n, type: 'fixed' });
+  });
+  // Dini tatiller (yıla göre)
+  const rh = RH[y];
+  if (rh) {
+    rh.forEach(h => {
+      const ds = `${y}-${String(h.m).padStart(2,'0')}-${String(h.d).padStart(2,'0')}`;
+      holidays.push({ date: ds, name: h.n, type: 'religious' });
+    });
+  }
+  return holidays.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function renderBankHolidays() {
+  const el = $('bankHolidaysSection'); if (!el) return;
+  const u = cu(); if (!u) { el.innerHTML = ''; return; }
+  const y = S.cy;
+  const holidays = getAllHolidaysForYear(y);
+
+  if (!holidays.length) {
+    el.innerHTML = `<div class="bh-section"><h3><i class="fas fa-flag"></i>${y} Resmi Tatiller</h3><p style="font-size:12px;color:var(--t3)">Bu yıl için tatil verisi bulunamadı.</p></div>`;
+    return;
+  }
+
+  // Check which holidays already have shifts or leaves marked
+  let loaded = 0, total = holidays.length;
+  let listHtml = '';
+  holidays.forEach(h => {
+    const hasShift = u.shifts[h.date];
+    const hasLeave = u.leaves[h.date];
+    const isLoaded = hasShift || hasLeave;
+    if (isLoaded) loaded++;
+    const d = dsToDate(h.date);
+    const dow = d.getDay();
+    const dayName = DTR[dow === 0 ? 6 : dow - 1];
+    const isPast = d < new Date(new Date().setHours(0,0,0,0));
+    const typeIcon = h.type === 'religious' ? '🕌' : '🏛️';
+    listHtml += `<div class="bh-item">
+      <span class="bhi-date">${d.getDate()} ${MTR[d.getMonth()].substring(0,3)} ${dayName}</span>
+      <span class="bhi-name">${typeIcon} ${escHtml(h.name)}</span>
+      ${hasShift ? '<span class="bhi-badge loaded">Çalışıldı</span>' : hasLeave ? '<span class="bhi-badge loaded">İzinli</span>' : isPast ? '<span class="bhi-badge pending">Geçmiş</span>' : ''}
+    </div>`;
+  });
+
+  el.innerHTML = `<div class="bh-section">
+    <h3><i class="fas fa-flag"></i>${y} Resmi Tatiller (${total} gün)</h3>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="autoLoadHolidays(${y})"><i class="fas fa-calendar-plus"></i>Tatilleri Takvime Yükle</button>
+      <button class="btn btn-outline btn-sm" onclick="autoLoadHolidays(${y},'remove')"><i class="fas fa-eraser"></i>Tatil İzinlerini Kaldır</button>
+    </div>
+    <div class="bh-list">${listHtml}</div>
+  </div>`;
+}
+
+function autoLoadHolidays(y, mode) {
+  const u = cu(); if (!u) return;
+  const holidays = getAllHolidaysForYear(y);
+  if (!holidays.length) { toast('Bu yıl için tatil verisi yok', 'error'); return; }
+
+  if (mode === 'remove') {
+    showConfirm('Tatil İzinlerini Kaldır', `${y} yılındaki otomatik yüklenen tatil izinleri kaldırılacak.`, () => {
+      pushUndo('Tatil izin kaldır');
+      let count = 0;
+      holidays.forEach(h => {
+        if (u.leaves[h.date] && u.leaves[h.date].note === 'Resmi Tatil') {
+          if (!u.deletedLeaves) u.deletedLeaves = {};
+          u.deletedLeaves[h.date] = Date.now();
+          delete u.leaves[h.date];
+          count++;
+        }
+      });
+      invalidateMDCache(); saveLS(); renderActivePage();
+      toast(`${count} tatil izni kaldırıldı`, 'success');
+    });
+    return;
+  }
+
+  showConfirm('Tatilleri Yükle', `${y} yılındaki ${holidays.length} resmi tatil takvime yüklenecek. Mevcut vardiya/izin olan günler atlanır.`, () => {
+    pushUndo('Tatil otomatik yükle');
+    let count = 0;
+    holidays.forEach(h => {
+      if (u.shifts[h.date] || u.leaves[h.date]) return; // Zaten dolu olan günü atla
+      u.leaves[h.date] = { type: 'weekly', note: 'Resmi Tatil', updatedAt: Date.now() };
+      if (u.deletedLeaves) delete u.deletedLeaves[h.date];
+      count++;
+    });
+    invalidateMDCache(); saveLS(); renderActivePage();
+    toast(`${count} tatil takvime yüklendi`, 'success');
+  });
+}
+
+/* ============================================================
+   FEATURE 2: MESAİ HESAP MAKİNESİ
+   "X tarihten Y tarihine kadar çalışırsam ne kadar kazanırım?"
+============================================================ */
+function openCalc() {
+  const today = new Date();
+  const from = $('calcDateFrom'), to = $('calcDateTo');
+  if (from) from.value = dStr(today);
+  const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  if (to) to.value = dStr(endOfMonth);
+  const cr = $('calcResult'); if (cr) cr.innerHTML = '';
+  const co = $('calcOverlay'); if (co) co.classList.add('show');
+}
+function closeCalc() { const co = $('calcOverlay'); if (co) co.classList.remove('show'); }
+
+function runCalc() {
+  const u = cu(); if (!u) { toast('Giriş yapın', 'error'); return; }
+  const from = ($('calcDateFrom') || {}).value;
+  const to = ($('calcDateTo') || {}).value;
+  const start = ($('calcStart') || {}).value;
+  const end = ($('calcEnd') || {}).value;
+  const brk = parseInt(($('calcBreak') || {}).value) || 0;
+  const skipWE = ($('calcSkipWeekends') || {}).checked;
+  const skipHol = ($('calcSkipHolidays') || {}).checked;
+
+  if (!from || !to) { toast('Tarihleri girin', 'error'); return; }
+  if (!start || !end) { toast('Saatleri girin', 'error'); return; }
+  const fromD = new Date(from), toD = new Date(to);
+  if (fromD > toD) { toast('Başlangıç bitiş tarihinden sonra olamaz', 'error'); return; }
+
+  const dailyHrs = calcHr(start, end, brk);
+  if (dailyHrs <= 0) { toast('Geçersiz vardiya', 'error'); return; }
+
+  let totalDays = 0, totalHrs = 0, weeklyHrs = 0, otHrs = 0, holDays = 0, weDays = 0;
+  let weekDayCount = 0; // Hafta içindeki gün sayacı (Pzt=0)
+  let currentWeekHrs = 0;
+  let lastWeekNum = null;
+
+  const d = new Date(fromD);
+  while (d <= toD) {
+    const ds = dStr(d);
+    const dow = d.getDay();
+    const isWeekend = (dow === 0 || dow === 6);
+    const isHoliday = isH(ds);
+    const wk = getISOWeek(d);
+
+    if (wk !== lastWeekNum) {
+      // New week — check previous week for OT
+      if (lastWeekNum !== null && currentWeekHrs > 45) {
+        otHrs += currentWeekHrs - 45;
+      }
+      currentWeekHrs = 0;
+      lastWeekNum = wk;
+    }
+
+    if (isWeekend && skipWE) { weDays++; d.setDate(d.getDate() + 1); continue; }
+    if (isHoliday && skipHol) { holDays++; d.setDate(d.getDate() + 1); continue; }
+
+    totalDays++;
+    totalHrs += dailyHrs;
+    currentWeekHrs += dailyHrs;
+    if (isHoliday) holDays++;
+
+    d.setDate(d.getDate() + 1);
+  }
+  // Last week OT check
+  if (currentWeekHrs > 45) otHrs += currentWeekHrs - 45;
+
+  // Earnings calculation
+  const _mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 225;
+  const hr = u.netSalary > 0 ? u.netSalary / _mh : 0;
+  const dr = u.netSalary > 0 ? u.netSalary / 30 : 0;
+  const basePay = totalDays * dr;
+  const otPay = otHrs * hr * 0.5;
+  const holWorkDays = holDays;
+  const holPay = (skipHol ? 0 : holWorkDays) * dailyHrs * hr;
+  const totalEarn = basePay + otPay + holPay;
+
+  const diffMs = toD - fromD;
+  const totalCalDays = Math.ceil(diffMs / 864e5) + 1;
+
+  const el = $('calcResult'); if (!el) return;
+  el.innerHTML = `<div class="calc-result">
+    <div class="cr-total">${u.netSalary > 0 ? fm(totalEarn) : totalHrs.toFixed(1) + ' saat'}</div>
+    <div class="cr-sub">${totalDays} iş günü · ${totalHrs.toFixed(1)} saat · ${totalCalDays} takvim günü</div>
+    <div class="calc-detail">
+      <div class="cd-item"><div class="cd-val" style="color:var(--p)">${totalDays}</div><div class="cd-lbl">İş Günü</div></div>
+      <div class="cd-item"><div class="cd-val" style="color:var(--g)">${totalHrs.toFixed(1)}s</div><div class="cd-lbl">Toplam Saat</div></div>
+      <div class="cd-item"><div class="cd-val" style="color:var(--acc)">${otHrs.toFixed(1)}s</div><div class="cd-lbl">Fazla Mesai</div></div>
+      <div class="cd-item"><div class="cd-val" style="color:var(--r)">${holDays}</div><div class="cd-lbl">${skipHol ? 'Atlanan Tatil' : 'Tatil Günü'}</div></div>
+      ${u.netSalary > 0 ? `
+        <div class="cd-item"><div class="cd-val" style="color:var(--g)">${fm(basePay)}</div><div class="cd-lbl">Baz Maaş</div></div>
+        <div class="cd-item"><div class="cd-val" style="color:var(--acc)">${fm(otPay)}</div><div class="cd-lbl">FM Eki</div></div>
+        <div class="cd-item"><div class="cd-val">${fm(dr)}</div><div class="cd-lbl">Günlük Ücret</div></div>
+        <div class="cd-item"><div class="cd-val">${fm(hr)}</div><div class="cd-lbl">Saatlik Ücret</div></div>
+      ` : `<div class="cd-item" style="grid-column:span 2"><div class="cd-val" style="color:var(--t3);font-size:11px">Kazanç için Ayarlar'dan maaş girin</div><div class="cd-lbl">&nbsp;</div></div>`}
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   FEATURE 3: İŞVEREN MODU — TAKIM GÖRÜNÜMÜ
+   Birden fazla çalışanın vardiyasını haftalık olarak yönet
+============================================================ */
+let teamWeekStart = null;
+
+function initTeamWeek() {
+  const today = new Date();
+  const dow = today.getDay() === 0 ? 6 : today.getDay() - 1;
+  teamWeekStart = new Date(today);
+  teamWeekStart.setDate(today.getDate() - dow);
+  teamWeekStart.setHours(0,0,0,0);
+}
+
+function openEmployer() {
+  if (!teamWeekStart) initTeamWeek();
+  renderTeamView();
+  const eo = $('employerOverlay'); if (eo) eo.classList.add('show');
+}
+function closeEmployer() { const eo = $('employerOverlay'); if (eo) eo.classList.remove('show'); }
+
+function chgTeamWeek(d) {
+  if (!teamWeekStart) initTeamWeek();
+  teamWeekStart.setDate(teamWeekStart.getDate() + d * 7);
+  renderTeamView();
+}
+function teamGoThisWeek() { initTeamWeek(); renderTeamView(); }
+
+function renderTeamView() {
+  const el = $('teamContent'); if (!el) return;
+  if (!teamWeekStart) initTeamWeek();
+  const ws = new Date(teamWeekStart);
+  const we = new Date(ws); we.setDate(ws.getDate() + 6);
+
+  // Title
+  const title = $('teamWeekTitle');
+  if (title) title.textContent = `${ws.getDate()} ${MTR[ws.getMonth()]} — ${we.getDate()} ${MTR[we.getMonth()]} ${we.getFullYear()}`;
+
+  // Get all users
+  const userIds = Object.keys(S.u).sort((a, b) => parseInt(a) - parseInt(b));
+  if (userIds.length === 0) { el.innerHTML = '<div class="empty"><p>Kullanıcı yok</p></div>'; return; }
+
+  // Build week dates
+  const weekDates = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(ws); d.setDate(ws.getDate() + i);
+    weekDates.push(dStr(d));
+  }
+
+  // Grid header
+  let gridHtml = '<div class="team-grid">';
+  gridHtml += '<div class="tg-header">Çalışan</div>';
+  weekDates.forEach((ds, i) => {
+    const d = dsToDate(ds);
+    const isToday = ds === dStr(new Date());
+    gridHtml += `<div class="tg-header" style="${isToday ? 'color:var(--p);font-weight:900' : ''}">${DTR[i]}<br>${d.getDate()}</div>`;
+  });
+
+  // Per-user rows and summary data
+  const summaryData = [];
+
+  userIds.forEach(uid => {
+    const u = S.u[uid]; if (!u) return;
+    const initial = (u.name || 'K')[0].toUpperCase();
+    const name = escHtml(u.name || 'Kullanıcı ' + uid);
+    gridHtml += `<div class="tg-name"><div class="tg-av">${initial}</div>${name}</div>`;
+
+    let weekHrs = 0, weekDays = 0, weekLeaves = 0;
+
+    weekDates.forEach(ds => {
+      const sh = u.shifts[ds], lv = u.leaves[ds];
+      const hol = isH(ds);
+      if (sh && sh.start && sh.end) {
+        const hrs = calcHr(sh.start, sh.end, sh.break || 0);
+        weekHrs += hrs; weekDays++;
+        gridHtml += `<div class="tg-cell tg-shift" title="${escHtml(sh.start)}–${escHtml(sh.end)}">
+          <span class="tg-hrs">${hrs.toFixed(1)}s</span>
+          <span class="tg-time">${escHtml(sh.start.substring(0,5))}–${escHtml(sh.end.substring(0,5))}</span>
+        </div>`;
+      } else if (lv && lv.type) {
+        weekLeaves++;
+        const icons = { annual:'🏖', weekly:'🛋', sick:'🤒', unpaid:'⛔' };
+        const labels = { annual:'Yıllık', weekly:'Tatil', sick:'Rapor', unpaid:'Ücretsiz' };
+        gridHtml += `<div class="tg-cell tg-leave" title="${labels[lv.type]||lv.type}">
+          <span>${icons[lv.type]||'📋'}</span>
+          <span class="tg-time">${labels[lv.type]||''}</span>
+        </div>`;
+      } else if (hol) {
+        gridHtml += `<div class="tg-cell tg-holiday" title="${getH(ds)}"><span>🏛️</span></div>`;
+      } else {
+        gridHtml += '<div class="tg-cell">—</div>';
+      }
+    });
+
+    const otHrs = Math.max(0, weekHrs - 45);
+    summaryData.push({ name, initial, weekHrs, weekDays, weekLeaves, otHrs, uid });
+  });
+
+  gridHtml += '</div>';
+
+  // Summary cards
+  let summaryHtml = '<div class="team-summary">';
+  summaryData.forEach(s => {
+    summaryHtml += `<div class="ts-card">
+      <div class="ts-name"><div class="tg-av" style="width:18px;height:18px;font-size:8px">${s.initial}</div>${s.name}</div>
+      <div class="ts-stats">
+        <div class="ts-stat"><span class="ts-sk">Gün</span><span class="ts-sv">${s.weekDays}</span></div>
+        <div class="ts-stat"><span class="ts-sk">Saat</span><span class="ts-sv">${s.weekHrs.toFixed(1)}</span></div>
+        <div class="ts-stat"><span class="ts-sk">FM</span><span class="ts-sv" style="color:${s.otHrs > 0 ? 'var(--acc)' : 'var(--t3)'}">${s.otHrs.toFixed(1)}</span></div>
+        <div class="ts-stat"><span class="ts-sk">İzin</span><span class="ts-sv">${s.weekLeaves}</span></div>
+      </div>
+    </div>`;
+  });
+  summaryHtml += '</div>';
+
+  // Team totals
+  const totalHrs = summaryData.reduce((a, s) => a + s.weekHrs, 0);
+  const totalDays = summaryData.reduce((a, s) => a + s.weekDays, 0);
+  const totalOT = summaryData.reduce((a, s) => a + s.otHrs, 0);
+  const teamCount = summaryData.length;
+
+  el.innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <div class="stat" style="flex:1;min-width:120px"><div class="ribbon"></div><div class="ico"><i class="fas fa-users"></i></div><div class="val">${teamCount}</div><div class="lbl">Çalışan</div></div>
+      <div class="stat" style="flex:1;min-width:120px"><div class="ribbon"></div><div class="ico"><i class="fas fa-clock"></i></div><div class="val">${totalHrs.toFixed(1)}</div><div class="lbl">Toplam Saat</div></div>
+      <div class="stat" style="flex:1;min-width:120px"><div class="ribbon"></div><div class="ico"><i class="fas fa-calendar-check"></i></div><div class="val">${totalDays}</div><div class="lbl">İş Günü</div></div>
+      <div class="stat" style="flex:1;min-width:120px"><div class="ribbon"></div><div class="ico"><i class="fas fa-fire"></i></div><div class="val">${totalOT.toFixed(1)}</div><div class="lbl">FM Saat</div></div>
+    </div>
+    <div style="overflow-x:auto">${gridHtml}</div>
+    ${summaryHtml}`;
+}
+
+/* ============================================================
+   FEATURE 4: VARDİYA ŞABLONU PAYLAŞIMI — QR KOD İLE AKTAR
+============================================================ */
+function renderTplShare() {
+  const el = $('tplShareSection'); if (!el) return;
+  const u = cu(); if (!u) { el.innerHTML = ''; return; }
+  const wt = u.weeklyTemplate;
+  const hasTemplate = wt && Object.values(wt).some(v => v && v.type === 'shift');
+
+  let html = '';
+  if (hasTemplate) {
+    html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn btn-primary btn-sm" onclick="shareTplQR()"><i class="fas fa-qrcode"></i>QR ile Paylaş</button>
+      <button class="btn btn-soft btn-sm" onclick="copyTplLink()"><i class="fas fa-copy"></i>Kodu Kopyala</button>
+    </div>`;
+    html += '<div id="tplQRCode" class="tpl-qr-wrap"></div>';
+  } else {
+    html += '<div style="font-size:12px;color:var(--t3);padding:8px 0">Paylaşmak için önce Haftalık Şablon oluşturun.</div>';
+  }
+
+  html += `<div class="tpl-import-area">
+    <h4 style="font-size:11px;font-weight:700;color:var(--t2);margin:8px 0 6px"><i class="fas fa-download" style="color:var(--p);margin-right:4px"></i>Şablon Al</h4>
+    <div class="fg"><textarea id="tplImportData" placeholder="Paylaşılan şablon kodunu yapıştırın..." rows="2" style="font-size:11px"></textarea></div>
+    <button class="btn btn-soft btn-sm" onclick="importTpl()" style="margin-top:4px"><i class="fas fa-download"></i>Şablonu İçe Aktar</button>
+  </div>`;
+
+  el.innerHTML = html;
+}
+
+function shareTplQR() {
+  const u = cu(); if (!u || !u.weeklyTemplate) return;
+  const data = JSON.stringify({
+    type: 'shifttrack_template',
+    name: u.name || 'Kullanıcı',
+    template: u.weeklyTemplate,
+    presets: u.customPresets || [],
+    exportDate: new Date().toISOString()
+  });
+  const encoded = btoa(encodeURIComponent(data));
+
+  const qrEl = $('tplQRCode');
+  if (!qrEl) return;
+  qrEl.innerHTML = '';
+
+  if (encoded.length > 2900) {
+    qrEl.innerHTML = '<p style="font-size:11px;color:var(--acc)"><i class="fas fa-exclamation-triangle"></i> Şablon QR için çok büyük. "Kodu Kopyala" butonunu kullanın.</p>';
+    return;
+  }
+
+  if (typeof QRCode !== 'undefined') {
+    new QRCode(qrEl, {
+      text: 'STPL:' + encoded,
+      width: 180, height: 180,
+      colorDark: '#1a1625', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.L
+    });
+  }
+  qrEl.innerHTML += '<p style="font-size:10px;color:var(--t3);margin-top:6px">QR kodu diğer kullanıcının kamerasıyla okutun</p>';
+}
+
+function copyTplLink() {
+  const u = cu(); if (!u || !u.weeklyTemplate) { toast('Şablon yok', 'error'); return; }
+  const data = JSON.stringify({
+    type: 'shifttrack_template',
+    name: u.name || 'Kullanıcı',
+    template: u.weeklyTemplate,
+    presets: u.customPresets || [],
+    exportDate: new Date().toISOString()
+  });
+  const encoded = 'STPL:' + btoa(encodeURIComponent(data));
+
+  navigator.clipboard.writeText(encoded).then(() => toast('Şablon kodu kopyalandı!', 'success')).catch(() => {
+    const ta = document.createElement('textarea'); ta.value = encoded;
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta); toast('Kopyalandı!', 'success');
+  });
+}
+
+function importTpl() {
+  const u = cu(); if (!u) return;
+  const el = $('tplImportData'); if (!el) return;
+  let raw = el.value.trim();
+  if (!raw) { toast('Şablon kodu girin', 'error'); return; }
+
+  // Remove STPL: prefix if present
+  if (raw.startsWith('STPL:')) raw = raw.substring(5);
+
+  try {
+    const decoded = decodeURIComponent(atob(raw));
+    const p = JSON.parse(decoded);
+
+    if (!p || p.type !== 'shifttrack_template' || !p.template) {
+      toast('Geçersiz şablon kodu', 'error'); return;
+    }
+
+    const fromName = p.name || 'Bilinmeyen';
+    const templateDays = Object.values(p.template).filter(v => v && v.type === 'shift').length;
+
+    showConfirm('Şablon İçe Aktar',
+      `"${escHtml(fromName)}" kullanıcısından ${templateDays} günlük vardiya şablonu alınacak. Mevcut şablonun üzerine yazılır.`, () => {
+      u.weeklyTemplate = p.template;
+      // İsteğe bağlı: özel şablonları da aktar
+      if (p.presets && Array.isArray(p.presets) && p.presets.length > 0) {
+        if (!u.customPresets) u.customPresets = [];
+        const existingNames = new Set(u.customPresets.map(cp => cp.name));
+        p.presets.forEach(cp => {
+          if (cp && cp.name && cp.start && cp.end && !existingNames.has(cp.name)) {
+            u.customPresets.push(cp);
+          }
+        });
+      }
+      saveLS();
+      renderWeeklyTemplate();
+      renderCustomPresets();
+      renderTplShare();
+      el.value = '';
+      toast(`${escHtml(fromName)}'dan şablon aktarıldı!`, 'success');
+    });
+  } catch(e) {
+    toast('Geçersiz format', 'error');
+  }
+}
+
+/* ============================================================
+   HOOKS — Render pipeline'a yeni özellikleri ekle
+============================================================ */
+const _origRenderActivePage = renderActivePage;
+renderActivePage = function() {
+  _origRenderActivePage();
+  const a = document.querySelector('.page.active');
+  if (a && a.id === 'pg-calendar') renderBankHolidays();
+  if (a && a.id === 'pg-settings') { renderTplShare(); }
+};
+
+const _origLoadSet = loadSet;
+loadSet = function() {
+  _origLoadSet();
+  renderTplShare();
+};
 
 init();
 initSwipe();
