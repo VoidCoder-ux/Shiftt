@@ -412,7 +412,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);c
 .time-inputs{display:flex;gap:6px;margin-bottom:10px;align-items:end}
 .time-inputs .ti{flex:1}
 .time-inputs .ti label{display:block;font-size:9px;font-weight:700;color:var(--t3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px}
-input[type="time"],input[type="text"],input[type="number"],input[type="date"],select,textarea{width:100%;padding:8px;border:1.5px solid var(--b1);border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;background:var(--bg3);color:var(--t1);transition:border-color .2s,box-shadow .2s}
+input[type="time"],input[type="text"],input[type="number"],input[type="date"],select,textarea{width:100%;padding:8px;border:1.5px solid var(--b1);border-radius:8px;font-family:inherit;font-size:16px;font-weight:600;background:var(--bg3);color:var(--t1);transition:border-color .2s,box-shadow .2s;box-sizing:border-box;-webkit-appearance:none}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--p);box-shadow:0 0 0 3px var(--p4)}
 input[type="time"]{font-size:14px;font-weight:800;text-align:center;padding:7px 4px}
 .result-box{background:var(--bg);border-radius:10px;padding:10px;display:flex;justify-content:space-between;align-items:center;border:1px solid var(--b1)}
@@ -596,7 +596,8 @@ tr:hover td{background:var(--bg3)}
 }
 @media(max-width:480px){.content{padding:114px 8px 24px}.stats{grid-template-columns:1fr}.lt-row{grid-template-columns:1fr}.year-overview{grid-template-columns:repeat(4,1fr)}.wt-grid{grid-template-columns:repeat(3,1fr)}.dash-reports{grid-template-columns:1fr}.login-brand h1{font-size:26px}.login-brand{margin-bottom:28px}.login-card{width:160px;padding:24px 14px}
 .nav-tab{padding:7px 4px}.nav-tab i{font-size:14px}.nav-tabs{gap:1px;padding:0 4px}
-.auth-box{padding:24px 18px;margin:0 8px;max-width:100%}.auth-box .auth-brand h1{font-size:18px}.auth-box .auth-brand p{font-size:11px}.auth-fg input{font-size:16px}.auth-skip{font-size:12px;padding:10px}}
+.auth-box{padding:24px 18px;margin:0 8px;max-width:100%}.auth-box .auth-brand h1{font-size:18px}.auth-box .auth-brand p{font-size:11px}.auth-fg input{font-size:16px}.auth-skip{font-size:12px;padding:10px}
+.modal{width:100%;max-width:95vw}.calc-box{max-width:95vw;padding:18px}.employer-box{max-width:95vw;padding:18px}.calc-overlay,.employer-overlay,.overlay{padding:8px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 
 /* ===== EVRAKLARIM ===== */
@@ -644,7 +645,7 @@ tr:hover td{background:var(--bg3)}
 .upload-progress{height:4px;background:var(--bg3);border-radius:2px;margin-bottom:14px;overflow:hidden;display:none}
 .upload-progress-bar{height:100%;background:var(--pg);border-radius:2px;transition:width .3s;width:0%}
 /* Doc viewer overlay */
-#docViewer{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);backdrop-filter:blur(12px);z-index:3000;flex-direction:column;align-items:center;justify-content:center}
+#docViewer{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);backdrop-filter:blur(12px);z-index:2500;flex-direction:column;align-items:center;justify-content:center}
 #docViewer.show{display:flex}
 #docViewer img{max-width:95vw;max-height:80vh;border-radius:10px;object-fit:contain}
 .dv-bar{position:fixed;top:0;left:0;right:0;padding:12px 16px;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.5)}
@@ -685,7 +686,7 @@ tr:hover td{background:var(--bg3)}
 #qrCode canvas,#qrCode img{border-radius:12px;border:4px solid #fff}
 
 /* PIN MODAL */
-.pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center;z-index:3000;padding:16px}
+.pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center;z-index:3500;padding:16px}
 .pin-overlay.show{display:flex}
 .pin-box{background:var(--bg2);border-radius:var(--rad2);padding:32px;max-width:320px;width:100%;text-align:center;border:1px solid var(--b1);box-shadow:var(--sh3);animation:modalPop .3s cubic-bezier(.16,1,.3,1)}
 .pin-dots{display:flex;gap:12px;justify-content:center;margin:20px 0}
@@ -3989,8 +3990,21 @@ function saveLS() {
     // Buluta da gönder (debounced)
     debouncedPush();
   } catch(e) {
-    if (e.name === 'QuotaExceededError') toast('Depolama dolu!', 'error');
-    else toast('Kayıt hatası!', 'error');
+    if (e.name === 'QuotaExceededError') {
+      // Eski silinen kayıtları temizleyerek yer aç
+      try {
+        Object.values(S.u).forEach(u => {
+          if (u && u.deletedShifts) u.deletedShifts = {};
+          if (u && u.deletedLeaves) u.deletedLeaves = {};
+          if (u && u.deletedDocs) u.deletedDocs = {};
+        });
+        const d2 = JSON.stringify({ users:S.u, version:DATA_VERSION, nextUid:S.nextUid });
+        localStorage.setItem('st_data', d2);
+        toast('Depolama doldu, eski silme kayıtları temizlendi', 'warning');
+      } catch(e2) {
+        toast('Depolama dolu! Veri kaydedilemedi. Yedek alın.', 'error');
+      }
+    } else toast('Kayıt hatası!', 'error');
   }
 }
 
@@ -5287,7 +5301,7 @@ function firebaseRegister() {
   fbAuth.createUserWithEmailAndPassword(email, pass)
     .then(cred => {
       // İlk kayıtta mevcut lokal veriyi buluta yükle
-      try { const existing = localStorage.getItem('st_data'); if (existing) pushToCloud(); } catch(e) {}
+      try { const existing = localStorage.getItem('st_data'); if (existing) pushToCloud(); } catch(e) { console.warn('İlk kayıt push hatası:', e); }
       // Direkt uygulamaya geç
       enterAppAfterAuth();
     })
@@ -5349,6 +5363,9 @@ function firebaseLogout() {
       updSyncUI();
       updCloudAccountUI();
       toast('Bulut hesabından çıkış yapıldı', 'info');
+    }).catch(err => {
+      console.error('Çıkış hatası:', err);
+      toast('Çıkış yapılamadı. Tekrar deneyin.', 'error');
     });
   });
 }
@@ -5739,7 +5756,7 @@ let syncTimer = null;
 function debouncedPush() {
   if (!fbDb || !fbUser) return;
   if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => { pushToCloud(); }, SYNC_DEBOUNCE);
+  syncTimer = setTimeout(() => { if (!syncInProgress) pushToCloud(); }, SYNC_DEBOUNCE);
 }
 
 // Sekme aktif olunca veya online olunca sync yap
@@ -6152,12 +6169,16 @@ function viewDocument(docId) {
 }
 
 function dataUrlToBlob(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.includes(',')) return null;
   const [header, data] = dataUrl.split(',');
-  const mime = header.match(/:(.*?);/)[1];
-  const binary = atob(data);
-  const arr = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-  return new Blob([arr], { type: mime });
+  const match = header.match(/:(.*?);/);
+  if (!match || !match[1]) return null;
+  try {
+    const binary = atob(data);
+    const arr = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+    return new Blob([arr], { type: match[1] });
+  } catch(e) { return null; }
 }
 
 function downloadDoc(doc) {
