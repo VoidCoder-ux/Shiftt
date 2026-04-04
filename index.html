@@ -1462,6 +1462,7 @@ function mkUser(i) {
     customPresets: [],
     weeklyTemplate: null,
     notes: '',
+    notesUpdatedAt: 0,
     lastLogin: null,
     theme: 'default',
     monthlyHours: 225,
@@ -1583,8 +1584,9 @@ function showConfirm(title, msg, cb) {
 }
 function confirmOk() {
   const co = $('confirmOverlay'); if (co) co.classList.remove('show');
-  if (typeof confirmCallback === 'function') confirmCallback();
+  const cb = confirmCallback;
   confirmCallback = null;
+  if (typeof cb === 'function') cb();
 }
 function confirmCancel() {
   const co = $('confirmOverlay'); if (co) co.classList.remove('show');
@@ -2122,11 +2124,19 @@ function login(id) {
 }
 
 function logout() {
+  // Açık modalları kapat
+  closeM(); closeCPModal(); closeWTModal(); closeNewUserModal();
+  // Confirm overlay kapat
+  const co = document.querySelector('.confirm-overlay'); if (co) co.remove();
+  // Modal state sıfırla
+  S.sd = null; S.mt = 'shift'; S.lt = null; S.wtEditDay = null;
   S.cu = null;
   S.multiSelect = false;
   S.selectedDates = [];
   S.clipboard = null;
   undoStack.length = 0;
+  // Zamanlayıcıları temizle
+  if (pushReminderTimer) { clearTimeout(pushReminderTimer); pushReminderTimer = null; }
   invalidateMDCache();
   applyTheme('default');
   const ma = $('mainApp'); if (ma) ma.style.display = 'none';
@@ -3296,7 +3306,8 @@ function renderStatsProductivity(trendData) {
     </div>`;
   });
 
-  const overallAvg = nonZero.reduce((a, d) => a + d.hours, 0) / nonZero.reduce((a, d) => a + d.days, 0);
+  const totalDays = nonZero.reduce((a, d) => a + d.days, 0);
+  const overallAvg = totalDays > 0 ? nonZero.reduce((a, d) => a + d.hours, 0) / totalDays : 0;
   const bestMonth = nonZero.reduce((best, d, i) => avgDailyHrs[i] > (best.avg || 0) ? { label: d.label, avg: avgDailyHrs[i] } : best, {});
   const mostOT = nonZero.reduce((best, d, i) => otRatios[i] > (best.ratio || 0) ? { label: d.label, ratio: otRatios[i] } : best, {});
 
@@ -3738,6 +3749,7 @@ function saveNotes() {
   const u = cu(); if (!u) return;
   const notesEl = $('userNotes');
   u.notes = (notesEl ? notesEl.value : '').substring(0, 1000);
+  u.notesUpdatedAt = Date.now();
   saveLS();
   toast('Notlar kaydedildi', 'success');
 }
@@ -4080,7 +4092,15 @@ function importD(e) {
         if (!Array.isArray(S.u[i].customPresets)) S.u[i].customPresets = [];
         if (!Array.isArray(S.u[i].documents)) S.u[i].documents = [];
         S.u[i].netSalary = parseFloat(S.u[i].netSalary) || 0;
+        S.u[i].annualLeave = parseInt(S.u[i].annualLeave) || 14;
+        if (S.u[i].annualLeave < 0 || S.u[i].annualLeave > 90) S.u[i].annualLeave = 14;
+        S.u[i].monthlyHours = parseInt(S.u[i].monthlyHours) || 225;
+        if (S.u[i].monthlyHours < 1 || S.u[i].monthlyHours > 744) S.u[i].monthlyHours = 225;
+        S.u[i].goalHours = parseFloat(S.u[i].goalHours) || 0;
+        S.u[i].goalEarning = parseFloat(S.u[i].goalEarning) || 0;
         S.u[i].notes = typeof S.u[i].notes === 'string' ? S.u[i].notes : '';
+        if (S.u[i].name && typeof S.u[i].name === 'string') S.u[i].name = S.u[i].name.substring(0, 50);
+        else S.u[i].name = 'Kullanıcı ' + i;
       });
       invalidateMDCache();
       saveLS();
@@ -5577,8 +5597,14 @@ function deepMergeUser(local, cloud) {
     if (merged.deletedLeaves[k] < cleanupThreshold) delete merged.deletedLeaves[k];
   });
 
-  // Note merge — notes bir string, cloud'daki boş değilse cloud'dan al
-  if (cloud.notes && typeof cloud.notes === 'string' && cloud.notes.trim()) {
+  // Note merge — zaman damgasına göre çakışma çözümü
+  const localNT = merged.notesUpdatedAt || 0;
+  const cloudNT = cloud.notesUpdatedAt || 0;
+  if (cloudNT > localNT && cloud.notes !== undefined) {
+    merged.notes = cloud.notes;
+    merged.notesUpdatedAt = cloudNT;
+  } else if (cloudNT === 0 && localNT === 0 && cloud.notes && typeof cloud.notes === 'string' && cloud.notes.trim()) {
+    // Geriye uyumluluk: eski veriler zaman damgası yoksa cloud'dan al
     merged.notes = cloud.notes;
   }
 
@@ -5615,11 +5641,11 @@ function deepMergeUser(local, cloud) {
     if (cloud.netSalary !== undefined) merged.netSalary = cloud.netSalary;
     if (cloud.annualLeave !== undefined) merged.annualLeave = cloud.annualLeave;
     if (cloud.pin !== undefined) merged.pin = cloud.pin;
-    if (cloud.weeklyTemplate) merged.weeklyTemplate = cloud.weeklyTemplate;
-    if (cloud.customPresets) merged.customPresets = cloud.customPresets;
+    if (cloud.weeklyTemplate !== undefined) merged.weeklyTemplate = cloud.weeklyTemplate;
+    if (cloud.customPresets !== undefined) merged.customPresets = cloud.customPresets;
     if (cloud.goalHours !== undefined) merged.goalHours = cloud.goalHours;
     if (cloud.goalEarning !== undefined) merged.goalEarning = cloud.goalEarning;
-    if (cloud.theme) merged.theme = cloud.theme;
+    if (cloud.theme !== undefined) merged.theme = cloud.theme;
     if (cloud.monthlyHours !== undefined) merged.monthlyHours = cloud.monthlyHours;
     merged.settingsUpdatedAt = cloudST;
   }
