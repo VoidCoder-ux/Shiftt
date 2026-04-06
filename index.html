@@ -703,11 +703,23 @@ tr:hover td{background:var(--bg3)}
 .notif-badge{position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:var(--r);border:2px solid var(--glass)}
 
 /* INSTALL BANNER */
-.install-banner{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--pg);color:#fff;padding:12px 20px;border-radius:14px;box-shadow:var(--sh3);display:none;align-items:center;gap:10px;font-size:13px;font-weight:700;z-index:1500;animation:slideUp .5s cubic-bezier(.16,1,.3,1)}
+.install-banner{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--pg);color:#fff;padding:12px 20px;border-radius:14px;box-shadow:var(--sh3);display:none;align-items:center;gap:10px;font-size:13px;font-weight:700;z-index:1500;animation:slideUp .5s cubic-bezier(.16,1,.3,1);max-width:calc(100vw - 32px)}
 @keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(30px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 .install-banner button{padding:6px 14px;border-radius:8px;border:none;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}
 .install-banner .ib-install{background:#fff;color:var(--p2,#7c3aed)}
 .install-banner .ib-close{background:rgba(255,255,255,.2);color:#fff}
+
+/* IOS INSTALL MODAL */
+.ios-install-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:6000;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px)}
+.ios-install-box{background:var(--bg2);border-radius:20px 20px 0 0;padding:24px 20px 40px;width:100%;max-width:480px;animation:slideUp .4s cubic-bezier(.16,1,.3,1)}
+.ios-install-box h3{font-size:16px;font-weight:800;margin-bottom:4px;color:var(--t1)}
+.ios-install-box p{font-size:12px;color:var(--t2);margin-bottom:20px}
+.ios-steps{display:flex;flex-direction:column;gap:14px;margin-bottom:20px}
+.ios-step{display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg3);border-radius:12px}
+.ios-step-num{width:28px;height:28px;border-radius:50%;background:var(--pg);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ios-step-text{font-size:13px;color:var(--t1);font-weight:600;line-height:1.4}
+.ios-step-text small{display:block;font-size:11px;color:var(--t2);font-weight:500;margin-top:2px}
+.ios-step-icon{font-size:18px;margin-left:auto;flex-shrink:0}
 
 /* ADD USER CARD */
 .login-card.add-user{border-style:dashed;border-color:var(--b2);opacity:.6}
@@ -987,10 +999,45 @@ tr:hover td{background:var(--bg3)}
 
 <!-- INSTALL BANNER -->
 <div class="install-banner" id="installBanner">
-  <i class="fas fa-download"></i>
-  <span>Uygulamayı yükle</span>
-  <button class="ib-install" onclick="installPWA()">Yükle</button>
+  <i class="fas fa-mobile-alt"></i>
+  <span>Ana ekrana ekle</span>
+  <button class="ib-install" onclick="installPWA()">Ekle</button>
   <button class="ib-close" onclick="dismissInstall()">×</button>
+</div>
+
+<!-- IOS INSTALL MODAL -->
+<div class="ios-install-overlay" id="iosInstallOverlay" onclick="closeIOSInstall(event)">
+  <div class="ios-install-box">
+    <h3><i class="fas fa-mobile-alt" style="color:var(--p);margin-right:8px"></i>Ana Ekrana Ekle</h3>
+    <p>ShiftTrack Pro'yu ana ekranınıza ekleyerek uygulama gibi kullanın</p>
+    <div class="ios-steps">
+      <div class="ios-step">
+        <div class="ios-step-num">1</div>
+        <div class="ios-step-text">
+          Tarayıcının alt kısmındaki paylaş butonuna dokunun
+          <small>Safari'nin alt çubuğundaki kutu+ok simgesi</small>
+        </div>
+        <div class="ios-step-icon">⬆️</div>
+      </div>
+      <div class="ios-step">
+        <div class="ios-step-num">2</div>
+        <div class="ios-step-text">
+          Listede <strong>"Ana Ekrana Ekle"</strong> seçeneğini bulun
+          <small>Aşağı kaydırmanız gerekebilir</small>
+        </div>
+        <div class="ios-step-icon">➕</div>
+      </div>
+      <div class="ios-step">
+        <div class="ios-step-num">3</div>
+        <div class="ios-step-text">
+          Sağ üstteki <strong>"Ekle"</strong> butonuna dokunun
+          <small>Uygulama ana ekranınıza eklenecek</small>
+        </div>
+        <div class="ios-step-icon">✅</div>
+      </div>
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="closeIOSInstall()">Anladım</button>
+  </div>
 </div>
 
 <!-- AUTH SCREEN -->
@@ -1294,6 +1341,16 @@ tr:hover td{background:var(--bg3)}
           <input type="file" id="impF" style="display:none" accept=".json" onchange="importD(event)">
           <button class="btn btn-danger" onclick="clearD()"><i class="fas fa-trash"></i>Sıfırla</button>
           <button class="btn btn-danger" onclick="deleteCurrentUser()"><i class="fas fa-user-minus"></i>Hesabı Sil</button>
+        </div>
+      </div>
+
+      <div class="card s-card" id="installAppCard">
+        <h3><i class="fas fa-mobile-alt"></i>Ana Ekrana Ekle</h3>
+        <p style="font-size:12px;color:var(--t2);margin-bottom:10px">Uygulamayı ana ekranınıza ekleyerek daha hızlı erişin. İnternet bağlantısı olmadan da çalışır.</p>
+        <div id="installAppStatus"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button class="btn btn-primary btn-sm" id="installAppBtn" onclick="triggerInstall()" style="display:none"><i class="fas fa-download"></i>Ana Ekrana Ekle</button>
+          <button class="btn btn-soft btn-sm" id="iosInstallBtn" onclick="showIOSInstall()" style="display:none"><i class="fas fa-info-circle"></i>Nasıl Eklenir?</button>
         </div>
       </div>
 
@@ -3696,6 +3753,7 @@ function loadSet() {
   renderWeeklyTemplate();
   renderDataUsage();
   applyTheme(u.theme || 'default');
+  _updateInstallCard();
 }
 
 function sSet(k, v) {
@@ -5139,30 +5197,100 @@ function getMonthProjection() {
 ============================================================ */
 let deferredPrompt = null;
 
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+  || window.navigator.standalone === true;
+
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   deferredPrompt = e;
   const dismissed = localStorage.getItem('st_install_dismissed');
-  if (!dismissed) {
+  if (!dismissed && !isStandalone) {
     const banner = $('installBanner');
     if (banner) banner.style.display = 'flex';
   }
+  _updateInstallCard();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  const b = $('installBanner'); if (b) b.style.display = 'none';
+  toast('Uygulama ana ekrana eklendi!', 'success');
+  _updateInstallCard();
 });
 
 function installPWA() {
   if (deferredPrompt) {
     deferredPrompt.prompt();
     deferredPrompt.userChoice.then(r => {
-      if (r.outcome === 'accepted') toast('Uygulama yüklendi!', 'success');
+      if (r.outcome === 'accepted') toast('Ana ekrana eklendi!', 'success');
       deferredPrompt = null;
       const b = $('installBanner'); if (b) b.style.display = 'none';
+      _updateInstallCard();
     });
+  }
+}
+
+function triggerInstall() {
+  if (deferredPrompt) {
+    installPWA();
+  } else if (isIOS) {
+    showIOSInstall();
   }
 }
 
 function dismissInstall() {
   const b = $('installBanner'); if (b) b.style.display = 'none';
   localStorage.setItem('st_install_dismissed', '1');
+}
+
+function showIOSInstall() {
+  const o = $('iosInstallOverlay');
+  if (o) o.style.display = 'flex';
+}
+
+function closeIOSInstall(e) {
+  if (e && e.target !== $('iosInstallOverlay')) return;
+  const o = $('iosInstallOverlay');
+  if (o) o.style.display = 'none';
+}
+
+function _updateInstallCard() {
+  const status = $('installAppStatus');
+  const installBtn = $('installAppBtn');
+  const iosBtn = $('iosInstallBtn');
+  if (!status) return;
+
+  if (isStandalone) {
+    status.innerHTML = '<div class="hint"><i class="fas fa-check-circle" style="color:var(--g)"></i><span>Uygulama zaten ana ekranda yüklü.</span></div>';
+    if (installBtn) installBtn.style.display = 'none';
+    if (iosBtn) iosBtn.style.display = 'none';
+  } else if (deferredPrompt) {
+    status.innerHTML = '<div class="hint"><i class="fas fa-info-circle"></i><span>Uygulamayı tek tıkla ana ekranınıza ekleyin.</span></div>';
+    if (installBtn) installBtn.style.display = 'flex';
+    if (iosBtn) iosBtn.style.display = 'none';
+  } else if (isIOS) {
+    status.innerHTML = '<div class="hint"><i class="fas fa-info-circle"></i><span>Safari'de "Paylaş → Ana Ekrana Ekle" adımlarını izleyin.</span></div>';
+    if (installBtn) installBtn.style.display = 'none';
+    if (iosBtn) iosBtn.style.display = 'flex';
+  } else {
+    status.innerHTML = '<div class="hint"><i class="fas fa-info-circle"></i><span>Bu tarayıcı ana ekrana eklemeyi destekliyor. Tarayıcı menüsünden ekleyebilirsiniz.</span></div>';
+    if (installBtn) installBtn.style.display = 'none';
+    if (iosBtn) iosBtn.style.display = 'none';
+  }
+}
+
+// Show iOS banner hint automatically (once, not dismissed)
+if (isIOS && !isStandalone && !localStorage.getItem('st_install_dismissed')) {
+  setTimeout(() => {
+    const banner = $('installBanner');
+    if (banner) {
+      banner.querySelector('span').textContent = 'Ana ekrana ekle';
+      banner.querySelector('.ib-install').textContent = 'Nasıl?';
+      banner.querySelector('.ib-install').onclick = showIOSInstall;
+      banner.style.display = 'flex';
+    }
+  }, 3000);
 }
 
 /* ============================================================
