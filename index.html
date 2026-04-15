@@ -1933,7 +1933,7 @@ function calcEarningForMonth(y, m, ns) {
   const bp = Math.max(0, ns - (ab * dr));
 
   const hp = d.hh * hr;
-  const op = d.oh * hr * 0.5;
+  const op = d.oh * hr * 1.5;
   const te = Math.max(0, bp + op + hp);
 
   return {
@@ -3049,7 +3049,7 @@ function updResult() {
     const shiftOT = Math.max(0, weekWithShift.ot - prevWeek.ot);
     let earn = 0;
     if (isHol2) earn += net * hr;
-    if (shiftOT > 0) earn += shiftOT * hr * 0.5;
+    if (shiftOT > 0) earn += shiftOT * hr * 1.5;
     ep.textContent = earn > 0 ? `💰 Tahmini ek: ~${fm(earn)}` : '';
   } else { ep.textContent = ''; }
 }
@@ -3556,7 +3556,7 @@ function renderEarn() {
       <div class="esd"><span class="ek"><i class="fas fa-money-bill"></i>Net Maaş</span><span class="ev">${fm(u.netSalary)}</span></div>
       ${e.absentDays > 0 ? `<div class="esd"><span class="ek"><i class="fas fa-minus-circle"></i>Kesinti (${e.absentDays}g)</span><span class="ev neg">−${fm(e.absentDays*e.dailyRate)}</span></div>` : ''}
       <div class="esd"><span class="ek"><i class="fas fa-equals"></i>Maaş (baz)</span><span class="ev">${fm(e.basePay)}</span></div>
-      <div class="esd"><span class="ek"><i class="fas fa-fire"></i>FM ek (${e.overtimeHours.toFixed(1)}s × ${fm(e.hourlyRate)} × ½)</span><span class="ev pos">+${fm(e.overtimePay)}</span></div>
+      <div class="esd"><span class="ek"><i class="fas fa-fire"></i>FM ek (${e.overtimeHours.toFixed(1)}s × ${fm(e.hourlyRate)} × 1½)</span><span class="ev pos">+${fm(e.overtimePay)}</span></div>
       <div class="esd"><span class="ek"><i class="fas fa-flag"></i>Tatil ek (${e.holidayHours.toFixed(1)}s × 1)</span><span class="ev pos">+${fm(e.holidayPay)}</span></div>
       ${(e.hhOT||0) > 0 ? `<div class="esd" style="opacity:.6;font-size:11px"><span class="ek"><i class="fas fa-info-circle"></i>Tatil+FM çakışan saat</span><span class="ev">${e.hhOT.toFixed(1)}s (tatil+FM eki uygulandı)</span></div>` : ''}
       <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>TOPLAM</b></span><span class="ev">${fm(e.totalEarning)}</span></div>
@@ -4734,7 +4734,7 @@ function renderDashFMTracker() {
   /* [FIX BUG-02] Kullanıcının monthlyHours'unu kullan */
   const _mhFM = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : (MH || 225);
   const hr = (u.netSalary > 0 && _mhFM > 0) ? u.netSalary / _mhFM : 0;
-  const fmEarn = md.oh * hr * 0.5;
+  const fmEarn = md.oh * hr * 1.5;
   const holEarn = md.hh * hr;
   const avgDaily = md.wd > 0 ? md.th / md.wd : 0;
   const fmPct = md.th > 0 ? (md.oh / md.th * 100) : 0;
@@ -6527,7 +6527,7 @@ function runCalc() {
   const hr = u.netSalary > 0 ? u.netSalary / _mh : 0;
   const dr = u.netSalary > 0 ? u.netSalary / 30 : 0;
   const basePay = totalDays * dr;
-  const otPay = otHrs * hr * 0.5;
+  const otPay = otHrs * hr * 1.5;
   const holPay = holWorkedDays * dailyHrs * hr;
   const totalEarn = basePay + otPay + holPay;
 
