@@ -204,6 +204,23 @@ body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);c
 .cal-cell.leave-weekly{background:var(--p4);border-color:rgba(255,255,255,.06)}
 .cal-cell.leave-sick{background:rgba(251,146,60,.08);border-color:rgba(251,146,60,.2)}
 .cal-cell.leave-unpaid{background:rgba(148,163,184,.08);border-color:rgba(148,163,184,.2)}
+.cal-cell.leave-ot_comp{background:rgba(167,139,250,.08);border-color:rgba(167,139,250,.25)}
+/* [FIX] Akıllı Öneri noktası */
+.cal-cell .suggestion-dot{position:absolute;top:3px;right:3px;font-size:11px;cursor:help;z-index:2;line-height:1;opacity:.85}
+/* [FIX] AI Rapor Özeti kartı */
+.ai-sum-card{background:var(--card);border-radius:var(--rad);padding:14px;margin-bottom:12px;border:1px solid var(--b1)}
+.ai-sum-card .ais-head{font-size:11px;font-weight:800;color:var(--t1);display:flex;align-items:center;gap:6px;margin-bottom:8px;text-transform:uppercase}
+.ai-sum-card .ais-item{display:flex;align-items:flex-start;gap:7px;padding:5px 0;border-top:1px solid var(--b1);font-size:12px;color:var(--t2);line-height:1.45}
+.ai-sum-card .ais-item:first-of-type{border-top:none;padding-top:0}
+/* [FIX] FM İzin Yönetimi ayar stilleri */
+.radio-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.radio-opt{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--t2);cursor:pointer;padding:6px 10px;background:var(--bg2);border-radius:8px;border:1px solid var(--b1);transition:border-color .15s}
+.radio-opt:has(input:checked){border-color:var(--p);color:var(--t1)}
+.radio-opt input{accent-color:var(--p);width:13px;height:13px;cursor:pointer}
+.otbal-badge{background:var(--p4);border-radius:8px;padding:7px 10px;font-size:11px;color:var(--t1);display:flex;align-items:center;gap:6px;margin-top:8px;font-weight:700}
+/* [FIX] FM İzni leave-display rengi */
+.leave-display.ld-ot_comp{background:rgba(167,139,250,.15);color:#a78bfa}
+.leave-label.ll-ot_comp{color:#a78bfa}
 .cal-cell .num{font-size:12px;font-weight:800;display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
 .cal-cell .num small{font-weight:500;color:var(--t3);font-size:9px}
 .cal-cell .hrs-display{font-size:16px;font-weight:900;color:var(--g);line-height:1;margin:2px 0}
@@ -1124,6 +1141,10 @@ tr:hover td{background:var(--bg3)}
       <div id="dashProgressBar"></div>
       <div id="dashWeekSummary"></div>
       <div id="dashFMTracker"></div>
+      <!-- [FIX] FM İzin Bakiyesi kartı -->
+      <div id="dashOTComp"></div>
+      <!-- [FIX] AI Rapor Özeti kartı -->
+      <div id="dashAISummary"></div>
       <div id="dashGoal" class="goal-wrap"></div>
       <div class="year-overview-wrap" id="yearOverviewWrap"></div>
       <div id="dashLast7Days"></div>
@@ -1280,6 +1301,33 @@ tr:hover td{background:var(--bg3)}
         <div class="fg"><label>Aylık Saat</label><input type="number" id="sMH" placeholder="225" min="100" max="400" step="5" onchange="sSet('monthlyHours',this.value)"></div>
       </div>
 
+      <!-- [FIX] Fazla Mesai → İzin Karşılığı (Comp Time) -->
+      <div class="card s-card">
+        <h3><i class="fas fa-exchange-alt"></i>Fazla Mesai Yönetimi</h3>
+        <div class="hint"><i class="fas fa-lightbulb"></i><span>FM saatlerini ücret olarak al veya izin olarak biriktir. İzin modunda takvimde "FM İzni" seçeneği aktif olur.</span></div>
+        <div class="fg">
+          <label>FM Modu</label>
+          <div class="radio-row">
+            <label class="radio-opt"><input type="radio" name="otMode" value="pay" onchange="sSet('otCompMode',this.value)"> 💰 Ücret öde</label>
+            <label class="radio-opt"><input type="radio" name="otMode" value="leave" onchange="sSet('otCompMode',this.value)"> 🏖️ İzin biriktir</label>
+          </div>
+        </div>
+        <div class="fg"><label>FM Katsayısı</label><input type="number" id="sOTRate" placeholder="1.5" min="1.5" max="3" step="0.5" onchange="sSet('otCompRate',this.value)"><small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">TR İş Kanunu gereği minimum 1.5×</small></div>
+        <div id="otBalanceDisplay"></div>
+      </div>
+
+      <!-- [FIX] Akıllı Vardiya Önerileri toggle -->
+      <div class="card s-card">
+        <h3><i class="fas fa-lightbulb"></i>Akıllı Vardiya Önerileri</h3>
+        <div class="hint"><i class="fas fa-info-circle"></i><span>Boş günlerde yasal sınırlara (11s dinlenme, 45s/hafta) uyan günleri 💡 ikonu ile işaretle.</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+          <label style="font-size:11px;font-weight:700;color:var(--t2);cursor:pointer;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="hideSuggestionsToggle" onchange="sSet('hideSuggestions',!this.checked)" style="accent-color:var(--p)">
+            Önerileri göster
+          </label>
+        </div>
+      </div>
+
       <div class="card s-card">
         <h3><i class="fas fa-bullseye"></i>Hedefler</h3>
         <div class="hint"><i class="fas fa-lightbulb"></i><span>Aylık saat ve kazanç hedefi belirleyin. Dashboard'da ilerleme gösterilir.</span></div>
@@ -1428,6 +1476,8 @@ tr:hover td{background:var(--bg3)}
           <div class="lt-opt" data-t="weekly" onclick="selLT('weekly',this)"><i class="fas fa-couch" style="color:var(--p)"></i>Hafta Tatili<small>Ücretli</small></div>
           <div class="lt-opt" data-t="sick" onclick="selLT('sick',this)"><i class="fas fa-notes-medical" style="color:#fb923c"></i>Rapor<small>Hastalık</small></div>
           <div class="lt-opt" data-t="unpaid" onclick="selLT('unpaid',this)"><i class="fas fa-ban" style="color:var(--r)"></i>Ücretsiz<small>Kesinti</small></div>
+          <!-- [FIX] FM İzni — yalnızca otCompMode==='leave' modunda görünür -->
+          <div class="lt-opt" data-t="ot_comp" id="ltOptOTComp" onclick="selLT('ot_comp',this)" style="display:none"><i class="fas fa-exchange-alt" style="color:#a78bfa"></i>FM İzni<small id="ltOptOTCompBal">Bakiyeden</small></div>
         </div>
         <div class="fg"><label>Not</label><div style="display:flex;gap:4px"><input type="text" id="iNote" placeholder="Opsiyonel..." maxlength="100" style="flex:1"><button type="button" class="btn btn-outline btn-sm" onclick="toggleNoteEmoji('iNote')" style="flex-shrink:0;padding:0 8px;font-size:14px">😊</button></div></div>
       </div>
@@ -1527,7 +1577,13 @@ function mkUser(i) {
     pin: null,
     autoTheme: false,
     documents: [],
-    deletedDocs: {}
+    deletedDocs: {},
+    /* [FIX] Fazla Mesai → İzin Karşılığı (Comp Time) */
+    otCompMode: 'pay',      // 'pay' | 'leave'
+    otCompRate: 1.5,        // Yasal katsayı (TR İş Kanunu: 1.5)
+    otBalance: 0,           // Kullanıcının el ile düzenlediği başlangıç bakiyesi (saat)
+    /* [FIX] Akıllı Vardiya Önerileri */
+    hideSuggestions: false  // Öneri ikonlarını gizle/göster
   };
 }
 
@@ -1869,7 +1925,7 @@ function getMD(y, m) {
     }
   }
 
-  let yau = 0, ysd = 0, mau = 0, msd = 0, wr = 0, ud = 0;
+  let yau = 0, ysd = 0, mau = 0, msd = 0, wr = 0, ud = 0, otcm = 0;
   Object.entries(u.leaves).forEach(([k, v]) => {
     const p = parseDS(k); if (!p || !v || !v.type) return;
     if (p.y === y) { if (v.type === 'annual') yau++; if (v.type === 'sick') ysd++; }
@@ -1878,6 +1934,8 @@ function getMD(y, m) {
       if (v.type === 'sick') msd++;
       if (v.type === 'weekly') wr++;
       if (v.type === 'unpaid') ud++;
+      /* [FIX] FM İzni — ücretli, yıllık izinden bağımsız, otBalance'tan düşülür */
+      if (v.type === 'ot_comp') otcm++;
     }
   });
 
@@ -1886,7 +1944,7 @@ function getMD(y, m) {
   const hr = (u.netSalary > 0 && _mh > 0) ? u.netSalary / _mh : 0;
   // wh: dashboard haftalık chart için — bu aydaki saatler (görüntüleme amaçlı)
   const wh = weekMonthHrs;
-  const r = { th, rh, oh, hh, hhOT, wd, hdw, wh, wr, ud, yau, ysd, mau, msd, hr, dim,
+  const r = { th, rh, oh, hh, hhOT, wd, hdw, wh, wr, ud, otcm, yau, ysd, mau, msd, hr, dim,
     weekTotalHrs }; // chart'ta gerçek haftalık toplamı göstermek için
   mdCache[ck] = r;
   return r;
@@ -1927,23 +1985,27 @@ function calcEarningForMonth(y, m, ns) {
     if (dow === 0 || dow === 6 || isH(ds)) fp++;
   }
 
-  const pd = d.wd + d.wr + d.mau + d.msd;
+  /* [FIX] otcm (FM İzni günleri) ücretli gün sayısına dahil edilir */
+  const pd = d.wd + d.wr + d.mau + d.msd + (d.otcm || 0);
   const mis = Math.max(0, ev - pd - d.ud - fp);
   const ab = d.ud + mis;
   const bp = Math.max(0, ns - (ab * dr));
 
   const hp = d.hh * hr;
-  const op = d.oh * hr * 1.5;
+  /* [FIX] otCompMode: 'leave' modunda FM eki ödenmez, saatler bakiyeye eklenir */
+  const compMode = u.otCompMode || 'pay';
+  const compRate = parseFloat(u.otCompRate) || 1.5;
+  const op = compMode === 'leave' ? 0 : d.oh * hr * compRate;
   const te = Math.max(0, bp + op + hp);
 
   return {
     dailyRate: dr, hourlyRate: hr,
     basePay: bp, overtimePay: op, holidayPay: hp, totalEarning: te,
     paidDays: pd, workedDays: d.wd, weeklyDays: d.wr,
-    annualDays: d.mau, sickDays: d.msd, unpaidDays: d.ud,
+    annualDays: d.mau, sickDays: d.msd, unpaidDays: d.ud, otCompDays: d.otcm || 0,
     missingDays: mis, absentDays: ab, freePassDays: fp,
     dim, totalHours: d.th, overtimeHours: d.oh, holidayHours: d.hh,
-    hhOT: d.hhOT || 0,
+    hhOT: d.hhOT || 0, otCompMode: compMode,
     isFullMonth: ab === 0 && !isCur && !isFut,
     isCurrentMonth: isCur, isFutureMonth: isFut, evaluableDays: ev
   };
@@ -2321,6 +2383,9 @@ function renderDash() {
   renderDashTodayWidget();
   renderDashProgressBar();
   renderDashFMTracker();
+  /* [FIX] FM İzin Bakiyesi + AI Rapor Özeti kartları */
+  renderDashOTComp();
+  renderDashAISummary();
   renderDashLast7Days();
   renderDashWeekSummary();
   renderDashHeatmap();
@@ -2539,6 +2604,9 @@ function renderCal() {
     g.appendChild(e);
   }
 
+  /* [FIX] Akıllı Vardiya Önerileri — renderCal başında bir kere hesapla */
+  const suggestions = getSmartSuggestions(y, m);
+
   for (let d = 1; d <= dim; d++) {
     const s = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const e = document.createElement('div');
@@ -2559,6 +2627,10 @@ function renderCal() {
     if (S.multiSelect && S.selectedDates.includes(s)) c += ' selecting';
 
     let inner = `<div class="num"><span>${d}</span><small>${dn}</small></div>`;
+    /* [FIX] Akıllı öneri ikonu — boş gün ve öneri varsa göster */
+    if (!sh && !lv && suggestions[s]) {
+      inner += `<span class="suggestion-dot" title="✅ Yasal sınırlara uygun, eklenebilir (11s dinlenme & 45s/hafta)">💡</span>`;
+    }
     if (sh && sh.start && sh.end) {
       const h = calcHr(sh.start, sh.end, sh.break || 0);
       if (h > 0) { mH += h; mD++; }
@@ -2571,8 +2643,9 @@ function renderCal() {
       if (sh.note) inner += `<div class="shift-time" style="color:var(--p3);opacity:.7">📝 ${escHtml(sh.note.substring(0,20))}</div>`;
       if (hol) inner += `<span class="hol-tag">🏛️ ${escHtml(hol)}</span>`;
     } else if (lv && lv.type) {
-      const ic = { annual:'fa-umbrella-beach', weekly:'fa-couch', sick:'fa-notes-medical', unpaid:'fa-ban' };
-      const lb = { annual:'Y.İzin', weekly:'H.Tatil', sick:'Rapor', unpaid:'Ücretsiz' };
+      /* [FIX] FM İzni dahil tüm izin türleri */
+      const ic = { annual:'fa-umbrella-beach', weekly:'fa-couch', sick:'fa-notes-medical', unpaid:'fa-ban', ot_comp:'fa-exchange-alt' };
+      const lb = { annual:'Y.İzin', weekly:'H.Tatil', sick:'Rapor', unpaid:'Ücretsiz', ot_comp:'FM İzni' };
       inner += `<div class="leave-display ld-${lv.type}"><i class="fas ${ic[lv.type]||'fa-circle'}"></i>${lb[lv.type]||''}</div>`;
       inner += `<span class="leave-label ll-${lv.type}">${lb[lv.type]||''}</span>`;
       if (hol) inner += `<span class="hol-tag">${escHtml(hol)}</span>`;
@@ -3111,6 +3184,14 @@ function saveEntry() {
         const excArr = isAlreadyAnnual ? [S.sd] : [];
         const used = getAnnualUsed(S.cu, p.y, excArr);
         if (used >= (u.annualLeave || 14)) { toast('Yıllık izin hakkı doldu!', 'error'); return; }
+      }
+    }
+    /* [FIX] FM İzni — bakiye kontrolü (her gün = 8 saat FM hakkı) */
+    if (S.lt === 'ot_comp') {
+      const bal = getOTBalance();
+      if (bal < 8) {
+        toast(`FM izin bakiyesi yetersiz! (Mevcut: ${bal.toFixed(1)}s, gereken: 8s)`, 'error');
+        return;
       }
     }
     pushUndo('İzin');
@@ -3747,6 +3828,13 @@ function loadSet() {
   const uN = $('userNotes'); if (uN) uN.value = u.notes || '';
   const sGH = $('sGoalHours'); if (sGH) sGH.value = u.goalHours || '';
   const sGE = $('sGoalEarning'); if (sGE) sGE.value = u.goalEarning || '';
+  /* [FIX] FM Yönetimi & Öneriler ayarlarını yükle */
+  const sOR = $('sOTRate'); if (sOR) sOR.value = parseFloat(u.otCompRate) || 1.5;
+  document.querySelectorAll('[name="otMode"]').forEach(r => { r.checked = r.value === (u.otCompMode || 'pay'); });
+  const hst = $('hideSuggestionsToggle'); if (hst) hst.checked = !u.hideSuggestions;
+  const ltOTC = $('ltOptOTComp');
+  if (ltOTC) ltOTC.style.display = (u.otCompMode === 'leave') ? '' : 'none';
+  updOTBalanceDisplay();
   updSal();
   updSeniority();
   updPinStatus();
@@ -3764,6 +3852,14 @@ function sSet(k, v) {
   if (k === 'monthlyHours') { v = parseInt(v); if (isNaN(v) || v < 100) v = 100; if (v > 400) v = 400; MH = v; }
   if (k === 'goalHours') { v = parseFloat(v); if (isNaN(v) || v < 0) v = 0; }
   if (k === 'goalEarning') { v = parseFloat(v); if (isNaN(v) || v < 0) v = 0; }
+  /* [FIX] FM Yönetimi yeni ayarlar */
+  if (k === 'otCompRate') { v = parseFloat(v); if (isNaN(v) || v < 1.5) v = 1.5; if (v > 3) v = 3; }
+  if (k === 'otBalance') { v = parseFloat(v); if (isNaN(v) || v < 0) v = 0; }
+  if (k === 'otCompMode') {
+    const ltOTC = $('ltOptOTComp');
+    if (ltOTC) ltOTC.style.display = v === 'leave' ? '' : 'none';
+  }
+  if (k === 'hideSuggestions') { v = !!v; }
   if (k === 'name') {
     v = (v || '').trim();
     if (!v) { toast('İsim boş olamaz', 'error'); return; }
@@ -3782,7 +3878,8 @@ function sSet(k, v) {
   /* [FIX L-04] BUG-R3 ile eklenen settingsUpdatedAt: ayar değişikliklerini zaman damgasıyla işaretle.
      deepMergeUser bu zaman damgasını kullanarak daha yeni değişikliği (yerel/cloud) korur. */
   const settingsKeys = ['netSalary','annualLeave','pin','weeklyTemplate','customPresets',
-    'goalHours','goalEarning','theme','monthlyHours'];
+    'goalHours','goalEarning','theme','monthlyHours',
+    'otCompMode','otCompRate','otBalance','hideSuggestions'];
   if (settingsKeys.includes(k)) u.settingsUpdatedAt = Date.now();
   invalidateMDCache();
   saveLS();
@@ -4734,12 +4831,18 @@ function renderDashFMTracker() {
   /* [FIX BUG-02] Kullanıcının monthlyHours'unu kullan */
   const _mhFM = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : (MH || 225);
   const hr = (u.netSalary > 0 && _mhFM > 0) ? u.netSalary / _mhFM : 0;
-  const fmEarn = md.oh * hr * 1.5;
+  /* [FIX] 'leave' modunda FM ek ücreti ödenmez; bakiyeye eklenir */
+  const compMode = u.otCompMode || 'pay';
+  const fmEarn = compMode === 'leave' ? 0 : md.oh * hr * (parseFloat(u.otCompRate) || 1.5);
   const holEarn = md.hh * hr;
   const avgDaily = md.wd > 0 ? md.th / md.wd : 0;
   const fmPct = md.th > 0 ? (md.oh / md.th * 100) : 0;
 
   if (md.oh <= 0 && md.hh <= 0 && md.th <= 0) { el.innerHTML = ''; return; }
+
+  const fmEkiLabel = compMode === 'leave'
+    ? `<span style="color:var(--acc);font-size:10px">🏖️ Bakiyeye ekleniyor</span>`
+    : (u.netSalary > 0 ? fm(fmEarn) : '—');
 
   el.innerHTML = `<div class="fm-tracker">
     <div class="fmt-head">
@@ -4748,13 +4851,210 @@ function renderDashFMTracker() {
     </div>
     <div class="fmt-grid">
       <div class="fmt-item"><div class="fv" style="color:var(--acc)">${fmPct.toFixed(1)}%</div><div class="fl">FM Oranı</div></div>
-      <div class="fmt-item"><div class="fv" style="color:var(--g)">${u.netSalary > 0 ? fm(fmEarn) : '—'}</div><div class="fl">FM Eki</div></div>
+      <div class="fmt-item"><div class="fv" style="color:var(--g)">${fmEkiLabel}</div><div class="fl">FM Eki</div></div>
       <div class="fmt-item"><div class="fv" style="color:var(--r)">${u.netSalary > 0 ? fm(holEarn) : '—'}</div><div class="fl">Tatil Eki</div></div>
     </div>
     <div style="margin-top:8px;display:flex;justify-content:space-between;font-size:10px;color:var(--t3)">
       <span>Günlük ort: ${avgDaily.toFixed(1)}s</span>
       <span>Tatil çalışma: ${md.hdw}g · ${md.hh.toFixed(1)}s</span>
     </div>
+  </div>`;
+}
+
+/* ============================================================
+   [FIX] FM İZİN BAKİYESİ — getOTBalance & renderDashOTComp
+============================================================ */
+
+/**
+ * FM İzin Bakiyesini hesaplar (saat cinsinden).
+ * = Kullanıcının el ile ayarladığı başlangıç bakiyesi
+ *   + 'leave' modunda geçmiş aylarda biriken FM saatleri
+ *   - Kullanılan ot_comp izin günleri (her gün = 8 saat)
+ */
+function getOTBalance() {
+  const u = cu(); if (!u) return 0;
+  let bal = parseFloat(u.otBalance) || 0;
+  if (u.otCompMode === 'leave') {
+    // Geçmiş 24 ay FM saatlerini topla (cari ay dahil değil)
+    const today = new Date();
+    for (let i = 1; i <= 24; i++) {
+      let y2 = today.getFullYear(), m2 = today.getMonth() - i;
+      while (m2 < 0) { m2 += 12; y2--; }
+      if (y2 < 2020) break;
+      const md2 = getMD(y2, m2);
+      bal += md2.oh;
+    }
+  }
+  // Kullanılan FM izin günlerini düş (her gün 8 saat varsayım)
+  Object.values(u.leaves).forEach(l => {
+    if (l && l.type === 'ot_comp') bal -= 8;
+  });
+  return Math.max(0, bal);
+}
+
+/** Ayarlar sayfasında FM bakiye etiketini güncelle */
+function updOTBalanceDisplay() {
+  const el = $('otBalanceDisplay'); if (!el) return;
+  const u = cu(); if (!u || u.otCompMode !== 'leave') { el.innerHTML = ''; return; }
+  const bal = getOTBalance();
+  el.innerHTML = `<div class="otbal-badge"><i class="fas fa-coins" style="color:var(--acc)"></i>FM İzin Bakiyesi: <b>${bal.toFixed(1)} saat</b> (≈ ${(bal/8).toFixed(1)} gün)</div>`;
+  // Leave modalindaki bakiye bilgisini güncelle
+  const lb = $('ltOptOTCompBal');
+  if (lb) lb.textContent = `${bal.toFixed(1)}s bakiye`;
+}
+
+/** Dashboard — FM İzin Bakiyesi kartı (yalnızca 'leave' modunda görünür) */
+function renderDashOTComp() {
+  const el = $('dashOTComp'); if (!el) return;
+  const u = cu(); if (!u || u.otCompMode !== 'leave') { el.innerHTML = ''; return; }
+  const bal = getOTBalance();
+  const md = getMD(S.cy, S.cm);
+  el.innerHTML = `<div class="fm-tracker">
+    <div class="fmt-head">
+      <div class="fmt-title"><i class="fas fa-exchange-alt"></i>FM İzin Bakiyesi</div>
+      <div class="fmt-total">${bal.toFixed(1)}s</div>
+    </div>
+    <div class="fmt-grid">
+      <div class="fmt-item"><div class="fv" style="color:var(--acc)">${md.oh.toFixed(1)}s</div><div class="fl">Bu ay FM</div></div>
+      <div class="fmt-item"><div class="fv" style="color:var(--g)">${(bal/8).toFixed(1)}g</div><div class="fl">Kullanılabilir</div></div>
+      <div class="fmt-item"><div class="fv" style="color:var(--p)">${(md.otcm||0)}g</div><div class="fl">Bu ay kullanıldı</div></div>
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:var(--t3)">Her FM izin günü bakiyeden 8 saat düşer. Maaş kesintisi uygulanmaz.</div>
+  </div>`;
+}
+
+/* ============================================================
+   [FIX] AKILLI VARDİYA ÖNERİLERİ — getSmartSuggestions
+============================================================ */
+
+/**
+ * Boş günleri tarayarak yasal sınırlara (11s dinlenme, 45s/hafta)
+ * uyan ve gelecekte olan günleri döner. { 'YYYY-MM-DD': true }
+ * Referans vardiya: sabah 08:00–16:00 (7.5 net saat)
+ */
+function getSmartSuggestions(y, m) {
+  const u = cu();
+  if (!u || u.hideSuggestions) return {};
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dim = new Date(y, m+1, 0).getDate();
+  const CANDIDATE_START = 8 * 60;   // 08:00 = 480 dk
+  const CANDIDATE_END   = 16 * 60;  // 16:00 = 960 dk
+  const CANDIDATE_HRS   = 7.5;      // Net saat (30dk mola)
+  const REST_MIN        = 11 * 60;  // 660 dk
+
+  // Haftalık saat toplamlarını hesapla
+  const weekHrs = {};
+  for (let d2 = 1; d2 <= dim; d2++) {
+    const ds2 = `${y}-${String(m+1).padStart(2,'0')}-${String(d2).padStart(2,'0')}`;
+    const sh2 = u.shifts[ds2]; if (!sh2) continue;
+    const dt2 = new Date(y, m, d2);
+    const wk2 = getISOWeek(dt2);
+    weekHrs[wk2] = (weekHrs[wk2] || 0) + calcHr(sh2.start, sh2.end, sh2.break || 0);
+  }
+
+  const result = {};
+  for (let d2 = 1; d2 <= dim; d2++) {
+    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d2).padStart(2,'0')}`;
+    if (u.shifts[ds] || u.leaves[ds]) continue;    // Zaten dolu
+    const dt = new Date(y, m, d2); dt.setHours(0,0,0,0);
+    if (dt <= today) continue;                      // Geçmiş gün
+    const dow = dt.getDay();
+    if (dow === 0 || dow === 6 || isH(ds)) continue; // Hafta sonu / tatil
+
+    // 45s/hafta sınırı
+    const wk = getISOWeek(dt);
+    if ((weekHrs[wk] || 0) + CANDIDATE_HRS > 45) continue;
+
+    // 11s dinlenme — önceki gün
+    const prevDs = dStr(new Date(y, m, d2 - 1));
+    const prevSh = prevDs ? u.shifts[prevDs] : null;
+    if (prevSh && prevSh.end) {
+      let prevEndMins = parseTime(prevSh.end);
+      if (prevEndMins === null) continue;
+      if (prevEndMins === 0) prevEndMins = 1440; // 00:00 → 24:00
+      // Dinlenme = (bir sonraki günün 08:00) - önceki vardiya bitişi
+      const restMins = (1440 - prevEndMins) + CANDIDATE_START;
+      if (restMins < REST_MIN) continue;
+    }
+
+    // 11s dinlenme — sonraki güne etkisi
+    const nextDs = dStr(new Date(y, m, d2 + 1));
+    const nextSh = nextDs ? u.shifts[nextDs] : null;
+    if (nextSh && nextSh.start) {
+      const nextStartMins = parseTime(nextSh.start);
+      if (nextStartMins === null) continue;
+      const restMins = (1440 - CANDIDATE_END) + nextStartMins;
+      if (restMins < REST_MIN) continue;
+    }
+
+    result[ds] = true;
+  }
+  return result;
+}
+
+/* ============================================================
+   [FIX] AI RAPOR ÖZETİ — generateReportSummary & renderDashAISummary
+============================================================ */
+
+/**
+ * Aylık veriyi kural tabanlı metne döker.
+ * Parametre: u=kullanıcı, md=getMD(), earn=calcEarningForMonth()
+ * Dönüş: [{icon, text, type}] dizisi
+ */
+function generateReportSummary(u, md, earn) {
+  const msgs = [];
+  if (!md || md.th <= 0) return msgs;
+
+  // ⚠️ Yüksek yorgunluk riski
+  if (md.oh > md.th * 0.2) {
+    msgs.push({ icon:'⚠️', text:'Yüksek yorgunluk riski. Bu ayki FM saatiniz toplam çalışmanın %20\'sini aştı.', type:'warn' });
+  }
+
+  // 💰 Vergi dilimi geçiş riski
+  if (earn && earn.totalEarning > 0 && earn.basePay > 0 && earn.totalEarning > earn.basePay * 1.15) {
+    msgs.push({ icon:'💰', text:'Vergi dilimi geçiş riski. Toplam kazanç baz maaşın %15 üzerine çıktı, muhasebecine danışmanı öneriyoruz.', type:'warn' });
+  }
+
+  // 🔥 Uzun seri uyarısı
+  const streak = getStreak();
+  if (streak > 7) {
+    msgs.push({ icon:'🔥', text:`${streak} günlük kesintisiz seri! Dinlenmeyi ihmal etme, uzun seriler performansı düşürebilir.`, type:'warn' });
+  }
+
+  // ✅ Pozitif mesajlar
+  if (md.wd > 0 && md.oh === 0) {
+    msgs.push({ icon:'✅', text:'Bu ay fazla mesai yok. Dengeli çalışma ritmin için tebrikler!', type:'ok' });
+  }
+  if (md.wd >= 20 && md.oh === 0) {
+    msgs.push({ icon:'🏅', text:'Tam aylık devam ve FM yok — mükemmel iş-yaşam dengesi!', type:'ok' });
+  }
+  if (earn && earn.totalEarning > 0 && earn.absentDays === 0 && !earn.isCurrentMonth) {
+    msgs.push({ icon:'🎯', text:'Tam ay çalışma! Hiç eksik gün yok.', type:'ok' });
+  }
+  if (streak >= 5 && streak <= 7) {
+    msgs.push({ icon:'💪', text:`${streak} günlük aktif seri — harika bir tempo!`, type:'ok' });
+  }
+
+  // Veri yoksa genel mesaj
+  if (msgs.length === 0) {
+    msgs.push({ icon:'📊', text:'Henüz değerlendirme için yeterli veri yok. Vardiya eklemeye devam et!', type:'info' });
+  }
+  return msgs;
+}
+
+/** Dashboard — AI Rapor Özeti kartı */
+function renderDashAISummary() {
+  const el = $('dashAISummary'); if (!el) return;
+  const u = cu(); if (!u) { el.innerHTML = ''; return; }
+  const md = getMD(S.cy, S.cm);
+  if (md.th <= 0 && md.wd <= 0) { el.innerHTML = ''; return; }
+  const earn = u.netSalary ? calcEarningForMonth(S.cy, S.cm, u.netSalary) : null;
+  const msgs = generateReportSummary(u, md, earn);
+  if (!msgs.length) { el.innerHTML = ''; return; }
+  const items = msgs.map(msg => `<div class="ais-item">${msg.icon} <span>${escHtml(msg.text)}</span></div>`).join('');
+  el.innerHTML = `<div class="ai-sum-card">
+    <div class="ais-head"><i class="fas fa-robot" style="color:var(--acc)"></i>AI Rapor Özeti</div>
+    ${items}
   </div>`;
 }
 
@@ -5750,6 +6050,11 @@ function deepMergeUser(local, cloud) {
     if (cloud.goalEarning !== undefined) merged.goalEarning = cloud.goalEarning;
     if (cloud.theme) merged.theme = cloud.theme;
     if (cloud.monthlyHours !== undefined) merged.monthlyHours = cloud.monthlyHours;
+    /* [FIX] FM Yönetimi & Öneriler ayarlarını senkronize et */
+    if (cloud.otCompMode !== undefined) merged.otCompMode = cloud.otCompMode;
+    if (cloud.otCompRate !== undefined) merged.otCompRate = cloud.otCompRate;
+    if (cloud.otBalance !== undefined) merged.otBalance = cloud.otBalance;
+    if (cloud.hideSuggestions !== undefined) merged.hideSuggestions = cloud.hideSuggestions;
     merged.settingsUpdatedAt = cloudST;
   }
   // Yerel daha yeni ise: merged zaten yerel değerleri taşıdığından değişiklik yok
