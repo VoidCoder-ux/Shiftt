@@ -52,7 +52,7 @@ body.theme-forest{--p:#4ade80;--p2:#22c55e;--p3:#86efac;--p4:rgba(34,197,94,.12)
 body.theme-sunset{--p:#fb923c;--p2:#f97316;--p3:#fdba74;--p4:rgba(249,115,22,.12);--pg:linear-gradient(135deg,#ea580c,#f97316);--bg:#1a0f0a;--bg2:#261810;--bg3:#332117;--bg4:#40291e;--card:#261810;--card2:#332117;--glass:rgba(38,24,16,.88);--b1:#40291e;--b2:#4d3225;--t1:#faf0e8;--t2:#c49a78;--t3:#8a6a4e}
 body.theme-rose{--p:#fb7185;--p2:#f43f5e;--p3:#fda4af;--p4:rgba(244,63,94,.12);--pg:linear-gradient(135deg,#e11d48,#f43f5e);--bg:#1a0d12;--bg2:#26141b;--bg3:#331b24;--bg4:#40222d;--card:#26141b;--card2:#331b24;--glass:rgba(38,20,27,.88);--b1:#40222d;--b2:#4d2936;--t1:#fae8ed;--t2:#c4788a;--t3:#8a4e5e}
 body.theme-gold{--p:#fbbf24;--p2:#f59e0b;--p3:#fde68a;--p4:rgba(245,158,11,.12);--pg:linear-gradient(135deg,#d97706,#f59e0b);--bg:#161209;--bg2:#211b0f;--bg3:#2c2416;--bg4:#372d1d;--card:#211b0f;--card2:#2c2416;--glass:rgba(33,27,15,.88);--b1:#372d1d;--b2:#423624;--t1:#faf5e8;--t2:#c4a878;--t3:#8a7a4e}
-body.theme-light{--p:#7c3aed;--p2:#6d28d9;--p3:#5b21b6;--p4:rgba(124,58,237,.08);--pg:linear-gradient(135deg,#7c3aed,#6d28d9);--bg:#f8f7fc;--bg2:#ffffff;--bg3:#f0eef5;--bg4:#e8e5f0;--card:#ffffff;--card2:#f5f3fa;--glass:rgba(255,255,255,.92);--b1:#e2dff0;--b2:#d4d0e5;--t1:#1a1625;--t2:#6b6580;--t3:#78738c;--acc:#d97706;--g:#059669;--r:#dc2626;--s:#0284c7;--sh1:0 2px 8px rgba(0,0,0,.06);--sh2:0 8px 24px rgba(0,0,0,.08);--sh3:0 16px 48px rgba(0,0,0,.12)}
+body.theme-light{--p:#7c3aed;--p2:#6d28d9;--p3:#5b21b6;--p4:rgba(124,58,237,.08);--pg:linear-gradient(135deg,#7c3aed,#6d28d9);--bg:#f8f7fc;--bg2:#ffffff;--bg3:#f0eef5;--bg4:#e8e5f0;--card:#ffffff;--card2:#f5f3fa;--glass:rgba(255,255,255,.92);--b1:#e2dff0;--b2:#d4d0e5;--t1:#1a1625;--t2:#6b6580;--t3:#625d76;/* [FIX CSS-TİPOMETRİ-01] #78738c→#625d76 (~4.6:1 kontrast, WCAG AA) */--acc:#d97706;--g:#059669;--r:#dc2626;--s:#0284c7;--sh1:0 2px 8px rgba(0,0,0,.06);--sh2:0 8px 24px rgba(0,0,0,.08);--sh3:0 16px 48px rgba(0,0,0,.12)}
 body.theme-light-ocean{--p:#0891b2;--p2:#0e7490;--p3:#155e75;--p4:rgba(8,145,178,.08);--pg:linear-gradient(135deg,#0891b2,#0e7490);--bg:#f0f9ff;--bg2:#ffffff;--bg3:#e0f2fe;--bg4:#bae6fd;--card:#ffffff;--card2:#f0f9ff;--glass:rgba(255,255,255,.92);--b1:#bae6fd;--b2:#7dd3fc;--t1:#0c4a6e;--t2:#0369a1;--t3:#6b7280;--acc:#d97706;--g:#059669;--r:#dc2626;--s:#0284c7;--sh1:0 2px 8px rgba(0,0,0,.06);--sh2:0 8px 24px rgba(0,0,0,.08);--sh3:0 16px 48px rgba(0,0,0,.12)}
 html{scroll-behavior:smooth;overflow-x:hidden;width:100%;max-width:100%}
 *,*::before,*::after{box-sizing:border-box}
@@ -554,7 +554,7 @@ tr:hover td{background:var(--bg3)}
 .wt-preset-btns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 
 /* CUSTOM PRESET MODAL */
-.cp-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:1500;padding:16px}
+.cp-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:1550;padding:16px}
 .cp-modal-overlay.show{display:flex}
 .cp-modal{background:var(--bg2);border-radius:var(--rad2);width:360px;max-width:100%;border:1px solid var(--b1);box-shadow:var(--sh3);animation:modalPop .3s cubic-bezier(.16,1,.3,1)}
 .cp-modal-top{padding:16px 18px 0;display:flex;justify-content:space-between;align-items:center}
@@ -615,7 +615,9 @@ tr:hover td{background:var(--bg3)}
 @media(max-width:480px){.content{padding:114px 8px 24px}.stats{grid-template-columns:1fr}.lt-row{grid-template-columns:1fr}.year-overview{grid-template-columns:repeat(4,1fr)}.wt-grid{grid-template-columns:repeat(3,1fr)}.dash-reports{grid-template-columns:1fr}.login-brand h1{font-size:26px}.login-brand{margin-bottom:28px}.login-card{width:160px;padding:24px 14px}
 .nav-tab{padding:7px 4px}.nav-tab i{font-size:14px}.nav-tabs{gap:1px;padding:0 4px}
 .auth-box{padding:24px 18px;margin:0 8px;max-width:100%}.auth-box .auth-brand h1{font-size:18px}.auth-box .auth-brand p{font-size:11px}.auth-fg input{font-size:16px}.auth-skip{font-size:12px;padding:10px}
-.modal{width:100%;max-width:95vw}.calc-box{max-width:95vw;padding:18px}.employer-box{max-width:95vw;padding:18px}.calc-overlay,.employer-overlay,.overlay{padding:8px}}
+.modal{width:100%;max-width:95vw}.calc-box{max-width:95vw;padding:18px}.employer-box{max-width:95vw;padding:18px}.calc-overlay,.employer-overlay,.overlay{padding:8px}
+/* [FIX CSS-GÖRSEL-01] Takvim hücreleri 480px altında kompakt mod */
+.cal-grid{gap:2px}.cal-cell{min-height:56px;padding:3px 3px}.cal-cell .num{font-size:10px}.cal-cell .hrs-display{font-size:9px;padding:1px 3px}.cal-cell .shift-time{font-size:8px;display:none}.cal-cell .shift-icon{font-size:13px}.cal-cell .leave-display{font-size:9px;padding:2px 3px}.cal-cell .hol-tag{font-size:7px;padding:1px 2px}.cal-dname{font-size:8px;padding:4px 0}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 
 /* ===== EVRAKLARIM ===== */
@@ -696,7 +698,7 @@ tr:hover td{background:var(--bg3)}
 .cal-cell.dragging{opacity:.5;transform:scale(.95)}
 
 /* QR MODAL */
-.qr-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:2000;padding:16px}
+.qr-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;z-index:2050;padding:16px}
 .qr-modal-overlay.show{display:flex}
 .qr-modal{background:var(--bg2);border-radius:var(--rad2);width:380px;max-width:100%;border:1px solid var(--b1);box-shadow:var(--sh3);animation:modalPop .3s cubic-bezier(.16,1,.3,1);padding:24px;text-align:center}
 .qr-modal h3{font-size:16px;font-weight:800;margin-bottom:16px}
@@ -721,7 +723,7 @@ tr:hover td{background:var(--bg3)}
 .notif-badge{position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:var(--r);border:2px solid var(--glass)}
 
 /* INSTALL BANNER */
-.install-banner{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--pg);color:#fff;padding:12px 20px;border-radius:14px;box-shadow:var(--sh3);display:none;align-items:center;gap:10px;font-size:13px;font-weight:700;z-index:1500;animation:slideUp .5s cubic-bezier(.16,1,.3,1);max-width:calc(100vw - 32px)}
+.install-banner{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--pg);color:#fff;padding:12px 20px;border-radius:14px;box-shadow:var(--sh3);display:none;align-items:center;gap:10px;font-size:13px;font-weight:700;z-index:800;animation:slideUp .5s cubic-bezier(.16,1,.3,1);max-width:calc(100vw - 32px)}
 @keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(30px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 .install-banner button{padding:6px 14px;border-radius:8px;border:none;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}
 .install-banner .ib-install{background:#fff;color:var(--p2,#7c3aed)}
@@ -1715,7 +1717,16 @@ function getH(ds) {
   if (r) for (const h of r) if (h.m === m && h.d === day) return h.n;
   return null;
 }
-function isH(ds) { return getH(ds) !== null; }
+/* [FIX EDGE-CASE-01] RH veri kapsamı dışındaki yıllar için konsol uyarısı — session başına bir kez */
+const _rhWarnedYears = new Set();
+function isH(ds) {
+  const _p = parseDS(ds);
+  if (_p && _p.y > 2032 && !_rhWarnedYears.has(_p.y)) {
+    _rhWarnedYears.add(_p.y);
+    console.warn(`[Shiftt] ${_p.y} yılı dini tatil verisi eksik (kapsam: 2024–2032). Ramazan/Kurban tatilleri bu yıl için hesaplanamıyor.`);
+  }
+  return getH(ds) !== null;
+}
 
 function parseTime(ts) {
   if (!ts || typeof ts !== 'string') return null;
@@ -1752,25 +1763,26 @@ function isNightShift(start, end) {
   return en < st; // çıkış < giriş → gece geçişi (örn. 22:00–06:00)
 }
 
+/* [FIX HESAP-MANTIK-01] UTC-bazlı ISO hafta hesabı — DST sapmalarını önler */
 function getISOWeek(d) {
-  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const jan4 = new Date(day.getFullYear(), 0, 4);
-  const startOfWeek1 = new Date(jan4);
-  const dow = jan4.getDay() || 7;
-  startOfWeek1.setDate(jan4.getDate() - (dow - 1));
-  const diff = day - startOfWeek1;
+  const y = d.getFullYear(), m = d.getMonth(), day2 = d.getDate();
+  const ts      = Date.UTC(y, m, day2);
+  const jan4    = Date.UTC(y, 0, 4);
+  const dow4    = new Date(jan4).getUTCDay() || 7;
+  const w1start = jan4 - (dow4 - 1) * 864e5;
+  const diff    = ts - w1start;
   if (diff < 0) {
-    const prevJan4 = new Date(day.getFullYear() - 1, 0, 4);
-    const prevDow = prevJan4.getDay() || 7;
-    const prevStart = new Date(prevJan4);
-    prevStart.setDate(prevJan4.getDate() - (prevDow - 1));
-    return (day.getFullYear() - 1) + '-W' + String(Math.ceil((day - prevStart) / (7 * 864e5))).padStart(2, '0');
+    const pJan4   = Date.UTC(y - 1, 0, 4);
+    const pDow4   = new Date(pJan4).getUTCDay() || 7;
+    const pW1start = pJan4 - (pDow4 - 1) * 864e5;
+    return (y - 1) + '-W' + String(Math.ceil((ts - pW1start) / (7 * 864e5))).padStart(2, '0');
   }
   const wk = Math.floor(diff / (7 * 864e5)) + 1;
-  const lastDow = new Date(day.getFullYear(), 11, 31).getDay() || 7;
-  const maxWeeks = (lastDow >= 4 || new Date(day.getFullYear(), 0, 1).getDay() === 4) ? 53 : 52;
-  if (wk > maxWeeks) return (day.getFullYear() + 1) + '-W01';
-  return day.getFullYear() + '-W' + String(wk).padStart(2, '0');
+  const dec31Dow = new Date(Date.UTC(y, 11, 31)).getUTCDay() || 7;
+  const jan1Dow  = new Date(Date.UTC(y, 0, 1)).getUTCDay() || 7;
+  const maxWeeks = (dec31Dow >= 4 || jan1Dow === 4) ? 53 : 52;
+  if (wk > maxWeeks) return (y + 1) + '-W01';
+  return y + '-W' + String(wk).padStart(2, '0');
 }
 
 /* [FIX] getStreak — hafta sonu atlaması sınırlandırıldı (max 3 gün atlama)
@@ -2661,7 +2673,10 @@ function renderCal() {
     e.dataset.date = s;
     e.setAttribute('tabindex', '0');
     e.setAttribute('role', 'button');
-    e.setAttribute('aria-label', `${d} ${MTR[m]} ${sh ? calcHr(sh.start,sh.end,sh.break||0).toFixed(1)+' saat' : lv ? 'İzinli' : hol || ''}`);
+    /* [FIX ERİŞİLEBİLİRLİK-01] Ekran okuyucuya vardiya saatleri ve izin türü iletiliyor */
+    const _lvA11y = {annual:'Yıllık İzin',weekly:'Haftalık Tatil',sick:'Rapor',unpaid:'Ücretsiz İzin',ot_comp:'FM İzni'};
+    const _a11yDesc = sh ? `${sh.start}–${sh.end} (${calcHr(sh.start,sh.end,sh.break||0).toFixed(1)}s)${hol?' — '+hol:''}` : lv ? (_lvA11y[lv.type]||'İzin') : hol || 'Boş';
+    e.setAttribute('aria-label', `${d} ${MTR[m]} ${y}: ${_a11yDesc}`);
     if (sh && sh.start) e.draggable = true;
     g.appendChild(e);
   }
@@ -4173,18 +4188,35 @@ function saveLS() {
     debouncedPush();
   } catch(e) {
     if (e.name === 'QuotaExceededError') {
-      // Eski silinen kayıtları temizleyerek yer aç
+      // [FIX LOCALSTORAGE-QUOTA-01] Sadece 30 günden eski silme kayıtlarını temizle
+      // — deepMergeUser ile tutarlı politika; aktif sync geçmişi korunuyor
       try {
+        const _now = Date.now(), _ttl = 30 * 24 * 60 * 60 * 1000;
         Object.values(S.u).forEach(u => {
-          if (u && u.deletedShifts) u.deletedShifts = {};
-          if (u && u.deletedLeaves) u.deletedLeaves = {};
-          if (u && u.deletedDocs) u.deletedDocs = {};
+          if (!u) return;
+          ['deletedShifts', 'deletedLeaves', 'deletedDocs'].forEach(key => {
+            if (!u[key]) return;
+            Object.keys(u[key]).forEach(k => {
+              if (u[key][k] < _now - _ttl) delete u[key][k];
+            });
+          });
         });
         const d2 = JSON.stringify({ users:S.u, version:DATA_VERSION, nextUid:S.nextUid });
         localStorage.setItem('st_data', d2);
-        toast('Depolama doldu, eski silme kayıtları temizlendi', 'warning');
+        toast('Depolama doldu, 30 günden eski kayıtlar temizlendi', 'warning');
       } catch(e2) {
-        toast('Depolama dolu! Veri kaydedilemedi. Yedek alın.', 'error');
+        // İkinci deneme: tüm silme geçmişini sil
+        try {
+          Object.values(S.u).forEach(u => {
+            if (!u) return;
+            u.deletedShifts = {}; u.deletedLeaves = {}; u.deletedDocs = {};
+          });
+          const d3 = JSON.stringify({ users:S.u, version:DATA_VERSION, nextUid:S.nextUid });
+          localStorage.setItem('st_data', d3);
+          toast('Depolama kritik doldu, silme geçmişi temizlendi. Yedek alın!', 'warning');
+        } catch(e3) {
+          toast('Depolama dolu! Veri kaydedilemedi. Yedek alın.', 'error');
+        }
       }
     } else toast('Kayıt hatası!', 'error');
   }
@@ -4428,7 +4460,7 @@ function showShortcuts() {
   });
   h += '</div>';
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:2000;padding:16px';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:2025;padding:16px';
   overlay.onclick = function(e) { if (e.target === this) this.remove(); };
   const box = document.createElement('div');
   box.style.cssText = 'background:var(--bg2);border-radius:var(--rad2);max-width:360px;width:100%;border:1px solid var(--b1);box-shadow:var(--sh3);animation:modalPop .3s cubic-bezier(.16,1,.3,1)';
@@ -5320,6 +5352,7 @@ function initDragDrop() {
     dragData = null;
   });
   cg.addEventListener('dragend', function() {
+    wasDragging = false; // [FIX JS-ÇAKIŞMA-01] dragend'de sıfırla — sonraki click'in yutulmasını önler
     document.querySelectorAll('.dragging').forEach(c => c.classList.remove('dragging'));
     document.querySelectorAll('.drag-over').forEach(c => c.classList.remove('drag-over'));
     dragData = null;
@@ -5499,7 +5532,7 @@ function showNotifications() {
   });
   h += '</div>';
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:2000;padding:16px';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:2025;padding:16px';
   overlay.onclick = function(e) { if (e.target === this) this.remove(); };
   const box = document.createElement('div');
   box.style.cssText = 'background:var(--bg2);border-radius:var(--rad2);max-width:400px;width:100%;border:1px solid var(--b1);box-shadow:var(--sh3);animation:modalPop .3s cubic-bezier(.16,1,.3,1)';
@@ -5896,41 +5929,48 @@ function enterAppAfterAuth() {
 }
 
 /* Firestore sub-collection'dan belgeleri yükle — her app kullanıcısı için ayrı */
+/* [FIX FIREBASE-SENKRON-01] Eş zamanlı çağrı koruması — duplicate belge eklenmesini önler */
+let _loadCloudDocsBusy = false;
 async function loadCloudDocs() {
-  if (!fbDb || !fbUser) return;
-  let changed = false;
-  // Tüm app kullanıcıları için yükle
-  for (const idxStr of Object.keys(S.u)) {
-    const idx = parseInt(idxStr);
-    const u = S.u[idx]; if (!u) continue;
-    try {
-      const snap = await fbDb.collection('userData').doc(fbUser.uid)
-        .collection('users').doc(String(idx)).collection('docs').get();
-      if (snap.empty) continue;
-      if (!Array.isArray(u.documents)) u.documents = [];
-      if (!u.deletedDocs) u.deletedDocs = {};
-      snap.forEach(docSnap => {
-        const cd = docSnap.data();
-        if (!cd || !cd.id) return;
-        // Silinmiş ise ekleme
-        if (u.deletedDocs[cd.id]) return;
-        const existing = u.documents.find(d => d.id === cd.id);
-        if (!existing) {
-          u.documents.push(cd);
-          changed = true;
-        } else if (!existing.url && cd.url) {
-          existing.url = cd.url;
-          changed = true;
-        }
-      });
-    } catch(e) {
-      console.warn(`Kullanıcı ${idx} belgeleri yüklenemedi:`, e);
+  if (!fbDb || !fbUser || _loadCloudDocsBusy) return;
+  _loadCloudDocsBusy = true;
+  try {
+    let changed = false;
+    // Tüm app kullanıcıları için yükle
+    for (const idxStr of Object.keys(S.u)) {
+      const idx = parseInt(idxStr);
+      const u = S.u[idx]; if (!u) continue;
+      try {
+        const snap = await fbDb.collection('userData').doc(fbUser.uid)
+          .collection('users').doc(String(idx)).collection('docs').get();
+        if (snap.empty) continue;
+        if (!Array.isArray(u.documents)) u.documents = [];
+        if (!u.deletedDocs) u.deletedDocs = {};
+        snap.forEach(docSnap => {
+          const cd = docSnap.data();
+          if (!cd || !cd.id) return;
+          // Silinmiş ise ekleme
+          if (u.deletedDocs[cd.id]) return;
+          const existing = u.documents.find(d => d.id === cd.id);
+          if (!existing) {
+            u.documents.push(cd);
+            changed = true;
+          } else if (!existing.url && cd.url) {
+            existing.url = cd.url;
+            changed = true;
+          }
+        });
+      } catch(e) {
+        console.warn(`Kullanıcı ${idx} belgeleri yüklenemedi:`, e);
+      }
     }
-  }
-  if (changed) {
-    saveLS();
-    const activePage = document.querySelector('.page.active');
-    if (activePage && activePage.id === 'pg-documents') renderDocs();
+    if (changed) {
+      saveLS();
+      const activePage = document.querySelector('.page.active');
+      if (activePage && activePage.id === 'pg-documents') renderDocs();
+    }
+  } finally {
+    _loadCloudDocsBusy = false;
   }
 }
 
@@ -6358,8 +6398,11 @@ function updCloudAccountUI() {
    START
 ============================================================ */
 // Register service worker
+// [FIX SERVICE-WORKER-01] Hata sessizce yutuluyordu; artık loglanıyor
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js')
+    .then(reg => { if (reg) console.log('[SW] Kayıt başarılı:', reg.scope); })
+    .catch(err => { console.warn('[SW] Kayıt başarısız (offline desteği yok):', err.message || err); });
 }
 
 // Sistem teması değişince otomatik geçiş
@@ -6661,7 +6704,7 @@ function viewDocument(docId) {
   const isPdf = doc.mimeType === 'application/pdf' || doc.fileName?.endsWith('.pdf');
 
   if (isImg) {
-    dvc.innerHTML = `<img src="${doc.url}" alt="${escHtml(doc.name)}" style="max-width:100%;max-height:100%;object-fit:contain">`;
+    dvc.innerHTML = `<img src="${escHtml(doc.url)}" alt="${escHtml(doc.name)}" style="max-width:100%;max-height:100%;object-fit:contain">`;
   } else if (isPdf) {
     // base64 PDF → blob URL ile iframe
     try {
@@ -7200,20 +7243,28 @@ function importTpl() {
 
 /* ============================================================
    HOOKS — Render pipeline'a yeni özellikleri ekle
+   [FIX JS-FONKSİYON-01] _hooked guard: init() iki kez çağrılsa bile
+   sarma yalnızca bir kez yapılır → çift tetikleme olmaz
 ============================================================ */
-const _origRenderActivePage = renderActivePage;
-renderActivePage = function() {
-  _origRenderActivePage();
-  const a = document.querySelector('.page.active');
-  if (a && a.id === 'pg-calendar') renderBankHolidays();
-  if (a && a.id === 'pg-settings') { renderTplShare(); }
-};
+if (!renderActivePage._hooked) {
+  const _origRenderActivePage = renderActivePage;
+  renderActivePage = function() {
+    _origRenderActivePage();
+    const a = document.querySelector('.page.active');
+    if (a && a.id === 'pg-calendar') renderBankHolidays();
+    if (a && a.id === 'pg-settings') { renderTplShare(); }
+  };
+  renderActivePage._hooked = true;
+}
 
-const _origLoadSet = loadSet;
-loadSet = function() {
-  _origLoadSet();
-  renderTplShare();
-};
+if (!loadSet._hooked) {
+  const _origLoadSet = loadSet;
+  loadSet = function() {
+    _origLoadSet();
+    renderTplShare();
+  };
+  loadSet._hooked = true;
+}
 
 init();
 initSwipe();
