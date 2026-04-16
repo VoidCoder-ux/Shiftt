@@ -30,6 +30,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- ===== eBORDRO MODULE CDN ===== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<!-- ===== eBORDRO MODULE CDN END ===== -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -781,6 +784,44 @@ tr:hover td{background:var(--bg3)}
 /* CLOUD USER INFO IN TOPBAR */
 .cloud-user{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--t3);padding:0 8px}
 .cloud-user i{color:var(--p);font-size:11px}
+
+/* ===== eBORDRO MODULE CSS START ===== */
+.bordro-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2150;display:flex;align-items:center;justify-content:center;padding:16px}
+.bordro-box{background:var(--s);border-radius:16px;width:100%;max-width:580px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.4);display:flex;flex-direction:column}
+.bordro-head{background:var(--p);color:#fff;padding:18px 22px;border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.bordro-head h2{margin:0;font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px}
+.bordro-close{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:.2s}
+.bordro-close:hover{background:rgba(255,255,255,.35)}
+.bordro-body{padding:18px 22px;overflow-y:auto;flex:1}
+.bordro-section{margin-bottom:16px}
+.bordro-section-title{font-size:10px;font-weight:700;color:var(--p);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--b);display:flex;align-items:center;gap:6px}
+.bordro-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bordro-form-group{display:flex;flex-direction:column;gap:3px}
+.bordro-label{font-size:11px;color:var(--t3);font-weight:600}
+.bordro-input,.bordro-select{width:100%;padding:8px 10px;border:1.5px solid var(--b);border-radius:8px;background:var(--bg);color:var(--t1);font-size:13px;box-sizing:border-box;transition:.2s}
+.bordro-input:focus,.bordro-select:focus{outline:none;border-color:var(--p);box-shadow:0 0 0 3px rgba(99,102,241,.15)}
+.bordro-period-badge{display:inline-flex;align-items:center;gap:6px;background:var(--p);color:#fff;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700}
+.bordro-preview{background:var(--bg);border-radius:12px;padding:16px;margin-top:4px;border:1px solid var(--b)}
+.bordro-preview-title{font-size:12px;font-weight:700;color:var(--t1);text-align:center;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--p);text-transform:uppercase;letter-spacing:.4px}
+.bordro-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--b);font-size:12.5px}
+.bordro-row:last-child{border-bottom:none}
+.bordro-row.total{font-weight:700;font-size:15px;color:var(--p);padding-top:10px;margin-top:6px;border-top:2.5px solid var(--p)}
+.bordro-row.sub{opacity:.7;font-size:11px}
+.bordro-row.deduct .bv{color:var(--r)}
+.bordro-row.add .bv{color:var(--g)}
+.bl{color:var(--t2)}
+.bv{font-weight:600;font-variant-numeric:tabular-nums}
+.bordro-empty{text-align:center;color:var(--t3);font-size:13px;padding:24px;opacity:.7}
+.bordro-actions{display:flex;gap:8px;flex-wrap:wrap;padding:14px 22px;border-top:1px solid var(--b);flex-shrink:0}
+.bordro-btn{flex:1;min-width:70px;padding:9px 10px;border:none;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:center;gap:5px}
+.bordro-btn:hover{opacity:.88;transform:translateY(-1px)}
+.bordro-btn:active{transform:translateY(0)}
+.bordro-btn-primary{background:var(--p);color:#fff}
+.bordro-btn-success{background:#22c55e;color:#fff}
+.bordro-btn-info{background:#0ea5e9;color:#fff}
+.bordro-btn-warn{background:#f97316;color:#fff}
+@media(max-width:480px){.bordro-form-grid{grid-template-columns:1fr}.bordro-btn{min-width:60px;font-size:11px}}
+/* ===== eBORDRO MODULE CSS END ===== */
 </style>
 </head>
 <body>
@@ -3653,6 +3694,11 @@ function renderEarn() {
     <div class="amt">${fm(e.totalEarning)}${e.isCurrentMonth ? ' <small style="font-size:14px;opacity:.6">tahmini</small>' : ''}</div>
     <div class="info">${e.isFullMonth ? 'Tam ay' : e.isCurrentMonth ? 'Devam ediyor' : e.absentDays > 0 ? e.absentDays + 'g eksik' : 'Tam'} • ${e.totalHours.toFixed(1)}s</div>
     ${prevE && prevE.totalEarning > 0 && !prevE.isFutureMonth ? `<div style="margin-top:8px"><span style="font-size:11px;opacity:.7">${diff>=0?'↑':'↓'} Önceki aya göre ${fm(Math.abs(diff))}</span></div>` : ''}
+    <div style="margin-top:14px">
+      <button onclick="openEBordroModal(${y},${m})" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.45);color:#fff;padding:7px 16px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:600;backdrop-filter:blur(4px);transition:.2s" onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">
+        <i class="fas fa-file-invoice"></i> e-Bordro Oluştur
+      </button>
+    </div>
   </div>
   <div class="esb">
     <div class="esb-title"><i class="fas fa-calculator"></i>Detaylı Hesaplama</div>
@@ -7270,6 +7316,480 @@ init();
 initSwipe();
 initDragDrop();
 initFirebase();
+
+// ===== eBORDRO MODULE START =====
+// Türkiye 2026 bordro parametreleri — yıllık güncelleme için sadece bu objeyi düzenleyin
+const payrollConfig = {
+  year: 2026,
+  minWageGross: 29100,            // Ocak 2026 asgari ücret brüt (TL)
+  get sgkCeiling() { return this.minWageGross * 7.5; }, // SGK prime esas kazanç tavanı
+  sgkEmployee: 0.14,              // İşçi SGK payı: emeklilik %9 + sağlık %5
+  unemploymentEmployee: 0.01,     // İşçi işsizlik sigortası %1
+  incomeTaxBrackets: [            // 2026 yıllık kümülatif GV dilimleri (GİB)
+    { upTo: 230000,  rate: 0.15 },
+    { upTo: 580000,  rate: 0.20 },
+    { upTo: 1500000, rate: 0.27 },
+    { upTo: 5500000, rate: 0.35 },
+    { upTo: Infinity,rate: 0.40 },
+  ],
+  stampTaxRate: 0.00759,          // Damga vergisi %0.759
+  // AGİ oranları (medeni duruma göre)
+  agiRates: { single: 0.50, marriedNoWork: 0.60, marriedWork: 0.50 },
+  // AGİ çocuk katkısı: 1. ve 2. çocuk %7.5, 3. ve sonrası %10
+  agiChildRates: [0, 0.075, 0.075, 0.10, 0.10, 0.10],
+  otMultiplier: 1.5,
+  mealDailyTaxFree: 270,          // Yemek yardımı günlük vergisiz limit (TL)
+  transportDailyTaxFree: 150,     // Yol yardımı günlük vergisiz limit (TL)
+};
+
+// Kümülatif gelir vergisi hesabı (yıllık matrah üzerinden)
+function _bordroCalcGV(ytdMatrah) {
+  const brackets = payrollConfig.incomeTaxBrackets;
+  let tax = 0, prev = 0;
+  for (const b of brackets) {
+    if (ytdMatrah <= prev) break;
+    const taxable = Math.min(ytdMatrah, b.upTo) - prev;
+    tax += taxable * b.rate;
+    prev = b.upTo;
+    if (b.upTo === Infinity) break;
+  }
+  return tax;
+}
+
+// Aylık AGİ tutarı (vergi kredisi olarak)
+function _bordroCalcAGI(maritalStatus, children) {
+  const cfg = payrollConfig;
+  let rate = cfg.agiRates[maritalStatus] || cfg.agiRates.single;
+  const ch = Math.min(parseInt(children) || 0, 5);
+  for (let i = 0; i < ch; i++) rate += cfg.agiChildRates[i + 1] || 0.10;
+  // Aylık AGİ = Yıllık asgari ücret × oran × %15 / 12
+  return cfg.minWageGross * rate * 0.15; // aylık kredi
+}
+
+// Brütten net hesaplama (belirli bir ay için kümülatif yöntem)
+function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah) {
+  const cfg = payrollConfig;
+  const sgkBase        = Math.min(gross, cfg.sgkCeiling);
+  const sgkDeduction   = sgkBase * cfg.sgkEmployee;
+  const unemployDeduct = sgkBase * cfg.unemploymentEmployee;
+
+  const gvMatrah   = gross - sgkDeduction - unemployDeduct;
+  const priorYTD   = priorYTDMatrah || 0;
+  const ytdMatrah  = priorYTD + gvMatrah;
+
+  const rawGVTotal  = _bordroCalcGV(ytdMatrah);
+  const rawGVPrior  = _bordroCalcGV(priorYTD);
+  const thisMonthRawGV = rawGVTotal - rawGVPrior;
+
+  const agiMonthly = _bordroCalcAGI(maritalStatus, children);
+  const netGV      = Math.max(0, thisMonthRawGV - agiMonthly);
+  const stampTax   = gross * cfg.stampTaxRate;
+
+  const net = gross - sgkDeduction - unemployDeduct - netGV - stampTax;
+  return { gross, sgkDeduction, unemployDeduct, gvMatrah, ytdMatrah, thisMonthRawGV, agiMonthly, netGV, stampTax, net };
+}
+
+// Net → Brüt ters hesaplama (ikili arama, ~120 iterasyon, 0.001 TL hassasiyet)
+function findGrossFromNet(targetNet, maritalStatus, children, priorYTDMatrah) {
+  let lo = targetNet * 0.75, hi = targetNet * 3.5;
+  for (let i = 0; i < 120; i++) {
+    const mid = (lo + hi) / 2;
+    const { net } = computeNetFromGross(mid, maritalStatus, children, priorYTDMatrah);
+    if (net < targetNet) lo = mid; else hi = mid;
+    if (hi - lo < 0.001) break;
+  }
+  return (lo + hi) / 2;
+}
+
+// Oturum içi hesap sonucu (localStorage'a yazılmaz)
+let _eBordroSession = {};
+
+// Kazanç sayfasından modal aç
+function openEBordroModal(y, m) {
+  const u = cu();
+  _eBordroSession = { y, m };
+  const modal = $('eBordroModal');
+  if (!modal) return;
+
+  // Dönem etiketi
+  const periodEl = $('eb-period');
+  if (periodEl) periodEl.textContent = `${MTR[m]} ${y}`;
+
+  // Çalışan adını profil'den ön doldur
+  const nameEl = $('eb-empName');
+  if (nameEl && u && u.name) nameEl.value = u.name;
+
+  // Net maaşı profil'den ön doldur, hesaplama türü Net→Brüt
+  const amountEl = $('eb-amount');
+  if (amountEl && u && u.netSalary) amountEl.value = u.netSalary;
+
+  const calcTypeEl = $('eb-calcType');
+  if (calcTypeEl) { calcTypeEl.value = 'net2gross'; _ebUpdateAmountLabel(); }
+
+  // Önizlemeyi sıfırla
+  const prev = $('bordroPreview');
+  if (prev) prev.innerHTML = '<div class="bordro-empty"><i class="fas fa-info-circle"></i> Bilgileri doldurup "Hesapla &amp; Önizle" butonuna basın</div>';
+
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeEBordroModal() {
+  const modal = $('eBordroModal');
+  if (modal) modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function _ebUpdateAmountLabel() {
+  const typeEl = $('eb-calcType');
+  const labelEl = $('eb-amountLabel');
+  if (typeEl && labelEl) {
+    labelEl.textContent = typeEl.value === 'net2gross' ? 'Net Maaş (₺)' : 'Brüt Maaş (₺)';
+  }
+}
+
+// Önizlemeyi hesapla ve göster
+function renderBordroPreview() {
+  const calcType     = ($('eb-calcType') || {}).value || 'net2gross';
+  const amount       = parseFloat(($('eb-amount') || {}).value) || 0;
+  const marital      = ($('eb-marital') || {}).value || 'single';
+  const children     = parseInt(($('eb-children') || {}).value) || 0;
+  const mealDays     = parseInt(($('eb-mealDays') || {}).value) || 0;
+  const transportDays= parseInt(($('eb-transportDays') || {}).value) || 0;
+  const priorYTD     = parseFloat(($('eb-priorYTD') || {}).value) || 0;
+  const { y, m }     = _eBordroSession;
+
+  if (!amount || amount <= 0) { toast('Geçerli bir tutar girin', 'error'); return; }
+
+  let gross;
+  if (calcType === 'net2gross') {
+    gross = findGrossFromNet(amount, marital, children, priorYTD);
+  } else {
+    gross = amount;
+  }
+
+  const res = computeNetFromGross(gross, marital, children, priorYTD);
+
+  // Vergiden muaf yan haklar
+  const mealTotal      = mealDays * payrollConfig.mealDailyTaxFree;
+  const transportTotal = transportDays * payrollConfig.transportDailyTaxFree;
+  const finalNet       = res.net + mealTotal + transportTotal;
+
+  // Sonucu oturuma kaydet (PDF/JSON/XML için)
+  _eBordroSession.result = {
+    ...res, mealTotal, transportTotal, finalNet, marital, children, priorYTD, y, m,
+    empName:  ($('eb-empName')  || {}).value || '',
+    company:  ($('eb-company')  || {}).value || '',
+    tcNo:     ($('eb-tcNo')     || {}).value || '',
+  };
+
+  const fmb = v => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
+
+  const previewEl = $('bordroPreview');
+  if (!previewEl) return;
+  previewEl.innerHTML = `
+    <div class="bordro-preview-title">
+      <i class="fas fa-file-invoice"></i> BORDRO ÖNİZLEME — ${MTR[m].toUpperCase()} ${y}
+    </div>
+    <div class="bordro-row"><span class="bl">BRÜT MAAŞ</span><span class="bv">${fmb(res.gross)}</span></div>
+    <div class="bordro-row deduct"><span class="bl">SGK İşçi Payı (%14)</span><span class="bv">− ${fmb(res.sgkDeduction)}</span></div>
+    <div class="bordro-row deduct"><span class="bl">İşsizlik Sigortası (%1)</span><span class="bv">− ${fmb(res.unemployDeduct)}</span></div>
+    <div class="bordro-row sub"><span class="bl">GV Matrahı</span><span class="bv">${fmb(res.gvMatrah)}</span></div>
+    <div class="bordro-row deduct"><span class="bl">Gelir Vergisi (hesaplanan)</span><span class="bv">− ${fmb(res.thisMonthRawGV)}</span></div>
+    <div class="bordro-row add"><span class="bl">AGİ (indirim)</span><span class="bv">+ ${fmb(res.agiMonthly)}</span></div>
+    <div class="bordro-row deduct"><span class="bl">Net Gelir Vergisi</span><span class="bv">− ${fmb(res.netGV)}</span></div>
+    <div class="bordro-row deduct"><span class="bl">Damga Vergisi (%0.759)</span><span class="bv">− ${fmb(res.stampTax)}</span></div>
+    ${mealTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yemek Yardımı (${mealDays}g × ${payrollConfig.mealDailyTaxFree}₺)</span><span class="bv">+ ${fmb(mealTotal)}</span></div>` : ''}
+    ${transportTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yol Yardımı (${transportDays}g × ${payrollConfig.transportDailyTaxFree}₺)</span><span class="bv">+ ${fmb(transportTotal)}</span></div>` : ''}
+    <div class="bordro-row total"><span class="bl">NET MAAŞ</span><span class="bv">${fmb(finalNet)}</span></div>
+  `;
+}
+
+// PDF indir (jsPDF + autotable)
+function downloadBordroPDF() {
+  if (!_eBordroSession.result) { renderBordroPreview(); }
+  const r = _eBordroSession.result;
+  if (!r) return;
+
+  const jspdfLib = window.jspdf || {};
+  const JsPDF = jspdfLib.jsPDF;
+  if (!JsPDF) { toast('PDF kütüphanesi yüklenemedi', 'error'); return; }
+
+  const doc = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const fmb = v => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TL';
+
+  // Başlık bandı
+  doc.setFillColor(99, 102, 241);
+  doc.rect(0, 0, 210, 42, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20);
+  doc.setFont('helvetica', 'bold');
+  doc.text('MAAS BORDROSU', 105, 17, { align: 'center' });
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${MTR[r.m].toUpperCase()} ${r.y}`, 105, 27, { align: 'center' });
+  if (r.company) {
+    doc.setFontSize(10);
+    doc.text(escHtml ? r.company : r.company, 105, 35, { align: 'center' });
+  }
+
+  // Çalışan bilgileri
+  doc.setTextColor(30, 30, 30);
+  let yp = 52;
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  if (r.empName) { doc.text('Calisan : ' + r.empName, 15, yp); yp += 6; }
+  if (r.tcNo)    { doc.text('TC/SGK  : ' + r.tcNo,    15, yp); yp += 6; }
+  doc.text('Donem   : ' + MTR[r.m] + ' ' + r.y, 15, yp); yp += 10;
+
+  // Bordro tablosu
+  const rows = [
+    ['BRUT MAAS',              fmb(r.gross),           ''],
+    ['SGK Isci Payi (%14)',    '',                     fmb(r.sgkDeduction)],
+    ['Issizlik Sigortasi (%1)','',                     fmb(r.unemployDeduct)],
+    ['GV Matrahi',             fmb(r.gvMatrah),        ''],
+    ['Gelir Vergisi',          '',                     fmb(r.thisMonthRawGV)],
+    ['AGI Indirimi',           fmb(r.agiMonthly),      ''],
+    ['Net Gelir Vergisi',      '',                     fmb(r.netGV)],
+    ['Damga Vergisi (%0.759)', '',                     fmb(r.stampTax)],
+  ];
+  if (r.mealTotal > 0)      rows.push(['Yemek Yardimi',     fmb(r.mealTotal),      '']);
+  if (r.transportTotal > 0) rows.push(['Yol Yardimi',       fmb(r.transportTotal), '']);
+  rows.push(['NET MAAS',         fmb(r.finalNet),       '']);
+
+  const lastRow = rows.length - 1;
+  doc.autoTable({
+    startY: yp,
+    head: [['KALEM', 'EKLEME (+)', 'KESINTI (-)']],
+    body: rows,
+    styles: { font: 'helvetica', fontSize: 10, cellPadding: 3 },
+    headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 248, 255] },
+    columnStyles: { 0: { cellWidth: 90 }, 1: { halign: 'right' }, 2: { halign: 'right' } },
+    didParseCell: function(data) {
+      if (data.section === 'body' && data.row.index === lastRow) {
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.fillColor = [224, 231, 255];
+        data.cell.styles.fontSize  = 11;
+      }
+    }
+  });
+
+  const footY = doc.lastAutoTable.finalY + 8;
+  doc.setFontSize(7);
+  doc.setTextColor(160, 160, 160);
+  doc.text(
+    `Olusturulma: ${new Date().toLocaleString('tr-TR')} | ShiftTrack Pro | payrollConfig ${payrollConfig.year}`,
+    105, footY, { align: 'center' }
+  );
+
+  const fname = `Bordro_${MTR[r.m]}_${r.y}${r.empName ? '_' + r.empName.replace(/\s+/g, '_') : ''}.pdf`;
+  doc.save(fname);
+  toast('PDF indirildi', 'success');
+}
+
+// JSON dışa aktar
+function exportBordroJSON() {
+  if (!_eBordroSession.result) { renderBordroPreview(); }
+  const r = _eBordroSession.result;
+  if (!r) return;
+
+  const data = {
+    employee: {
+      name:          r.empName || null,
+      tcNo:          r.tcNo    || null,
+      company:       r.company || null,
+      maritalStatus: r.marital,
+      children:      r.children,
+    },
+    period: { year: r.y, month: r.m + 1, monthName: MTR[r.m] },
+    earnings: {
+      grossSalary:        +r.gross.toFixed(2),
+      mealAllowance:      +r.mealTotal.toFixed(2),
+      transportAllowance: +r.transportTotal.toFixed(2),
+    },
+    deductions: {
+      sgkEmployee:   +r.sgkDeduction.toFixed(2),
+      unemployment:  +r.unemployDeduct.toFixed(2),
+      gvMatrah:      +r.gvMatrah.toFixed(2),
+      incomeTax:     +r.thisMonthRawGV.toFixed(2),
+      agi:           +r.agiMonthly.toFixed(2),
+      netIncomeTax:  +r.netGV.toFixed(2),
+      stampTax:      +r.stampTax.toFixed(2),
+    },
+    net:       +r.finalNet.toFixed(2),
+    config:    { year: payrollConfig.year, minWageGross: payrollConfig.minWageGross },
+    timestamp: new Date().toISOString(),
+  };
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `Bordro_${MTR[r.m]}_${r.y}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast('JSON indirildi', 'success');
+}
+
+// XML dışa aktar (SGK uyumlu yapı)
+function exportBordroXML() {
+  if (!_eBordroSession.result) { renderBordroPreview(); }
+  const r = _eBordroSession.result;
+  if (!r) return;
+
+  const xe  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const fv  = v => (+v).toFixed(2);
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Bordro Yil="${r.y}" Ay="${r.m + 1}" OlusturmaTarihi="${new Date().toISOString()}">
+  <Calisan>
+    <AdSoyad>${xe(r.empName)}</AdSoyad>
+    <TCKimlikNo>${xe(r.tcNo)}</TCKimlikNo>
+    <SirketAdi>${xe(r.company)}</SirketAdi>
+    <MedeniDurum>${xe(r.marital)}</MedeniDurum>
+    <CocukSayisi>${r.children}</CocukSayisi>
+  </Calisan>
+  <Kazanclar>
+    <BrutMaas>${fv(r.gross)}</BrutMaas>
+    <YemekYardimi>${fv(r.mealTotal)}</YemekYardimi>
+    <YolYardimi>${fv(r.transportTotal)}</YolYardimi>
+  </Kazanclar>
+  <Kesintiler>
+    <SGKIsciPayi oran="0.14">${fv(r.sgkDeduction)}</SGKIsciPayi>
+    <IssizlikSigortasi oran="0.01">${fv(r.unemployDeduct)}</IssizlikSigortasi>
+    <GVMatrahi>${fv(r.gvMatrah)}</GVMatrahi>
+    <GelirVergisi>${fv(r.thisMonthRawGV)}</GelirVergisi>
+    <AGI>${fv(r.agiMonthly)}</AGI>
+    <NetGelirVergisi>${fv(r.netGV)}</NetGelirVergisi>
+    <DamgaVergisi oran="0.00759">${fv(r.stampTax)}</DamgaVergisi>
+  </Kesintiler>
+  <NetMaas>${fv(r.finalNet)}</NetMaas>
+  <PayrollConfig Yil="${payrollConfig.year}" AsgariBrut="${payrollConfig.minWageGross}"/>
+</Bordro>`;
+
+  const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `Bordro_${MTR[r.m]}_${r.y}.xml`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast('XML indirildi', 'success');
+}
+
+// Hesaplama türü değişince label güncelle
+(function() {
+  const el = $('eb-calcType');
+  if (el) el.addEventListener('change', _ebUpdateAmountLabel);
+})();
+// ===== eBORDRO MODULE END =====
 </script>
+
+<!-- ===== eBORDRO MODULE START ===== -->
+<div id="eBordroModal" class="bordro-overlay" style="display:none" onclick="if(event.target===this)closeEBordroModal()">
+  <div class="bordro-box">
+    <div class="bordro-head">
+      <h2><i class="fas fa-file-invoice"></i> e-Bordro Oluştur</h2>
+      <button class="bordro-close" onclick="closeEBordroModal()" aria-label="Kapat">×</button>
+    </div>
+    <div class="bordro-body">
+
+      <!-- Dönem -->
+      <div class="bordro-section">
+        <div class="bordro-section-title"><i class="fas fa-calendar-alt"></i> Dönem</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="bordro-period-badge"><i class="fas fa-calendar"></i> <span id="eb-period">—</span></span>
+          <span style="font-size:11px;color:var(--t3)">Kazanç sayfasındaki aya göre</span>
+        </div>
+      </div>
+
+      <!-- Çalışan Bilgileri -->
+      <div class="bordro-section">
+        <div class="bordro-section-title"><i class="fas fa-user"></i> Çalışan Bilgileri</div>
+        <div class="bordro-form-grid">
+          <div class="bordro-form-group" style="grid-column:1/-1">
+            <label class="bordro-label">Ad Soyad</label>
+            <input id="eb-empName" class="bordro-input" type="text" placeholder="Çalışan adı soyadı">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">TC Kimlik / SGK No (isteğe bağlı)</label>
+            <input id="eb-tcNo" class="bordro-input" type="text" placeholder="xxxxxxxxxx" maxlength="11">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Şirket Adı (isteğe bağlı)</label>
+            <input id="eb-company" class="bordro-input" type="text" placeholder="Şirket adı">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Medeni Durum</label>
+            <select id="eb-marital" class="bordro-select">
+              <option value="single">Bekar</option>
+              <option value="marriedNoWork">Evli — Eş Çalışmıyor</option>
+              <option value="marriedWork">Evli — Eş Çalışıyor</option>
+            </select>
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Çocuk Sayısı</label>
+            <select id="eb-children" class="bordro-select">
+              <option value="0">0</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5+</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hesaplama -->
+      <div class="bordro-section">
+        <div class="bordro-section-title"><i class="fas fa-calculator"></i> Hesaplama</div>
+        <div class="bordro-form-grid">
+          <div class="bordro-form-group">
+            <label class="bordro-label">Hesaplama Türü</label>
+            <select id="eb-calcType" class="bordro-select">
+              <option value="net2gross">Net → Brüt (ters hesap)</option>
+              <option value="gross2net">Brüt → Net</option>
+            </select>
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" id="eb-amountLabel">Net Maaş (₺)</label>
+            <input id="eb-amount" class="bordro-input" type="number" min="0" step="0.01" placeholder="Örn: 35000">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Yemek Yardımı (Gün Sayısı)</label>
+            <input id="eb-mealDays" class="bordro-input" type="number" min="0" max="31" step="1" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Yol Yardımı (Gün Sayısı)</label>
+            <input id="eb-transportDays" class="bordro-input" type="number" min="0" max="31" step="1" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group" style="grid-column:1/-1">
+            <label class="bordro-label">Önceki Ay Kümülatif GV Matrahı (₺) — Ocak için 0 bırakın</label>
+            <input id="eb-priorYTD" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- Önizleme -->
+      <div class="bordro-section">
+        <div class="bordro-section-title"><i class="fas fa-eye"></i> Bordro Önizleme</div>
+        <div id="bordroPreview" class="bordro-preview">
+          <div class="bordro-empty"><i class="fas fa-info-circle"></i> Bilgileri doldurup "Hesapla &amp; Önizle" butonuna basın</div>
+        </div>
+      </div>
+
+    </div><!-- /.bordro-body -->
+    <div class="bordro-actions">
+      <button class="bordro-btn bordro-btn-primary" onclick="renderBordroPreview()"><i class="fas fa-calculator"></i> Hesapla &amp; Önizle</button>
+      <button class="bordro-btn bordro-btn-success" onclick="downloadBordroPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
+      <button class="bordro-btn bordro-btn-info" onclick="exportBordroJSON()"><i class="fas fa-code"></i> JSON</button>
+      <button class="bordro-btn bordro-btn-warn" onclick="exportBordroXML()"><i class="fas fa-file-code"></i> XML</button>
+    </div>
+  </div>
+</div>
+<!-- ===== eBORDRO MODULE END ===== -->
+
 </body>
 </html>
