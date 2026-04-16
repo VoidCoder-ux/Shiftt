@@ -7424,7 +7424,14 @@ function openEBordroModal(y, m) {
   if (amountEl && u && u.netSalary) amountEl.value = u.netSalary;
 
   const calcTypeEl = $('eb-calcType');
-  if (calcTypeEl) { calcTypeEl.value = 'net2gross'; _ebUpdateAmountLabel(); }
+  if (calcTypeEl) {
+    calcTypeEl.value = 'net2gross';
+    _ebUpdateAmountLabel();
+    if (!calcTypeEl._ebHooked) {
+      calcTypeEl.addEventListener('change', _ebUpdateAmountLabel);
+      calcTypeEl._ebHooked = true;
+    }
+  }
 
   // Önizlemeyi sıfırla
   const prev = $('bordroPreview');
@@ -7517,6 +7524,8 @@ function downloadBordroPDF() {
 
   const doc = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const fmb = v => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TL';
+  // Helvetica Latin Extended desteklemez; PDF'te Türkçe özel karakter yerine ASCII karşılık kullan
+  const pdfMTR = ['Ocak','Subat','Mart','Nisan','Mayis','Haziran','Temmuz','Agustos','Eylul','Ekim','Kasim','Aralik'];
 
   // Başlık bandı
   doc.setFillColor(99, 102, 241);
@@ -7527,10 +7536,10 @@ function downloadBordroPDF() {
   doc.text('MAAS BORDROSU', 105, 17, { align: 'center' });
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
-  doc.text(`${MTR[r.m].toUpperCase()} ${r.y}`, 105, 27, { align: 'center' });
+  doc.text(`${pdfMTR[r.m].toUpperCase()} ${r.y}`, 105, 27, { align: 'center' });
   if (r.company) {
     doc.setFontSize(10);
-    doc.text(escHtml ? r.company : r.company, 105, 35, { align: 'center' });
+    doc.text(r.company, 105, 35, { align: 'center' });
   }
 
   // Çalışan bilgileri
@@ -7540,7 +7549,7 @@ function downloadBordroPDF() {
   doc.setFont('helvetica', 'normal');
   if (r.empName) { doc.text('Calisan : ' + r.empName, 15, yp); yp += 6; }
   if (r.tcNo)    { doc.text('TC/SGK  : ' + r.tcNo,    15, yp); yp += 6; }
-  doc.text('Donem   : ' + MTR[r.m] + ' ' + r.y, 15, yp); yp += 10;
+  doc.text('Donem   : ' + pdfMTR[r.m] + ' ' + r.y, 15, yp); yp += 10;
 
   // Bordro tablosu
   const rows = [
@@ -7583,7 +7592,7 @@ function downloadBordroPDF() {
     105, footY, { align: 'center' }
   );
 
-  const fname = `Bordro_${MTR[r.m]}_${r.y}${r.empName ? '_' + r.empName.replace(/\s+/g, '_') : ''}.pdf`;
+  const fname = `Bordro_${pdfMTR[r.m]}_${r.y}${r.empName ? '_' + r.empName.replace(/\s+/g, '_') : ''}.pdf`;
   doc.save(fname);
   toast('PDF indirildi', 'success');
 }
@@ -7678,11 +7687,7 @@ function exportBordroXML() {
   toast('XML indirildi', 'success');
 }
 
-// Hesaplama türü değişince label güncelle
-(function() {
-  const el = $('eb-calcType');
-  if (el) el.addEventListener('change', _ebUpdateAmountLabel);
-})();
+// change listener, openEBordroModal() içinde _ebHooked guard ile eklenir
 // ===== eBORDRO MODULE END =====
 </script>
 
