@@ -1378,6 +1378,352 @@ body.theme-light .sync-status, body.theme-light-ocean .sync-status{
 }
 
 /* ===== END REDESIGN v3.0 ===== */
+
+/* ================================================================
+   DASHBOARD — Premium Control Panel v3.0
+   ================================================================ */
+
+/* ── Dashboard page head ─────────────────────────────────────── */
+.dash-page-title h1  { font-size:28px; font-weight:900; letter-spacing:-.6px }
+.dash-page-title p   { font-size:13px; color:var(--t3); margin-top:4px }
+.dash-actions        { display:flex; align-items:center; gap:6px; flex-wrap:wrap }
+.dash-card-meta      { font-size:10px; color:var(--t3); font-weight:700 }
+
+/* ── Today Widget ────────────────────────────────────────────── */
+.dash-today{
+  background: linear-gradient(135deg,var(--p2) 0%,#7c3aed 55%,#5b21b6 100%);
+  border-radius:22px; padding:22px 24px; margin-bottom:16px;
+  display:flex; align-items:center; gap:18px;
+  color:#fff; position:relative; overflow:hidden;
+  box-shadow:0 8px 36px rgba(139,92,246,.35),0 0 0 1px rgba(255,255,255,.08);
+  border:none;
+}
+.dash-today::before{
+  content:''; position:absolute;
+  right:-40px; top:-40px; width:180px; height:180px;
+  background:radial-gradient(circle,rgba(255,255,255,.1) 0%,transparent 65%);
+  border-radius:50%;
+}
+.dash-today::after{
+  content:''; position:absolute;
+  bottom:-30px; left:-20px; width:140px; height:100px;
+  background:rgba(255,255,255,.04); border-radius:50%;
+}
+.dash-today .dt-icon{
+  width:58px; height:58px; border-radius:18px;
+  background:rgba(255,255,255,.18);
+  backdrop-filter:blur(8px);
+  display:flex; align-items:center; justify-content:center;
+  font-size:28px; flex-shrink:0;
+  box-shadow:0 4px 18px rgba(0,0,0,.2);
+  border:1px solid rgba(255,255,255,.22);
+}
+.dash-today .dt-info { flex:1; min-width:0 }
+.dash-today .dt-title{ font-size:16px; font-weight:900; letter-spacing:-.2px }
+.dash-today .dt-sub  { font-size:12px; opacity:.75; margin-top:4px; line-height:1.4 }
+.dash-today .dt-badge{
+  padding:7px 16px; border-radius:50px;
+  background:rgba(255,255,255,.18);
+  font-size:12px; font-weight:800; letter-spacing:.2px;
+  white-space:nowrap;
+  border:1px solid rgba(255,255,255,.22); flex-shrink:0;
+}
+body.theme-light .dash-today,
+body.theme-light-ocean .dash-today{ box-shadow:0 8px 32px rgba(139,92,246,.2) }
+
+/* ── Stats Grid ──────────────────────────────────────────────── */
+.stats{ gap:12px; margin-bottom:16px }
+.stat{
+  border-radius:18px; padding:20px;
+  border:1px solid rgba(255,255,255,.07);
+  background:var(--card);
+  transition:all .3s cubic-bezier(.16,1,.3,1);
+  position:relative; overflow:hidden;
+  background-image:linear-gradient(145deg,rgba(255,255,255,.018) 0%,transparent 50%);
+  cursor:default;
+}
+.stat .ribbon{
+  position:absolute; top:0; left:0; right:0; height:3px;
+  background:var(--pg); opacity:1;
+}
+.stat .ico{ width:46px; height:46px; border-radius:14px; font-size:19px; margin-bottom:14px; box-shadow:0 4px 14px var(--glow2) }
+.stat .val{ font-size:34px; font-weight:900; letter-spacing:-1.5px; line-height:1; font-variant-numeric:tabular-nums }
+.stat .lbl{ font-size:9px; margin-top:7px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; color:var(--t3) }
+.stat .change{ font-size:10px; font-weight:700; margin-top:5px }
+.stats .stat:nth-child(1){ border-left:3px solid #8b5cf6 }
+.stats .stat:nth-child(2){ border-left:3px solid #22d3ee }
+.stats .stat:nth-child(3){ border-left:3px solid #34d399 }
+.stats .stat:nth-child(4){ border-left:3px solid #fb923c }
+.stats .stat:nth-child(5){ border-left:3px solid #f472b6 }
+.stats .stat:nth-child(6){ border-left:3px solid #60a5fa }
+.stat:hover{
+  transform:translateY(-5px);
+  box-shadow:0 14px 40px rgba(0,0,0,.3),0 0 30px var(--glow2);
+  border-color:rgba(139,92,246,.22);
+}
+body.theme-light .stat,body.theme-light-ocean .stat{
+  background:var(--card); background-image:none; border-color:rgba(0,0,0,.07);
+}
+body.theme-light .stat:hover,body.theme-light-ocean .stat:hover{
+  box-shadow:var(--sh2); border-color:var(--p); transform:translateY(-3px);
+}
+
+/* ── Mid grid (progress + week summary) ─────────────────────── */
+.dash-mid-grid{
+  display:grid; grid-template-columns:1fr 1fr;
+  gap:12px; margin-bottom:14px;
+}
+@media(max-width:640px){ .dash-mid-grid{ grid-template-columns:1fr } }
+
+/* Progress bar card */
+.dash-progress{
+  background:var(--card);
+  border-radius:18px; padding:18px 20px;
+  margin-bottom:0;
+  border:1px solid rgba(255,255,255,.07);
+  box-shadow:var(--sh1);
+}
+body.theme-light .dash-progress,
+body.theme-light-ocean .dash-progress{ background:var(--card); border-color:rgba(0,0,0,.07) }
+.dash-progress .dp-row{ display:flex; align-items:center; gap:12px; margin-bottom:12px }
+.dash-progress .dp-row:last-of-type{ margin-bottom:0 }
+.dash-progress .dp-label{
+  font-size:10px; font-weight:800; color:var(--t3);
+  min-width:52px; text-transform:uppercase; letter-spacing:.5px;
+}
+.dash-progress .dp-bar{
+  flex:1; height:10px; border-radius:6px;
+  background:rgba(255,255,255,.06); overflow:hidden;
+}
+.dash-progress .dp-fill{ height:100%; border-radius:6px; transition:width .7s cubic-bezier(.16,1,.3,1) }
+.dash-progress .dp-val{
+  font-size:11px; font-weight:800;
+  min-width:42px; text-align:right; font-variant-numeric:tabular-nums;
+}
+
+/* Week summary inside mid-grid */
+#dashWeekSummary .card{
+  margin-bottom:0!important; border-radius:18px!important;
+  border:1px solid rgba(255,255,255,.07)!important;
+}
+body.theme-light #dashWeekSummary .card,
+body.theme-light-ocean #dashWeekSummary .card{
+  border-color:rgba(0,0,0,.07)!important;
+}
+
+/* Goal / progress fill */
+.goal-bar{
+  background:rgba(255,255,255,.06);
+  border-radius:8px; height:24px; overflow:hidden; border:none;
+}
+.goal-fill{
+  height:100%; border-radius:8px;
+  display:flex; align-items:center; padding-left:10px;
+  font-size:10px; font-weight:800; color:#fff;
+  transition:width .8s cubic-bezier(.16,1,.3,1);
+}
+.goal-fill.gf-ok  { background:linear-gradient(90deg,#7c3aed,#8b5cf6) }
+.goal-fill.gf-warn{ background:linear-gradient(90deg,#f59e0b,#fbbf24) }
+.goal-fill.gf-over{ background:linear-gradient(90deg,#ef4444,#f87171) }
+.goal-info{ display:flex; justify-content:space-between; margin-top:5px; font-size:10px; color:var(--t3); font-weight:600 }
+.goal-wrap{ margin-top:0; margin-bottom:14px }
+
+/* ── FM Tracker ──────────────────────────────────────────────── */
+.fm-tracker{
+  background:var(--card);
+  border-radius:18px; padding:18px 20px; margin-bottom:14px;
+  border:1px solid rgba(255,255,255,.07);
+  position:relative; overflow:hidden;
+}
+.fm-tracker::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,#f59e0b,#fb923c,transparent 70%);
+}
+.fm-tracker .fmt-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px }
+.fm-tracker .fmt-title{ font-size:12px; font-weight:800; color:var(--t1); display:flex; align-items:center; gap:7px }
+.fm-tracker .fmt-title i{ color:#f59e0b }
+.fm-tracker .fmt-total{ font-size:22px; font-weight:900; color:#f59e0b; font-variant-numeric:tabular-nums }
+.fm-tracker .fmt-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px }
+.fm-tracker .fmt-item{
+  text-align:center; padding:10px 8px;
+  background:rgba(255,255,255,.04);
+  border-radius:12px; border:1px solid rgba(255,255,255,.05);
+}
+.fm-tracker .fmt-item .fv{ font-size:15px; font-weight:900; font-variant-numeric:tabular-nums }
+.fm-tracker .fmt-item .fl{
+  font-size:9px; color:var(--t3); font-weight:700;
+  text-transform:uppercase; letter-spacing:.5px; margin-top:3px;
+}
+body.theme-light .fm-tracker,body.theme-light-ocean .fm-tracker{ background:var(--card); border-color:rgba(0,0,0,.07) }
+body.theme-light .fm-tracker .fmt-item,
+body.theme-light-ocean .fm-tracker .fmt-item{ background:var(--bg3); border-color:var(--b1) }
+
+/* ── Week Chart ──────────────────────────────────────────────── */
+.week-chart{ display:flex; flex-direction:column; gap:10px }
+.wk-row{ display:flex; align-items:center; gap:10px }
+.wk-row .label{
+  min-width:52px; font-size:10px; font-weight:800;
+  color:var(--t3); text-transform:uppercase; letter-spacing:.4px;
+}
+.wk-row .track{
+  flex:1; height:30px;
+  background:rgba(255,255,255,.05);
+  border-radius:9px; overflow:hidden; position:relative;
+}
+.wk-row .limit-line{ position:absolute; top:0; bottom:0; width:1.5px; background:rgba(248,113,113,.5); z-index:1 }
+.wk-row .fill{
+  height:100%; border-radius:9px;
+  display:flex; align-items:center; padding-left:10px;
+  font-size:10px; font-weight:800; color:#fff;
+  transition:width .8s cubic-bezier(.16,1,.3,1);
+}
+.wk-row .fill.ok{ background:linear-gradient(90deg,#7c3aed,#8b5cf6) }
+.wk-row .fill.ot{ background:linear-gradient(90deg,#f59e0b,#fbbf24) }
+.wk-row .hrs{
+  min-width:54px; text-align:right;
+  font-size:12px; font-weight:900;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px;
+}
+.wk-row .hrs.overtime{ color:#f59e0b }
+
+/* ── Info rows ───────────────────────────────────────────────── */
+.info-list{ display:flex; flex-direction:column; gap:2px }
+.info-row{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:11px 10px; font-size:13px;
+  border-bottom:1px solid rgba(255,255,255,.04);
+  border-radius:10px; transition:background .18s;
+}
+.info-row:last-child{ border:none }
+.info-row:hover{ background:rgba(255,255,255,.04) }
+.info-row .k{
+  color:var(--t2); display:flex; align-items:center; gap:8px;
+  font-size:12px; font-weight:600;
+}
+.info-row .k i{ color:var(--p); font-size:13px }
+.info-row .v{ font-weight:800; font-size:13px; font-variant-numeric:tabular-nums }
+body.theme-light .info-row:hover,
+body.theme-light-ocean .info-row:hover{ background:var(--bg3) }
+
+/* ── Heatmap ─────────────────────────────────────────────────── */
+.heatmap{ display:grid; grid-template-columns:repeat(7,1fr); gap:3px }
+.hm-cell{
+  aspect-ratio:1; border-radius:4px; min-width:0;
+  cursor:default; transition:transform .15s,opacity .15s;
+}
+.hm-cell:hover{ transform:scale(1.2); z-index:2 }
+.hm-cell.hm-0      { background:rgba(255,255,255,.06); opacity:1 }
+.hm-cell.hm-1      { background:var(--p); opacity:.28 }
+.hm-cell.hm-2      { background:var(--p); opacity:.48 }
+.hm-cell.hm-3      { background:var(--p); opacity:.7 }
+.hm-cell.hm-4      { background:var(--p); opacity:.9 }
+.hm-cell.hm-today  { outline:2px solid var(--acc); outline-offset:1px }
+.hm-cell.hm-leave  { background:var(--s); opacity:.55 }
+.hm-cell.hm-holiday{ background:var(--r); opacity:.45 }
+.hm-legend{
+  display:flex; align-items:center; gap:4px;
+  margin-top:6px; font-size:9px; color:var(--t3); justify-content:flex-end;
+}
+.hm-legend span{ width:10px; height:10px; border-radius:2px; display:inline-block }
+
+/* ── ESB (Earn Summary Bar) ──────────────────────────────────── */
+.esb{
+  background:var(--card);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:20px; padding:20px;
+  margin-top:14px; position:relative; overflow:hidden;
+}
+.esb::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,var(--pg),transparent);
+}
+.esb .esb-title{
+  font-size:11px; font-weight:800; color:var(--t3);
+  text-transform:uppercase; letter-spacing:.6px;
+  margin-bottom:14px; display:flex; align-items:center; gap:7px;
+}
+.esb .esb-title i{ color:var(--p) }
+.esb .esb-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr)); gap:10px }
+.esb .esb-item{
+  text-align:center; padding:12px 8px;
+  background:rgba(255,255,255,.04);
+  border-radius:13px; border:1px solid rgba(255,255,255,.05);
+  transition:all .2s;
+}
+.esb .esb-item:hover{ background:rgba(255,255,255,.07) }
+.esb .esb-item .esb-val{ font-size:16px; font-weight:900; margin-bottom:3px; font-variant-numeric:tabular-nums }
+.esb .esb-item .esb-lbl{ font-size:8px; color:var(--t3); text-transform:uppercase; letter-spacing:.4px }
+body.theme-light .esb,body.theme-light-ocean .esb{ background:var(--card); border-color:rgba(0,0,0,.07) }
+body.theme-light .esb .esb-item,body.theme-light-ocean .esb .esb-item{ background:var(--bg3); border-color:var(--b1) }
+
+/* ── DR rows (mini reports) ─────────────────────────────────── */
+.dr-row{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:7px 0; font-size:11px;
+  border-bottom:1px solid rgba(255,255,255,.05);
+}
+.dr-row:last-child{ border:none }
+.dr-row .drk{ color:var(--t2); font-weight:600; display:flex; align-items:center; gap:5px }
+.dr-row .drv{ font-weight:800; color:var(--t1) }
+.dr-row .drv.pos{ color:var(--g) }
+.dr-row .drv.neg{ color:var(--r) }
+.dr-row .drv.accent{ color:var(--acc) }
+
+/* ── Bottom grid (week chart + info summary) ─────────────────── */
+.dash-bottom-grid{
+  display:grid;
+  grid-template-columns:1.4fr 1fr;
+  gap:14px; margin-bottom:0;
+}
+@media(max-width:640px){ .dash-bottom-grid{ grid-template-columns:1fr } }
+.dash-chart-card,.dash-summary-card{
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.07)!important;
+  background:var(--card)!important;
+  background-image:linear-gradient(148deg,rgba(255,255,255,.018) 0%,transparent 45%)!important;
+  overflow-x:auto;
+}
+body.theme-light  .dash-chart-card,body.theme-light  .dash-summary-card,
+body.theme-light-ocean .dash-chart-card,body.theme-light-ocean .dash-summary-card{
+  background:var(--card)!important; background-image:none!important;
+  border-color:rgba(0,0,0,.07)!important;
+}
+
+/* ── AI Summary card ─────────────────────────────────────────── */
+.ai-sum-card{
+  background:var(--card);
+  border-radius:18px; padding:16px; margin-bottom:14px;
+  border:1px solid rgba(255,255,255,.07);
+  position:relative; overflow:hidden;
+}
+.ai-sum-card::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,#f59e0b,#8b5cf6,transparent);
+}
+.ai-sum-card .ais-head{
+  font-size:11px; font-weight:800; color:var(--t1);
+  display:flex; align-items:center; gap:6px; margin-bottom:8px;
+  text-transform:uppercase; letter-spacing:.3px;
+}
+.ai-sum-card .ais-item{
+  display:flex; align-items:flex-start; gap:7px;
+  padding:6px 0; border-top:1px solid rgba(255,255,255,.05);
+  font-size:12px; color:var(--t2); line-height:1.5;
+}
+.ai-sum-card .ais-item:first-of-type{ border-top:none; padding-top:0 }
+body.theme-light .ai-sum-card,body.theme-light-ocean .ai-sum-card{ background:var(--card); border-color:rgba(0,0,0,.07) }
+
+/* ── Dashboard cards override ────────────────────────────────── */
+#pg-dashboard .card{
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.07);
+}
+body.theme-light #pg-dashboard .card,
+body.theme-light-ocean #pg-dashboard .card{ border-color:rgba(0,0,0,.07) }
+#pg-dashboard .card-head h3{ font-size:13px; font-weight:800; letter-spacing:-.1px }
+
+/* ===== END DASHBOARD REDESIGN ===== */
 </style>
 </head>
 <body>
@@ -1732,35 +2078,52 @@ body.theme-light .sync-status, body.theme-light-ocean .sync-status{
 
     <!-- DASHBOARD -->
     <div class="page active" id="pg-dashboard">
-      <div class="page-head">
-        <div><h1>Kontrol Paneli</h1><p id="dashSub"></p></div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><div id="dashStreak"></div><button class="btn btn-soft btn-sm" onclick="openCalc()" title="Mesai Hesap Makinesi"><i class="fas fa-calculator"></i></button><button class="btn btn-soft btn-sm" onclick="openEmployer()" title="İşveren Modu"><i class="fas fa-users"></i></button><button class="btn btn-outline btn-sm" onclick="shareMonthReport()" title="Rapor Paylaş"><i class="fas fa-share-alt"></i></button></div>
+      <div class="page-head dash-page-head">
+        <div class="dash-page-title">
+          <h1>Kontrol Paneli</h1>
+          <p id="dashSub"></p>
+        </div>
+        <div class="dash-actions">
+          <div id="dashStreak"></div>
+          <button class="btn btn-soft btn-sm" onclick="openCalc()" title="Mesai Hesap Makinesi"><i class="fas fa-calculator"></i></button>
+          <button class="btn btn-soft btn-sm" onclick="openEmployer()" title="İşveren Modu"><i class="fas fa-users"></i></button>
+          <button class="btn btn-outline btn-sm" onclick="shareMonthReport()" title="Rapor Paylaş"><i class="fas fa-share-alt"></i></button>
+        </div>
       </div>
+
       <div id="dashTodayWidget"></div>
       <div class="stats" id="statsEl"></div>
-      <div id="dashProgressBar"></div>
-      <div id="dashWeekSummary"></div>
+
+      <div class="dash-mid-grid">
+        <div id="dashProgressBar"></div>
+        <div id="dashWeekSummary"></div>
+      </div>
+
       <div id="dashFMTracker"></div>
-      <!-- [FIX] FM İzin Bakiyesi kartı -->
       <div id="dashOTComp"></div>
-      <!-- [FIX] AI Rapor Özeti kartı -->
       <div id="dashAISummary"></div>
-      <!-- Yıllık Kümülatif Kazanç widget -->
       <div id="dashYearlyCumul"></div>
       <div id="dashGoal" class="goal-wrap"></div>
       <div class="year-overview-wrap" id="yearOverviewWrap"></div>
       <div id="dashLast7Days"></div>
-      <div class="grid-2">
-        <div class="card">
-          <div class="card-head"><h3><i class="fas fa-chart-bar"></i>Haftalık Saatler</h3><span style="font-size:10px;color:var(--t3)">Limit: 45s</span></div>
+
+      <div class="dash-bottom-grid">
+        <div class="card dash-chart-card">
+          <div class="card-head">
+            <h3><i class="fas fa-chart-bar"></i>Haftalık Saatler</h3>
+            <span class="dash-card-meta">Limit: 45s</span>
+          </div>
           <div class="week-chart" id="weekChart"></div>
         </div>
-        <div class="card">
-          <div class="card-head"><h3><i class="fas fa-info-circle"></i>Özet</h3></div>
+        <div class="card dash-summary-card">
+          <div class="card-head">
+            <h3><i class="fas fa-layer-group"></i>Özet</h3>
+          </div>
           <div class="info-list" id="dashInfo"></div>
           <div id="dashHeatmap" style="margin-top:14px"></div>
         </div>
       </div>
+
       <div id="dashEarnSummary"></div>
       <div id="dashReports"></div>
     </div>
