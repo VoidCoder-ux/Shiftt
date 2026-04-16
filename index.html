@@ -7502,14 +7502,30 @@ function renderBordroPreview() {
 
   if (!amount || amount <= 0) { toast('Geçerli bir tutar girin', 'error'); return; }
 
-  let gross;
+  // 1) Taban brüt maaş (yalnızca sabit maaş, ekler hariç)
+  let baseGross;
   if (calcType === 'net2gross') {
-    gross = findGrossFromNet(amount, marital, children, priorYTD);
+    baseGross = findGrossFromNet(amount, marital, children, priorYTD);
   } else {
-    gross = amount;
+    baseGross = amount;
   }
 
-  const res = computeNetFromGross(gross, marital, children, priorYTD);
+  // 2) O aya ait gerçek çalışma verisi (fazla mesai + tatil çalışması)
+  const u = cu();
+  const d = getMD(y, m);
+  const mh = (u && u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : (MH || 195);
+  const compRate = parseFloat((u && u.otCompRate) || 1.5);
+  const compMode = (u && u.otCompMode) || 'pay';
+  const hrGross  = baseGross / mh;   // brüt saatlik ücret
+  const drGross  = baseGross / 30;   // brüt günlük ücret
+  // FM brüt eki: sadece "pay" modunda ödenir (izin modunda bordro etkisi yok)
+  const otGross  = compMode === 'pay' ? d.oh * hrGross * compRate : 0;
+  // Tatil çalışması ilave ücreti — Md.47: ilave 1 günlük ücret per gün (brüt)
+  const holGross = d.hdw * drGross;
+  const totalGross = baseGross + otGross + holGross;
+
+  // 3) Toplam brüt üzerinden vergi/kesinti hesabı
+  const res = computeNetFromGross(totalGross, marital, children, priorYTD);
 
   // Vergiden muaf yan haklar
   const mealTotal      = mealDays * payrollConfig.mealDailyTaxFree;
@@ -7519,12 +7535,16 @@ function renderBordroPreview() {
   // Sonucu oturuma kaydet (PDF/JSON/XML için)
   _eBordroSession.result = {
     ...res, mealTotal, transportTotal, finalNet, marital, children, priorYTD, y, m,
+    baseGross, otGross, holGross, totalGross,
+    otHours: d.oh, holDays: d.hdw, hrGross, drGross, compRate,
     empName:  ($('eb-empName')  || {}).value || '',
     company:  ($('eb-company')  || {}).value || '',
     tcNo:     ($('eb-tcNo')     || {}).value || '',
   };
 
   const fmb = v => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
+  const fmr = v => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const hasExtras = otGross > 0 || holGross > 0;
 
   const previewEl = $('bordroPreview');
   if (!previewEl) return;
@@ -7532,7 +7552,10 @@ function renderBordroPreview() {
     <div class="bordro-preview-title">
       <i class="fas fa-file-invoice"></i> BORDRO ÖNİZLEME — ${MTR[m].toUpperCase()} ${y}
     </div>
-    <div class="bordro-row"><span class="bl">BRÜT MAAŞ</span><span class="bv">${fmb(res.gross)}</span></div>
+    <div class="bordro-row"><span class="bl">Temel Brüt Maaş</span><span class="bv">${fmb(baseGross)}</span></div>
+    ${otGross > 0 ? `<div class="bordro-row add"><span class="bl">FM Ücreti (${d.oh.toFixed(1)}s × ${fmr(hrGross)}₺ × ${compRate})</span><span class="bv">+ ${fmb(otGross)}</span></div>` : ''}
+    ${holGross > 0 ? `<div class="bordro-row add"><span class="bl">Tatil Çalışması İlavesi — ${d.hdw}g × ${fmr(drGross)}₺ (Md.47)</span><span class="bv">+ ${fmb(holGross)}</span></div>` : ''}
+    ${hasExtras ? `<div class="bordro-row sub"><span class="bl">TOPLAM BRÜT</span><span class="bv">${fmb(totalGross)}</span></div>` : ''}
     <div class="bordro-row deduct"><span class="bl">SGK İşçi Payı (%14)</span><span class="bv">− ${fmb(res.sgkDeduction)}</span></div>
     <div class="bordro-row deduct"><span class="bl">İşsizlik Sigortası (%1)</span><span class="bv">− ${fmb(res.unemployDeduct)}</span></div>
     <div class="bordro-row sub"><span class="bl">GV Matrahı</span><span class="bv">${fmb(res.gvMatrah)}</span></div>
@@ -7587,7 +7610,12 @@ function downloadBordroPDF() {
 
   // Bordro tablosu
   const rows = [
-    ['BRUT MAAS',              fmb(r.gross),           ''],
+    ['TEMEL BRUT MAAS', fmb(r.baseGross || r.gross), ''],
+  ];
+  if (r.otGross > 0)  rows.push([`FM Ucreti (${(r.otHours||0).toFixed(1)}s x ${(r.hrGross||0).toFixed(2)} x ${r.compRate||1.5})`, fmb(r.otGross), '']);
+  if (r.holGross > 0) rows.push([`Tatil Cal. Ilavesi (${r.holDays||0}g x ${(r.drGross||0).toFixed(2)}) Md.47`, fmb(r.holGross), '']);
+  if (r.otGross > 0 || r.holGross > 0) rows.push(['TOPLAM BRUT', fmb(r.gross), '']);
+  rows.push(
     ['SGK Isci Payi (%14)',    '',                     fmb(r.sgkDeduction)],
     ['Issizlik Sigortasi (%1)','',                     fmb(r.unemployDeduct)],
     ['GV Matrahi',             fmb(r.gvMatrah),        ''],
@@ -7595,7 +7623,7 @@ function downloadBordroPDF() {
     ['AGI Indirimi',           fmb(r.agiMonthly),      ''],
     ['Net Gelir Vergisi',      '',                     fmb(r.netGV)],
     ['Damga Vergisi (%0.759)', '',                     fmb(r.stampTax)],
-  ];
+  );
   if (r.mealTotal > 0)      rows.push(['Yemek Yardimi',     fmb(r.mealTotal),      '']);
   if (r.transportTotal > 0) rows.push(['Yol Yardimi',       fmb(r.transportTotal), '']);
   rows.push(['NET MAAS',         fmb(r.finalNet),       '']);
@@ -7647,9 +7675,14 @@ function exportBordroJSON() {
     },
     period: { year: r.y, month: r.m + 1, monthName: MTR[r.m] },
     earnings: {
-      grossSalary:        +r.gross.toFixed(2),
+      baseGross:          +(r.baseGross || r.gross).toFixed(2),
+      overtimePay:        +(r.otGross   || 0).toFixed(2),
+      holidayWorkPay:     +(r.holGross  || 0).toFixed(2),
+      totalGross:         +r.gross.toFixed(2),
       mealAllowance:      +r.mealTotal.toFixed(2),
       transportAllowance: +r.transportTotal.toFixed(2),
+      otHours:            +(r.otHours   || 0).toFixed(2),
+      holDays:            r.holDays    || 0,
     },
     deductions: {
       sgkEmployee:   +r.sgkDeduction.toFixed(2),
@@ -7694,7 +7727,10 @@ function exportBordroXML() {
     <CocukSayisi>${r.children}</CocukSayisi>
   </Calisan>
   <Kazanclar>
-    <BrutMaas>${fv(r.gross)}</BrutMaas>
+    <TemelBrutMaas>${fv(r.baseGross || r.gross)}</TemelBrutMaas>
+    <FazlaMesaiUcreti saat="${(r.otHours||0).toFixed(2)}">${fv(r.otGross||0)}</FazlaMesaiUcreti>
+    <TatilCalismasiIlavesi gun="${r.holDays||0}" kanun="Md.47">${fv(r.holGross||0)}</TatilCalismasiIlavesi>
+    <ToplamBrut>${fv(r.gross)}</ToplamBrut>
     <YemekYardimi>${fv(r.mealTotal)}</YemekYardimi>
     <YolYardimi>${fv(r.transportTotal)}</YolYardimi>
   </Kazanclar>
