@@ -24,11 +24,28 @@ self.addEventListener('activate', e => {
   );
 });
 
+// [FIX ERR-HANDLE-13] Navigate fetch'i 8s timeout'a bağla — yavaş ağda cache fallback'a düş
+const NAV_TIMEOUT_MS = 8000;
+function fetchWithTimeout(req, ms) {
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const signal = ctrl ? ctrl.signal : undefined;
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => {
+      if (ctrl) { try { ctrl.abort(); } catch(_) {} }
+      reject(new Error('timeout'));
+    }, ms);
+    fetch(req, { signal }).then(
+      res => { clearTimeout(t); resolve(res); },
+      err => { clearTimeout(t); reject(err); }
+    );
+  });
+}
+
 self.addEventListener('fetch', e => {
   // Network-first for HTML pages, cache-first for assets
   if (e.request.mode === 'navigate' || e.request.url.endsWith('.html')) {
     e.respondWith(
-      fetch(e.request).then(res => {
+      fetchWithTimeout(e.request, NAV_TIMEOUT_MS).then(res => {
         if (res.status === 200) {
           const clone = res.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));

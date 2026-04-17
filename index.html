@@ -3557,6 +3557,20 @@ function $(id) { return document.getElementById(id); }
 function setHtml(id, h) { const e = $(id); if (e) e.innerHTML = h; }
 function setTxt(id, t) { const e = $(id); if (e) e.textContent = t; }
 
+/* [FIX ERR-HANDLE-01] Ortak hata-güvenli parse & sayı yardımcıları */
+function safeParse(s, fallback) {
+  try { const v = JSON.parse(s); return (v === null || v === undefined) ? fallback : v; }
+  catch { return fallback; }
+}
+function safeNum(v, fallback = 0) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+function safeInt(v, fallback = 0) {
+  const n = typeof v === 'number' ? Math.trunc(v) : parseInt(v, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function parseDS(ds) {
   if (!ds || typeof ds !== 'string') return null;
   const p = ds.split('-');
@@ -3571,7 +3585,10 @@ function parseDS(ds) {
 function dsToDate(ds) {
   const p = parseDS(ds);
   if (!p) return new Date();
-  return new Date(p.y, p.m, p.d);
+  /* [FIX ERR-HANDLE-02] Date constructor month overflow koruması (ör. 31 Nisan → 1 Mayıs) */
+  const d = new Date(p.y, p.m, p.d);
+  if (d.getFullYear() !== p.y || d.getMonth() !== p.m || d.getDate() !== p.d) return new Date();
+  return d;
 }
 
 function dStr(d) {
@@ -3884,11 +3901,14 @@ function getPrevMD() {
    EARNING CALCULATION
 ============================================================ */
 function calcEarningForMonth(y, m, ns) {
-  if (!ns || ns <= 0) return null;
+  /* [FIX ERR-HANDLE-08] NaN/Infinity ns input'u red et */
+  ns = safeNum(ns, 0);
+  if (!ns || ns <= 0 || !Number.isFinite(ns)) return null;
   const u = cu(); if (!u) return null;
   const d = getMD(y, m);
   /* [FIX BUG-02] Saatlik ücret hesabında kullanıcının monthlyHours'unu kullan */
-  const _mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : (MH || 225);
+  const _mhRaw = safeNum(u.monthlyHours, 0);
+  const _mh = (_mhRaw > 0) ? _mhRaw : (safeNum(MH, 0) > 0 ? MH : 225);
   const dim = d.dim, dr = ns / 30, hr = _mh > 0 ? ns / _mh : 0;
   const today = new Date();
   const tY = today.getFullYear(), tM = today.getMonth(), tD = today.getDate();
@@ -3920,9 +3940,11 @@ function calcEarningForMonth(y, m, ns) {
   const hp = d.hdw * dr;
   /* [FIX] otCompMode: 'leave' modunda FM eki ödenmez, saatler bakiyeye eklenir */
   const compMode = u.otCompMode || 'pay';
-  const compRate = parseFloat(u.otCompRate) || 1.5;
+  const compRate = safeNum(u.otCompRate, 1.5);
   const op = compMode === 'leave' ? 0 : d.oh * hr * compRate;
-  const te = Math.max(0, bp + op + hp);
+  /* [FIX ERR-HANDLE-08] NaN propagation engellendi — bozuk md sonuçları 0'a sabitlenir */
+  const teRaw = bp + op + hp;
+  const te = Number.isFinite(teRaw) ? Math.max(0, teRaw) : 0;
 
   return {
     dailyRate: dr, hourlyRate: hr,
@@ -5053,7 +5075,9 @@ function updResult() {
 
   const u = cu(); const ep = $('mEarningPreview'); if (!ep) return;
   if (u && u.netSalary > 0 && net > 0) {
-    const _mh2 = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : (MH || 225);
+    /* [FIX ERR-HANDLE-09] NaN/Infinity guard: bozuk monthlyHours veya MH'de 225'e düş */
+    const _mhRaw = safeNum(u.monthlyHours, 0);
+    const _mh2 = (_mhRaw > 0) ? _mhRaw : (safeNum(MH, 0) > 0 ? MH : 225);
     const hr = u.netSalary / _mh2;
     const isHol2 = isH(S.sd);
     /* [FIX L-05] Yalnızca bu vardiyaya atfedilen FM eki gösterilmeli.
@@ -5065,7 +5089,7 @@ function updResult() {
     let earn = 0;
     if (isHol2) earn += u.netSalary / 30;  // Md.47: ilave 1 günlük ücret
     if (shiftOT > 0) earn += shiftOT * hr * 1.5;
-    ep.textContent = earn > 0 ? `💰 Tahmini ek: ~${fm(earn)}` : '';
+    ep.textContent = (Number.isFinite(earn) && earn > 0) ? `💰 Tahmini ek: ~${fm(earn)}` : '';
   } else { ep.textContent = ''; }
 }
 
@@ -5249,7 +5273,9 @@ function renderStats() {
     earnBars += `<text x="${x+barW/2}" y="${yy-6}" text-anchor="middle" class="trend-val" font-size="10">${d.earning > 0 ? fm(d.earning) : ''}</text>`;
   });
   if (pts2.length > 1) earnLine2 = `<polyline points="${pts2.join(' ')}" class="trend-line" stroke="var(--g)" opacity=".6"/>`;
-  const lastM = data[data.length-1], prevM = data.length > 1 ? data[data.length-2] : null;
+  /* [FIX ERR-HANDLE-14] data boş değilse 5217'deki erken dönüş girer; yine de savunmacı ol */
+  const lastM = data.length ? data[data.length-1] : { hours: 0, earning: 0 };
+  const prevM = data.length > 1 ? data[data.length-2] : null;
   const hDiff = prevM && prevM.hours > 0 ? ((lastM.hours - prevM.hours) / prevM.hours * 100) : 0;
   const eDiff = prevM && prevM.earning > 0 ? ((lastM.earning - prevM.earning) / prevM.earning * 100) : 0;
   const avgYLine = avgH > 0 && maxH > 0 ? `<line x1="${pad}" y1="${pad+(H-pad*2)*(1-avgH/maxH)}" x2="${W-20}" y2="${pad+(H-pad*2)*(1-avgH/maxH)}" stroke="var(--acc)" stroke-width="1" stroke-dasharray="6 3" opacity=".5"/><text x="${W-18}" y="${pad+(H-pad*2)*(1-avgH/maxH)-4}" class="trend-label" font-size="9" fill="var(--acc)">ort</text>` : '';
@@ -6149,10 +6175,15 @@ function saveLS() {
           localStorage.setItem('st_data', d3);
           toast('Depolama kritik doldu, silme geçmişi temizlendi. Yedek alın!', 'warning');
         } catch(e3) {
+          console.error('saveLS quota fatal:', e3);
           toast('Depolama dolu! Veri kaydedilemedi. Yedek alın.', 'error');
         }
       }
-    } else toast('Kayıt hatası!', 'error');
+    } else {
+      /* [FIX ERR-HANDLE-06] SecurityError (private mode), JSON.stringify circular vb. kalan hataları logla */
+      console.error('saveLS error:', e);
+      toast('Kayıt hatası!', 'error');
+    }
   }
 }
 
@@ -6160,14 +6191,18 @@ function loadLS() {
   try {
     const s = localStorage.getItem('st_data');
     if (!s) return;
-    const p = JSON.parse(s);
-    if (!p || !p.users) return;
-    if (p.nextUid) S.nextUid = p.nextUid;
+    /* [FIX ERR-HANDLE-03] safeParse ile JSON dışı içerik ya da null'da erken dönüş */
+    const p = safeParse(s, null);
+    if (!p || typeof p !== 'object' || !p.users || typeof p.users !== 'object') return;
+    if (p.nextUid) S.nextUid = safeInt(p.nextUid, S.nextUid);
     S.u = {};
     Object.keys(p.users).forEach(k => {
       const i = parseInt(k);
-      if (!p.users[k]) return;
-      S.u[i] = Object.assign(mkUser(i), p.users[k]);
+      if (!Number.isFinite(i)) return;
+      const raw = p.users[k];
+      /* [FIX ERR-HANDLE-03] Bozuk / non-object user kaydını atla */
+      if (!raw || typeof raw !== 'object') return;
+      S.u[i] = Object.assign(mkUser(i), raw);
       if (typeof S.u[i].shifts !== 'object' || !S.u[i].shifts) S.u[i].shifts = {};
       if (typeof S.u[i].leaves !== 'object' || !S.u[i].leaves) S.u[i].leaves = {};
       if (typeof S.u[i].deletedShifts !== 'object' || !S.u[i].deletedShifts) S.u[i].deletedShifts = {};
@@ -6175,14 +6210,18 @@ function loadLS() {
       if (typeof S.u[i].deletedDocs !== 'object' || !S.u[i].deletedDocs) S.u[i].deletedDocs = {};
       if (!Array.isArray(S.u[i].customPresets)) S.u[i].customPresets = [];
       if (!Array.isArray(S.u[i].documents)) S.u[i].documents = [];
-      S.u[i].netSalary = parseFloat(S.u[i].netSalary) || 0;
-      S.u[i].annualLeave = parseInt(S.u[i].annualLeave) || 14;
+      /* [FIX ERR-HANDLE-03] safeNum/safeInt ile NaN/Infinity propagation engellendi */
+      S.u[i].netSalary = safeNum(S.u[i].netSalary, 0);
+      S.u[i].annualLeave = safeInt(S.u[i].annualLeave, 14);
       if (typeof S.u[i].notes !== 'string') S.u[i].notes = '';
-      S.u[i].goalHours = parseFloat(S.u[i].goalHours) || 0;
-      S.u[i].goalEarning = parseFloat(S.u[i].goalEarning) || 0;
-      const bs = Object.keys(S.u[i].shifts).filter(k2 => !parseDS(k2) || !S.u[i].shifts[k2] || !S.u[i].shifts[k2].start);
+      S.u[i].goalHours = safeNum(S.u[i].goalHours, 0);
+      S.u[i].goalEarning = safeNum(S.u[i].goalEarning, 0);
+      if (S.u[i].monthlyHours !== undefined && S.u[i].monthlyHours !== null) {
+        S.u[i].monthlyHours = safeNum(S.u[i].monthlyHours, 0);
+      }
+      const bs = Object.keys(S.u[i].shifts).filter(k2 => !parseDS(k2) || !S.u[i].shifts[k2] || typeof S.u[i].shifts[k2] !== 'object' || !S.u[i].shifts[k2].start);
       bs.forEach(k2 => delete S.u[i].shifts[k2]);
-      const bl = Object.keys(S.u[i].leaves).filter(k2 => !parseDS(k2) || !S.u[i].leaves[k2] || !S.u[i].leaves[k2].type);
+      const bl = Object.keys(S.u[i].leaves).filter(k2 => !parseDS(k2) || !S.u[i].leaves[k2] || typeof S.u[i].leaves[k2] !== 'object' || !S.u[i].leaves[k2].type);
       bl.forEach(k2 => delete S.u[i].leaves[k2]);
       /* [FIX BUG-04] Eski format düz metin PIN migration: hash uzunluğu 64 hex char */
       if (S.u[i].pin && S.u[i].pin.length !== 64) { S.u[i].pin = null; }
@@ -6190,22 +6229,30 @@ function loadLS() {
     if (Object.keys(S.u).length === 0) { S.u = { 1: mkUser(1), 2: mkUser(2) }; }
   } catch(e) {
     console.error('loadLS error:', e);
-    toast('Veri yükleme hatası', 'error');
+    toast('Veri yükleme hatası, varsayılan profil yüklendi', 'error');
+    /* [FIX ERR-HANDLE-04] Corrupt state'te kalmak yerine kullanılabilir fallback kur */
+    try { S.u = { 1: mkUser(1), 2: mkUser(2) }; S.nextUid = 3; } catch(_) {}
   }
 }
 
 function exportD() {
+  let url = null;
   try {
     const d = { users:S.u, exportDate:new Date().toISOString(), version:DATA_VERSION };
     const b = new Blob([JSON.stringify(d, null, 2)], { type:'application/json' });
-    const url = URL.createObjectURL(b);
+    url = URL.createObjectURL(b);
     const a = document.createElement('a');
     a.href = url;
     a.download = `shifttrack_${dStr(new Date())}.json`;
     a.click();
-    URL.revokeObjectURL(url);
     toast('Yedek indirildi', 'success');
-  } catch(e) { toast('İndirme hatası', 'error'); }
+  } catch(e) {
+    console.error('exportD error:', e);
+    toast('İndirme hatası', 'error');
+  } finally {
+    /* [FIX ERR-HANDLE-12] Revoke'ı finally ile garantile */
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 }
 
 function importD(e) {
@@ -6213,30 +6260,50 @@ function importD(e) {
   const r = new FileReader();
   r.onload = function(ev) {
     try {
-      const p = JSON.parse(ev.target.result);
-      if (!p || !p.users) { toast('Geçersiz format', 'error'); return; }
-      if (p.nextUid) S.nextUid = p.nextUid;
+      /* [FIX ERR-HANDLE-05] safeParse + yapı ve alan-bazlı sıkı doğrulama */
+      const p = safeParse(ev.target.result, null);
+      if (!p || typeof p !== 'object' || !p.users || typeof p.users !== 'object') {
+        toast('Geçersiz format', 'error'); return;
+      }
+      if (p.nextUid) S.nextUid = safeInt(p.nextUid, S.nextUid);
       Object.keys(p.users).forEach(k => {
         const i = parseInt(k);
-        if (!p.users[k]) return;
-        S.u[i] = Object.assign(mkUser(i), p.users[k]);
-        if (typeof S.u[i].shifts !== 'object') S.u[i].shifts = {};
-        if (typeof S.u[i].leaves !== 'object') S.u[i].leaves = {};
+        if (!Number.isFinite(i)) return;
+        const raw = p.users[k];
+        if (!raw || typeof raw !== 'object') return;
+        S.u[i] = Object.assign(mkUser(i), raw);
+        if (typeof S.u[i].shifts !== 'object' || !S.u[i].shifts) S.u[i].shifts = {};
+        if (typeof S.u[i].leaves !== 'object' || !S.u[i].leaves) S.u[i].leaves = {};
         if (typeof S.u[i].deletedShifts !== 'object' || !S.u[i].deletedShifts) S.u[i].deletedShifts = {};
         if (typeof S.u[i].deletedLeaves !== 'object' || !S.u[i].deletedLeaves) S.u[i].deletedLeaves = {};
         if (typeof S.u[i].deletedDocs !== 'object' || !S.u[i].deletedDocs) S.u[i].deletedDocs = {};
         if (!Array.isArray(S.u[i].customPresets)) S.u[i].customPresets = [];
         if (!Array.isArray(S.u[i].documents)) S.u[i].documents = [];
-        S.u[i].netSalary = parseFloat(S.u[i].netSalary) || 0;
+        S.u[i].netSalary = safeNum(S.u[i].netSalary, 0);
+        S.u[i].annualLeave = safeInt(S.u[i].annualLeave, 14);
+        S.u[i].goalHours = safeNum(S.u[i].goalHours, 0);
+        S.u[i].goalEarning = safeNum(S.u[i].goalEarning, 0);
+        if (S.u[i].monthlyHours !== undefined && S.u[i].monthlyHours !== null) {
+          S.u[i].monthlyHours = safeNum(S.u[i].monthlyHours, 0);
+        }
         S.u[i].notes = typeof S.u[i].notes === 'string' ? S.u[i].notes : '';
+        /* [FIX ERR-HANDLE-05] Import edilen bozuk shift/leave kayıtlarını temizle (loadLS ile aynı politika) */
+        const bs = Object.keys(S.u[i].shifts).filter(k2 => !parseDS(k2) || !S.u[i].shifts[k2] || typeof S.u[i].shifts[k2] !== 'object' || !S.u[i].shifts[k2].start);
+        bs.forEach(k2 => delete S.u[i].shifts[k2]);
+        const bl = Object.keys(S.u[i].leaves).filter(k2 => !parseDS(k2) || !S.u[i].leaves[k2] || typeof S.u[i].leaves[k2] !== 'object' || !S.u[i].leaves[k2].type);
+        bl.forEach(k2 => delete S.u[i].leaves[k2]);
       });
       invalidateMDCache();
       saveLS();
       if (cu()) applyTheme(cu().theme || 'default');
       renderAll(); updTop();
       toast('Yedek yüklendi!', 'success');
-    } catch(err) { toast('Geçersiz dosya', 'error'); }
+    } catch(err) {
+      console.error('importD error:', err);
+      toast('Geçersiz dosya', 'error');
+    }
   };
+  r.onerror = function() { toast('Dosya okunamadı', 'error'); };
   r.readAsText(f);
   e.target.value = '';
 }
@@ -6289,6 +6356,12 @@ function renderDataUsage() {
 ============================================================ */
 function exportCSV() {
   const u = cu(); if (!u) return;
+  /* [FIX ERR-HANDLE-11] Tüm alanları quote + newline kaçışı ile sar; virgül ve CR/LF güvenli */
+  const csvEsc = v => {
+    const s = (v === null || v === undefined) ? '' : String(v);
+    return '"' + s.replace(/"/g, '""').replace(/\r?\n/g, ' ') + '"';
+  };
+  let url = null;
   try {
     let csv = 'Tarih,Gün,Tür,Giriş,Çıkış,Mola(dk),Net Saat,Brüt Saat,Not\n';
     const allDates = new Set([...Object.keys(u.shifts), ...Object.keys(u.leaves)]);
@@ -6301,24 +6374,27 @@ function exportCSV() {
       if (sh && sh.start && sh.end) {
         const net = calcHr(sh.start, sh.end, sh.break || 0);
         const gross = grossHr(sh.start, sh.end);
-        const note = (sh.note || '').replace(/"/g, '""');
-        csv += `${ds},${dayName},Vardiya,${sh.start},${sh.end},${sh.break||0},${net.toFixed(1)},${gross.toFixed(1)},"${note}"\n`;
+        csv += [csvEsc(ds), csvEsc(dayName), csvEsc('Vardiya'), csvEsc(sh.start), csvEsc(sh.end), csvEsc(sh.break||0), csvEsc(net.toFixed(1)), csvEsc(gross.toFixed(1)), csvEsc(sh.note||'')].join(',') + '\n';
       } else if (lv && lv.type) {
         const tl = {annual:'Yıllık İzin',weekly:'Hafta Tatili',public_holiday:'Resmi Tatil',sick:'Rapor',unpaid:'Ücretsiz'};
-        const note = (lv.note || '').replace(/"/g, '""');
-        csv += `${ds},${dayName},${tl[lv.type]||lv.type},,,,,"${note}"\n`;
+        csv += [csvEsc(ds), csvEsc(dayName), csvEsc(tl[lv.type]||lv.type), '', '', '', '', '', csvEsc(lv.note||'')].join(',') + '\n';
       }
     });
     const bom = '\uFEFF';
     const b = new Blob([bom + csv], { type:'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(b);
+    url = URL.createObjectURL(b);
     const a = document.createElement('a');
     a.href = url;
     a.download = `shifttrack_${dStr(new Date())}.csv`;
     a.click();
-    URL.revokeObjectURL(url);
     toast('CSV indirildi', 'success');
-  } catch(e) { toast('CSV hatası', 'error'); }
+  } catch(e) {
+    console.error('exportCSV error:', e);
+    toast('CSV hatası', 'error');
+  } finally {
+    /* [FIX ERR-HANDLE-12] Revoke'ı finally ile garantile; bazı tarayıcılar anında revoke'da indirmeyi iptal ediyor */
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 }
 
 /* ============================================================
@@ -7278,9 +7354,14 @@ function initDragDrop() {
     e.preventDefault();
     document.querySelectorAll('.drag-over').forEach(c => c.classList.remove('drag-over'));
     if (!dragData) return;
+    /* [FIX ERR-HANDLE-07] Sürüklenen vardiyanın bütünlüğünü drop anında yeniden doğrula */
+    if (!dragData.shift || typeof dragData.shift !== 'object' || !dragData.shift.start || !dragData.shift.end) {
+      dragData = null; return;
+    }
     const cell = e.target.closest('.cal-cell');
     if (!cell || cell.classList.contains('out')) return;
     const targetDs = cell.dataset.date; if (!targetDs || targetDs === dragData.date) return;
+    if (!parseDS(targetDs)) { dragData = null; return; }
     const u = cu(); if (!u) return;
     pushUndo('Sürükle bırak');
     u.shifts[targetDs] = JSON.parse(JSON.stringify(dragData.shift));
@@ -7358,20 +7439,29 @@ function importFromQR() {
   if (!raw) { toast('Veri girin', 'error'); return; }
   try {
     const decoded = decodeURIComponent(atob(raw));
-    const p = JSON.parse(decoded);
-    if (!p || !p.users) { toast('Geçersiz veri', 'error'); return; }
+    /* [FIX ERR-HANDLE-17] safeParse ile JSON dışı içeriği ve null'u kırılmadan ele al */
+    const p = safeParse(decoded, null);
+    if (!p || typeof p !== 'object' || !p.users || typeof p.users !== 'object') {
+      toast('Geçersiz veri', 'error'); return;
+    }
     showConfirm('Veri İçe Aktar', 'Mevcut veriler üzerine yazılacak. Devam?', () => {
-      if (p.nextUid) S.nextUid = p.nextUid;
+      if (p.nextUid) S.nextUid = safeInt(p.nextUid, S.nextUid);
       Object.keys(p.users).forEach(k => {
         const i = parseInt(k);
-        S.u[i] = Object.assign(mkUser(i), p.users[k]);
+        if (!Number.isFinite(i)) return;
+        const raw = p.users[k];
+        if (!raw || typeof raw !== 'object') return;
+        S.u[i] = Object.assign(mkUser(i), raw);
       });
       invalidateMDCache(); saveLS();
       if (cu()) { applyTheme(cu().theme || 'default'); renderAll(); updTop(); }
       closeQR();
       toast('Veriler içe aktarıldı!', 'success');
     });
-  } catch(e) { toast('Geçersiz format', 'error'); }
+  } catch(e) {
+    console.error('importFromQR error:', e);
+    toast('Geçersiz format', 'error');
+  }
 }
 
 /* ============================================================
@@ -7678,6 +7768,15 @@ let syncInProgress = false, lastSyncTime = 0;
 let skipNextPush = false; // cloud'dan gelen veriyi geri push etmeyi engeller
 const SYNC_DEBOUNCE = 3000; // 3 saniye debounce
 const SYNC_TIMEOUT = 15000; // 15 saniye timeout
+
+/* [FIX ERR-HANDLE-10] Bulut hata toast'ları oturumda bir kez gösterilir */
+let _cloudFailNotified = false;
+function notifyCloudFail(label, err) {
+  console.warn('[Cloud]', label, err);
+  if (_cloudFailNotified) return;
+  _cloudFailNotified = true;
+  toast('Bulut senkronizasyonu başarısız, lokal kayıt korundu', 'warning');
+}
 
 function initFirebase() {
   try {
@@ -8611,7 +8710,7 @@ function deleteDocument(docId) {
     if (fbDb && fbUser) {
       fbDb.collection('userData').doc(fbUser.uid)
         .collection('users').doc(String(S.cu)).collection('docs').doc(docId).delete()
-        .catch(e => console.warn('Firestore belge silinemedi:', e));
+        .catch(e => notifyCloudFail('Firestore belge silinemedi:', e));
     }
   });
 }
@@ -8640,7 +8739,8 @@ function viewDocument(docId) {
         } else {
           dvc.innerHTML = `<div style="color:#fff;text-align:center;padding:40px"><p>Belge bulunamadı</p></div>`;
         }
-      }).catch(() => {
+      }).catch(err => {
+        notifyCloudFail('Belge Firestore lazy-load:', err);
         dvc.innerHTML = `<div style="color:#fff;text-align:center;padding:40px"><p>Belge yüklenemedi</p></div>`;
       });
     }
@@ -8656,6 +8756,8 @@ function viewDocument(docId) {
     // base64 PDF → blob URL ile iframe
     try {
       const blob = dataUrlToBlob(doc.url);
+      /* [FIX ERR-HANDLE-16] dataUrlToBlob bozuk data-URL'de null döner; boş iframe yerine indir fallback */
+      if (!blob) throw new Error('invalid dataUrl');
       const blobUrl = URL.createObjectURL(blob);
       dvc.innerHTML = `<iframe src="${blobUrl}" style="width:100%;height:100%;border:none;border-radius:8px"></iframe>`;
     } catch(e) {
@@ -9154,9 +9256,10 @@ function importTpl() {
 
   try {
     const decoded = decodeURIComponent(atob(raw));
-    const p = JSON.parse(decoded);
+    /* [FIX ERR-HANDLE-17] safeParse ile bozuk JSON'u yut */
+    const p = safeParse(decoded, null);
 
-    if (!p || p.type !== 'shifttrack_template' || !p.template) {
+    if (!p || typeof p !== 'object' || p.type !== 'shifttrack_template' || !p.template || typeof p.template !== 'object') {
       toast('Geçersiz şablon kodu', 'error'); return;
     }
 
@@ -9446,6 +9549,8 @@ function downloadBordroPDF() {
   const JsPDF = jspdfLib.jsPDF;
   if (!JsPDF) { toast('PDF kütüphanesi yüklenemedi', 'error'); return; }
 
+  /* [FIX ERR-HANDLE-15] jsPDF çağrıları runtime hatası atabilir (font/autoTable eksik, büyük belge); dış try/catch */
+  try {
   const doc = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const fmb = v => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TL';
   // Helvetica Latin Extended desteklemez; PDF'te Türkçe özel karakter yerine ASCII karşılık kullan
@@ -9524,6 +9629,10 @@ function downloadBordroPDF() {
   const fname = `Bordro_${pdfMTR[r.m]}_${r.y}${r.empName ? '_' + r.empName.replace(/\s+/g, '_') : ''}.pdf`;
   doc.save(fname);
   toast('PDF indirildi', 'success');
+  } catch(e) {
+    console.error('downloadBordroPDF error:', e);
+    toast('PDF oluşturulamadı', 'error');
+  }
 }
 
 // JSON dışa aktar
