@@ -5889,21 +5889,19 @@ function renderEarnShiftTypes(u, y, m, e) {
   </div>`;
 }
 
-/* Kazanç — Yıllık Kümülatif Kazanç Grafiği */
-/* [FEAT F2] Kümülatif gelir vergisi dilimi takibi */
+/* [FEAT F2] Kümülatif gelir vergisi dilimi takibi
+   Model: brüt sabit (maaşlı çalışan varsayımı) — net vergi dilimleri nedeniyle ay ay düşer.
+   YTD matrah = sabit brüt × (sgk/unemp kesintileri sonrası) × kümülatif ay sayısı. */
 function renderTaxBracketCard(u, y, m) {
   if (!u.netSalary || u.netSalary <= 0) return '';
   try {
     const brackets = payrollConfig.incomeTaxBrackets;
-    let ytdMatrah = 0, monthMatrah = 0;
     const marital = 'single', children = 0;
-    for (let mi = 0; mi <= m; mi++) {
-      const gross = findGrossFromNet(u.netSalary, marital, children, ytdMatrah);
-      const sgkBase = Math.min(gross, payrollConfig.sgkCeiling);
-      const gvMatrah = gross - sgkBase * (payrollConfig.sgkEmployee + payrollConfig.unemploymentEmployee);
-      ytdMatrah += gvMatrah;
-      if (mi === m) monthMatrah = gvMatrah;
-    }
+    /* Sabit brüt: Ocak ayının gereken brütü (ilk ayda YTD=0) */
+    const fixedGross = findGrossFromNet(u.netSalary, marital, children, 0);
+    const sgkBase = Math.min(fixedGross, payrollConfig.sgkCeiling);
+    const monthMatrah = fixedGross - sgkBase * (payrollConfig.sgkEmployee + payrollConfig.unemploymentEmployee);
+    const ytdMatrah = monthMatrah * (m + 1);
     let curIdx = 0, prevUp = 0;
     for (let i = 0; i < brackets.length; i++) {
       if (ytdMatrah <= brackets[i].upTo) { curIdx = i; break; }
@@ -6642,8 +6640,9 @@ function renderRaiseSim() {
   const u = cu(); const res = $('rsResult'); if (!res) return;
   if (!u || !u.netSalary || u.netSalary <= 0) { res.innerHTML = '<div class="rs-empty">Önce aylık net maaş girin.</div>'; return; }
   const inp = $('rsInput'); const raw = inp ? inp.value : '';
-  const val = safeNum(raw, 0);
-  if (!raw || val <= 0) { res.innerHTML = ''; return; }
+  if (raw === '' || raw === null || raw === undefined) { res.innerHTML = ''; return; }
+  const val = safeNum(raw, NaN);
+  if (!Number.isFinite(val)) { res.innerHTML = ''; return; }
   try {
     const curNet = safeNum(u.netSalary, 0);
     const curGross = findGrossFromNet(curNet, 'single', 0, 0);
@@ -6677,6 +6676,7 @@ function renderRaiseSim() {
         <div class="rs-diff-row"><span>Yıllık net etki</span><b class="${yearlyNet>=0?'pos':'neg'}">${yearlyNet>=0?'+':''}${fm(yearlyNet)}</b></div>
       </div>
       ${Math.abs(pctNet - pctGross) > 0.5 ? `<div class="rs-note"><i class="fas fa-info-circle"></i> Vergi dilimi etkisi: net zam (%${pctNet.toFixed(1)}) brüt zamdan (%${pctGross.toFixed(1)}) ${pctNet<pctGross?'daha düşük':'daha yüksek'}.</div>` : ''}
+      <div class="rs-note rs-assumption"><i class="fas fa-info-circle"></i> Varsayım: Ocak ayı brütü (kümülatif matrah=0, bekâr, çocuksuz). Yıllık ortalama için gerçek brüt ve vergi dilimi etkisi ay ay değişir.</div>
     `;
   } catch (err) {
     console.error('renderRaiseSim error:', err);
