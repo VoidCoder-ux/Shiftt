@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shifttrack-v19';
+const CACHE_NAME = 'shifttrack-v20';
 const CORE_ASSETS = ['./', './index.html', './manifest.json'];
 const CDN_ASSETS = [
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap',
@@ -42,8 +42,12 @@ function fetchWithTimeout(req, ms) {
 }
 
 self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  const sameOrigin = url.origin === self.location.origin;
+
   // Network-first for HTML pages, cache-first for assets
-  if (e.request.mode === 'navigate' || e.request.url.endsWith('.html')) {
+  if (sameOrigin && (e.request.mode === 'navigate' || url.pathname.endsWith('.html'))) {
     e.respondWith(
       fetchWithTimeout(e.request, NAV_TIMEOUT_MS).then(res => {
         if (res.status === 200) {
@@ -56,12 +60,12 @@ self.addEventListener('fetch', e => {
   } else {
     e.respondWith(
       caches.match(e.request).then(r => r || fetch(e.request).then(res => {
-        if (res.status === 200 && e.request.url.startsWith('http')) {
+        if (res.status === 200 && sameOrigin) {
           const clone = res.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
         }
         return res;
-      }).catch(() => caches.match('./index.html')))
+      }).catch(() => caches.match(e.request)))
     );
   }
 });

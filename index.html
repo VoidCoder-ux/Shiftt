@@ -7,7 +7,7 @@
 <script>
 // Cache buster — eski service worker'ı temizle
 (function(){
-  var CV = 'stv14';
+  var CV = 'stv15';
   if (localStorage.getItem('st_cache_ver') !== CV) {
     localStorage.setItem('st_cache_ver', CV);
     if ('serviceWorker' in navigator) {
@@ -3488,19 +3488,20 @@ const PRESETS_BASE = Object.freeze({
 });
 const FH = [
   {m:1,d:1,n:'Yılbaşı'},{m:4,d:23,n:'23 Nisan'},{m:5,d:1,n:'1 Mayıs'},
-  {m:5,d:19,n:'19 Mayıs'},{m:7,d:15,n:'15 Temmuz'},{m:8,d:30,n:'30 Ağustos'},{m:10,d:29,n:'29 Ekim'}
+  {m:5,d:19,n:'19 Mayıs'},{m:7,d:15,n:'15 Temmuz'},{m:8,d:30,n:'30 Ağustos'},
+  {m:10,d:28,n:'Cumhuriyet Arifesi',half:true},{m:10,d:29,n:'29 Ekim'}
 ];
 /* [FIX] Dini tatiller 2024-2032 genişletildi */
 const RH = {
-  2024:[{m:4,d:10,n:'Ramazan B.'},{m:4,d:11,n:'Ramazan B.'},{m:4,d:12,n:'Ramazan B.'},{m:6,d:17,n:'Kurban B.'},{m:6,d:18,n:'Kurban B.'},{m:6,d:19,n:'Kurban B.'},{m:6,d:20,n:'Kurban B.'}],
-  2025:[{m:3,d:30,n:'Ramazan B.'},{m:3,d:31,n:'Ramazan B.'},{m:4,d:1,n:'Ramazan B.'},{m:6,d:6,n:'Kurban B.'},{m:6,d:7,n:'Kurban B.'},{m:6,d:8,n:'Kurban B.'},{m:6,d:9,n:'Kurban B.'}],
-  2026:[{m:3,d:20,n:'Ramazan B.'},{m:3,d:21,n:'Ramazan B.'},{m:3,d:22,n:'Ramazan B.'},{m:5,d:27,n:'Kurban B.'},{m:5,d:28,n:'Kurban B.'},{m:5,d:29,n:'Kurban B.'},{m:5,d:30,n:'Kurban B.'}],
-  2027:[{m:3,d:9,n:'Ramazan B.'},{m:3,d:10,n:'Ramazan B.'},{m:3,d:11,n:'Ramazan B.'},{m:5,d:16,n:'Kurban B.'},{m:5,d:17,n:'Kurban B.'},{m:5,d:18,n:'Kurban B.'},{m:5,d:19,n:'Kurban B.'}],
-  2028:[{m:2,d:27,n:'Ramazan B.'},{m:2,d:28,n:'Ramazan B.'},{m:2,d:29,n:'Ramazan B.'},{m:5,d:4,n:'Kurban B.'},{m:5,d:5,n:'Kurban B.'},{m:5,d:6,n:'Kurban B.'},{m:5,d:7,n:'Kurban B.'}],
-  2029:[{m:2,d:14,n:'Ramazan B.'},{m:2,d:15,n:'Ramazan B.'},{m:2,d:16,n:'Ramazan B.'},{m:4,d:24,n:'Kurban B.'},{m:4,d:25,n:'Kurban B.'},{m:4,d:26,n:'Kurban B.'},{m:4,d:27,n:'Kurban B.'}],
-  2030:[{m:2,d:4,n:'Ramazan B.'},{m:2,d:5,n:'Ramazan B.'},{m:2,d:6,n:'Ramazan B.'},{m:4,d:13,n:'Kurban B.'},{m:4,d:14,n:'Kurban B.'},{m:4,d:15,n:'Kurban B.'},{m:4,d:16,n:'Kurban B.'}],
-  2031:[{m:1,d:24,n:'Ramazan B.'},{m:1,d:25,n:'Ramazan B.'},{m:1,d:26,n:'Ramazan B.'},{m:4,d:2,n:'Kurban B.'},{m:4,d:3,n:'Kurban B.'},{m:4,d:4,n:'Kurban B.'},{m:4,d:5,n:'Kurban B.'}],
-  2032:[{m:1,d:13,n:'Ramazan B.'},{m:1,d:14,n:'Ramazan B.'},{m:1,d:15,n:'Ramazan B.'},{m:3,d:22,n:'Kurban B.'},{m:3,d:23,n:'Kurban B.'},{m:3,d:24,n:'Kurban B.'},{m:3,d:25,n:'Kurban B.'}]
+  2024:[{m:4,d:9,n:'Ramazan Arifesi',half:true},{m:4,d:10,n:'Ramazan B.'},{m:4,d:11,n:'Ramazan B.'},{m:4,d:12,n:'Ramazan B.'},{m:6,d:16,n:'Kurban Arifesi',half:true},{m:6,d:17,n:'Kurban B.'},{m:6,d:18,n:'Kurban B.'},{m:6,d:19,n:'Kurban B.'},{m:6,d:20,n:'Kurban B.'}],
+  2025:[{m:3,d:29,n:'Ramazan Arifesi',half:true},{m:3,d:30,n:'Ramazan B.'},{m:3,d:31,n:'Ramazan B.'},{m:4,d:1,n:'Ramazan B.'},{m:6,d:5,n:'Kurban Arifesi',half:true},{m:6,d:6,n:'Kurban B.'},{m:6,d:7,n:'Kurban B.'},{m:6,d:8,n:'Kurban B.'},{m:6,d:9,n:'Kurban B.'}],
+  2026:[{m:3,d:19,n:'Ramazan Arifesi',half:true},{m:3,d:20,n:'Ramazan B.'},{m:3,d:21,n:'Ramazan B.'},{m:3,d:22,n:'Ramazan B.'},{m:5,d:26,n:'Kurban Arifesi',half:true},{m:5,d:27,n:'Kurban B.'},{m:5,d:28,n:'Kurban B.'},{m:5,d:29,n:'Kurban B.'},{m:5,d:30,n:'Kurban B.'}],
+  2027:[{m:3,d:8,n:'Ramazan Arifesi',half:true},{m:3,d:9,n:'Ramazan B.'},{m:3,d:10,n:'Ramazan B.'},{m:3,d:11,n:'Ramazan B.'},{m:5,d:15,n:'Kurban Arifesi',half:true},{m:5,d:16,n:'Kurban B.'},{m:5,d:17,n:'Kurban B.'},{m:5,d:18,n:'Kurban B.'},{m:5,d:19,n:'Kurban B.'}],
+  2028:[{m:2,d:26,n:'Ramazan Arifesi',half:true},{m:2,d:27,n:'Ramazan B.'},{m:2,d:28,n:'Ramazan B.'},{m:2,d:29,n:'Ramazan B.'},{m:5,d:3,n:'Kurban Arifesi',half:true},{m:5,d:4,n:'Kurban B.'},{m:5,d:5,n:'Kurban B.'},{m:5,d:6,n:'Kurban B.'},{m:5,d:7,n:'Kurban B.'}],
+  2029:[{m:2,d:13,n:'Ramazan Arifesi',half:true},{m:2,d:14,n:'Ramazan B.'},{m:2,d:15,n:'Ramazan B.'},{m:2,d:16,n:'Ramazan B.'},{m:4,d:23,n:'Kurban Arifesi',half:true},{m:4,d:24,n:'Kurban B.'},{m:4,d:25,n:'Kurban B.'},{m:4,d:26,n:'Kurban B.'},{m:4,d:27,n:'Kurban B.'}],
+  2030:[{m:2,d:3,n:'Ramazan Arifesi',half:true},{m:2,d:4,n:'Ramazan B.'},{m:2,d:5,n:'Ramazan B.'},{m:2,d:6,n:'Ramazan B.'},{m:4,d:12,n:'Kurban Arifesi',half:true},{m:4,d:13,n:'Kurban B.'},{m:4,d:14,n:'Kurban B.'},{m:4,d:15,n:'Kurban B.'},{m:4,d:16,n:'Kurban B.'}],
+  2031:[{m:1,d:23,n:'Ramazan Arifesi',half:true},{m:1,d:24,n:'Ramazan B.'},{m:1,d:25,n:'Ramazan B.'},{m:1,d:26,n:'Ramazan B.'},{m:4,d:1,n:'Kurban Arifesi',half:true},{m:4,d:2,n:'Kurban B.'},{m:4,d:3,n:'Kurban B.'},{m:4,d:4,n:'Kurban B.'},{m:4,d:5,n:'Kurban B.'}],
+  2032:[{m:1,d:12,n:'Ramazan Arifesi',half:true},{m:1,d:13,n:'Ramazan B.'},{m:1,d:14,n:'Ramazan B.'},{m:1,d:15,n:'Ramazan B.'},{m:3,d:21,n:'Kurban Arifesi',half:true},{m:3,d:22,n:'Kurban B.'},{m:3,d:23,n:'Kurban B.'},{m:3,d:24,n:'Kurban B.'},{m:3,d:25,n:'Kurban B.'}]
 };
 const THEME_COLORS = {
   default:'linear-gradient(135deg,#7c3aed,#8b5cf6)',ocean:'linear-gradient(135deg,#0891b2,#06b6d4)',
@@ -3531,6 +3532,7 @@ let S = {
   wtEditDay: null,
   cpSelectedEmoji: '⏰',
   nextUid: 3,
+  deletedUsers: {},
   u: { 1: mkUser(1), 2: mkUser(2) }
 };
 
@@ -3547,6 +3549,9 @@ function mkUser(i) {
     customPresets: [],
     weeklyTemplate: null,
     notes: '',
+    profileUpdatedAt: 0,
+    notesUpdatedAt: 0,
+    settingsUpdatedAt: 0,
     lastLogin: null,
     theme: 'default',
     monthlyHours: 195,
@@ -3700,12 +3705,28 @@ function confirmCancel() {
 }
 
 function getH(ds) {
+  const h = getHoliday(ds);
+  return h ? h.n : null;
+}
+function getHoliday(ds) {
   const p = parseDS(ds); if (!p) return null;
   const y = p.y, m = p.m + 1, day = p.d;
-  for (const h of FH) if (h.m === m && h.d === day) return h.n;
+  for (const h of FH) if (h.m === m && h.d === day) return h;
   const r = RH[y];
-  if (r) for (const h of r) if (h.m === m && h.d === day) return h.n;
+  if (r) for (const h of r) if (h.m === m && h.d === day) return h;
   return null;
+}
+function holidayWeight(ds) {
+  const h = getHoliday(ds);
+  return h ? (h.half ? 0.5 : 1) : 0;
+}
+function holidayPayWeight(ds, sh) {
+  const h = getHoliday(ds);
+  if (!h || !sh) return 0;
+  if (!h.half) return 1;
+  const end = parseTime(sh.end), start = parseTime(sh.start);
+  if (start === null || end === null) return 0.5;
+  return (end > 13 * 60 || end <= start) ? 0.5 : 0;
 }
 /* [FIX EDGE-CASE-01] RH veri kapsamı dışındaki yıllar için konsol uyarısı — session başına bir kez */
 const _rhWarnedYears = new Set();
@@ -3858,14 +3879,14 @@ function invalidateMDCache(uid, y, m) {
 ============================================================ */
 function getMD(y, m) {
   const u = cu();
-  const empty = { th:0, rh:0, oh:0, hh:0, hhOT:0, wd:0, hdw:0, wh:{}, wr:0, ud:0, yau:0, ysd:0, mau:0, msd:0, hr:0, dim:new Date(y,m+1,0).getDate() };
+  const empty = { th:0, rh:0, oh:0, hh:0, hhOT:0, hpd:0, wd:0, hdw:0, wh:{}, wr:0, ud:0, yau:0, ysd:0, mau:0, msd:0, hr:0, dim:new Date(y,m+1,0).getDate() };
   if (!u) return empty;
 
   const ck = `${S.cu}-${y}-${m}`;
   if (mdCache[ck]) return mdCache[ck];
 
   const dim = new Date(y, m + 1, 0).getDate();
-  let th = 0, hh = 0, wd = 0, hdw = 0;
+  let th = 0, hh = 0, hpd = 0, wd = 0, hdw = 0;
 
   // Bu aydaki her gün için: hangi ISO haftasında, kaç saat, tatil mi?
   // dayData[isoWeek] = { monthHrs, monthHolHrs }
@@ -3887,6 +3908,7 @@ function getMD(y, m) {
     weekMonthHrs[wk] += hrs;
     if (isH(s)) {
       hh += hrs; hdw++;
+      hpd += holidayPayWeight(s, sh);
       if (!weekMonthHolHrs[wk]) weekMonthHolHrs[wk] = 0;
       weekMonthHolHrs[wk] += hrs;
     }
@@ -3954,7 +3976,8 @@ function getMD(y, m) {
     if (p.y === y && p.m === m) {
       if (v.type === 'annual') mau++;
       if (v.type === 'sick') msd++;
-      if (v.type === 'weekly' || v.type === 'public_holiday') wr++;
+      if (v.type === 'weekly') wr++;
+      if (v.type === 'public_holiday') wr += holidayWeight(k) || 1;
       if (v.type === 'unpaid') ud++;
       /* [FIX] FM İzni — ücretli, yıllık izinden bağımsız, otBalance'tan düşülür */
       if (v.type === 'ot_comp') otcm++;
@@ -3966,7 +3989,7 @@ function getMD(y, m) {
   const hr = (u.netSalary > 0 && _mh > 0) ? u.netSalary / _mh : 0;
   // wh: dashboard haftalık chart için — bu aydaki saatler (görüntüleme amaçlı)
   const wh = weekMonthHrs;
-  const r = { th, rh, oh, hh, hhOT, wd, hdw, wh, wr, ud, otcm, yau, ysd, mau, msd, hr, dim,
+  const r = { th, rh, oh, hh, hhOT, hpd, wd, hdw, wh, wr, ud, otcm, yau, ysd, mau, msd, hr, dim,
     weekTotalHrs }; // chart'ta gerçek haftalık toplamı göstermek için
   mdCache[ck] = r;
   return r;
@@ -4007,7 +4030,8 @@ function calcEarningForMonth(y, m, ns) {
     if (u.shifts[ds] || u.leaves[ds]) continue;
     const dt = new Date(y, m, day);
     const dow = dt.getDay();
-    if (dow === 0 || dow === 6 || isH(ds)) fp++;
+    if (dow === 0 || dow === 6) fp++;
+    else fp += holidayWeight(ds);
   }
 
   /* [FIX] otcm (FM İzni günleri) ücretli gün sayısına dahil edilir */
@@ -4018,7 +4042,7 @@ function calcEarningForMonth(y, m, ns) {
 
   /* [FIX Md.47] Tatil çalışması ilave ücreti: basePay içinde normal tatil ücreti zaten var;
      Madde 47 gereği ilave 1 günlük ücret daha ödenir → hdw × dr (saat değil gün bazlı) */
-  const hp = d.hdw * dr;
+  const hp = (d.hpd !== undefined ? d.hpd : d.hdw) * dr;
   /* [FIX] otCompMode: 'leave' modunda FM eki ödenmez, saatler bakiyeye eklenir */
   const compMode = u.otCompMode || 'pay';
   const compRate = safeNum(u.otCompRate, 1.5);
@@ -5200,7 +5224,7 @@ function updResult() {
     const _mhRaw = safeNum(u.monthlyHours, 0);
     const _mh2 = (_mhRaw > 0) ? _mhRaw : (safeNum(MH, 0) > 0 ? MH : 225);
     const hr = u.netSalary / _mh2;
-    const isHol2 = isH(S.sd);
+    const holPay2 = holidayPayWeight(S.sd, { start:S.sd ? $('iStart')?.value : '', end:S.sd ? $('iEnd')?.value : '' });
     /* [FIX L-05] Yalnızca bu vardiyaya atfedilen FM eki gösterilmeli.
        Önceki hafta toplamını (bu gün hariç, 0 saat) alıp farkı hesapla:
        shiftOT = max(0, (öncekiHafta+net) - 45) - max(0, öncekiHafta - 45) */
@@ -5208,7 +5232,7 @@ function updResult() {
     const weekWithShift = getWeekOTForDay(S.sd, net);
     const shiftOT = Math.max(0, weekWithShift.ot - prevWeek.ot);
     let earn = 0;
-    if (isHol2) earn += u.netSalary / 30;  // Md.47: ilave 1 günlük ücret
+    if (holPay2 > 0) earn += (u.netSalary / 30) * holPay2;  // Md.47: ilave tatil ücreti
     if (shiftOT > 0) earn += shiftOT * hr * 1.5;
     ep.textContent = (Number.isFinite(earn) && earn > 0) ? `💰 Tahmini ek: ~${fm(earn)}` : '';
   } else { ep.textContent = ''; }
@@ -6084,6 +6108,7 @@ function sSet(k, v) {
     'goalHours','goalEarning','theme','monthlyHours',
     'otCompMode','otCompRate','otBalance','hideSuggestions'];
   if (settingsKeys.includes(k)) u.settingsUpdatedAt = Date.now();
+  if (k === 'name' || k === 'startDate') u.profileUpdatedAt = Date.now();
   invalidateMDCache();
   saveLS();
   updTop();
@@ -6097,6 +6122,7 @@ function saveNotes() {
   const u = cu(); if (!u) return;
   const notesEl = $('userNotes');
   u.notes = (notesEl ? notesEl.value : '').substring(0, 1000);
+  u.notesUpdatedAt = Date.now();
   saveLS();
   toast('Notlar kaydedildi', 'success');
 }
@@ -6336,7 +6362,7 @@ function clearWeeklyTemplate() {
 ============================================================ */
 function saveLS() {
   try {
-    const d = JSON.stringify({ users:S.u, version:DATA_VERSION, nextUid:S.nextUid });
+    const d = JSON.stringify({ users:S.u, deletedUsers:S.deletedUsers || {}, version:DATA_VERSION, nextUid:S.nextUid });
     /* [FIX BUG-09] d.length karakter sayısı, localStorage UTF-16 ~5MB = ~2.5M char.
        Uyarı eşiği 2M karaktere (≈4MB) düzeltildi */
     if (d.length > 2 * 1024 * 1024) toast('Veri büyük, yedekleme önerilir', 'warning');
@@ -6363,7 +6389,7 @@ function saveLS() {
             });
           });
         });
-        const d2 = JSON.stringify({ users:S.u, version:DATA_VERSION, nextUid:S.nextUid });
+        const d2 = JSON.stringify({ users:S.u, deletedUsers:S.deletedUsers || {}, version:DATA_VERSION, nextUid:S.nextUid });
         localStorage.setItem('st_data', d2);
         toast('Depolama doldu, 30 günden eski kayıtlar temizlendi', 'warning');
       } catch(e2) {
@@ -6373,7 +6399,7 @@ function saveLS() {
             if (!u) return;
             u.deletedShifts = {}; u.deletedLeaves = {}; u.deletedDocs = {};
           });
-          const d3 = JSON.stringify({ users:S.u, version:DATA_VERSION, nextUid:S.nextUid });
+          const d3 = JSON.stringify({ users:S.u, deletedUsers:S.deletedUsers || {}, version:DATA_VERSION, nextUid:S.nextUid });
           localStorage.setItem('st_data', d3);
           toast('Depolama kritik doldu, silme geçmişi temizlendi. Yedek alın!', 'warning');
         } catch(e3) {
@@ -6397,6 +6423,7 @@ function loadLS() {
     const p = safeParse(s, null);
     if (!p || typeof p !== 'object' || !p.users || typeof p.users !== 'object') return;
     if (p.nextUid) S.nextUid = safeInt(p.nextUid, S.nextUid);
+    S.deletedUsers = (p.deletedUsers && typeof p.deletedUsers === 'object') ? p.deletedUsers : {};
     S.u = {};
     Object.keys(p.users).forEach(k => {
       const i = parseInt(k);
@@ -6410,6 +6437,9 @@ function loadLS() {
       if (typeof S.u[i].deletedShifts !== 'object' || !S.u[i].deletedShifts) S.u[i].deletedShifts = {};
       if (typeof S.u[i].deletedLeaves !== 'object' || !S.u[i].deletedLeaves) S.u[i].deletedLeaves = {};
       if (typeof S.u[i].deletedDocs !== 'object' || !S.u[i].deletedDocs) S.u[i].deletedDocs = {};
+      S.u[i].profileUpdatedAt = safeNum(S.u[i].profileUpdatedAt, 0);
+      S.u[i].notesUpdatedAt = safeNum(S.u[i].notesUpdatedAt, 0);
+      S.u[i].settingsUpdatedAt = safeNum(S.u[i].settingsUpdatedAt, 0);
       if (!Array.isArray(S.u[i].customPresets)) S.u[i].customPresets = [];
       if (!Array.isArray(S.u[i].documents)) S.u[i].documents = [];
       /* [FIX ERR-HANDLE-03] safeNum/safeInt ile NaN/Infinity propagation engellendi */
@@ -6428,19 +6458,20 @@ function loadLS() {
       /* [FIX BUG-04] Eski format düz metin PIN migration: hash uzunluğu 64 hex char */
       if (S.u[i].pin && S.u[i].pin.length !== 64) { S.u[i].pin = null; }
     });
+    Object.keys(S.deletedUsers || {}).forEach(k => { delete S.u[k]; });
     if (Object.keys(S.u).length === 0) { S.u = { 1: mkUser(1), 2: mkUser(2) }; }
   } catch(e) {
     console.error('loadLS error:', e);
     toast('Veri yükleme hatası, varsayılan profil yüklendi', 'error');
     /* [FIX ERR-HANDLE-04] Corrupt state'te kalmak yerine kullanılabilir fallback kur */
-    try { S.u = { 1: mkUser(1), 2: mkUser(2) }; S.nextUid = 3; } catch(_) {}
+    try { S.u = { 1: mkUser(1), 2: mkUser(2) }; S.deletedUsers = {}; S.nextUid = 3; } catch(_) {}
   }
 }
 
 function exportD() {
   let url = null;
   try {
-    const d = { users:S.u, exportDate:new Date().toISOString(), version:DATA_VERSION };
+    const d = { users:S.u, deletedUsers:S.deletedUsers || {}, exportDate:new Date().toISOString(), version:DATA_VERSION };
     const b = new Blob([JSON.stringify(d, null, 2)], { type:'application/json' });
     url = URL.createObjectURL(b);
     const a = document.createElement('a');
@@ -6468,6 +6499,7 @@ function importD(e) {
         toast('Geçersiz format', 'error'); return;
       }
       if (p.nextUid) S.nextUid = safeInt(p.nextUid, S.nextUid);
+      S.deletedUsers = (p.deletedUsers && typeof p.deletedUsers === 'object') ? p.deletedUsers : {};
       Object.keys(p.users).forEach(k => {
         const i = parseInt(k);
         if (!Number.isFinite(i)) return;
@@ -6479,6 +6511,9 @@ function importD(e) {
         if (typeof S.u[i].deletedShifts !== 'object' || !S.u[i].deletedShifts) S.u[i].deletedShifts = {};
         if (typeof S.u[i].deletedLeaves !== 'object' || !S.u[i].deletedLeaves) S.u[i].deletedLeaves = {};
         if (typeof S.u[i].deletedDocs !== 'object' || !S.u[i].deletedDocs) S.u[i].deletedDocs = {};
+        S.u[i].profileUpdatedAt = safeNum(S.u[i].profileUpdatedAt, 0);
+        S.u[i].notesUpdatedAt = safeNum(S.u[i].notesUpdatedAt, 0);
+        S.u[i].settingsUpdatedAt = safeNum(S.u[i].settingsUpdatedAt, 0);
         if (!Array.isArray(S.u[i].customPresets)) S.u[i].customPresets = [];
         if (!Array.isArray(S.u[i].documents)) S.u[i].documents = [];
         S.u[i].netSalary = safeNum(S.u[i].netSalary, 0);
@@ -6514,10 +6549,15 @@ function clearD() {
   showConfirm('Sıfırla', 'Tüm veriler silinecek!', () => {
     const u = cu(); if (!u) return;
     const kl = u.lastLogin, kt = u.theme, kn = u.name;
+    const deletedDocs = Object.assign({}, u.deletedDocs || {});
+    (u.documents || []).forEach(d => { if (d && d.id) deletedDocs[d.id] = Date.now(); });
     S.u[S.cu] = mkUser(S.cu);
     S.u[S.cu].lastLogin = kl;
     S.u[S.cu].theme = kt;
     S.u[S.cu].name = kn;
+    S.u[S.cu].deletedDocs = deletedDocs;
+    S.u[S.cu].profileUpdatedAt = Date.now();
+    S.u[S.cu].settingsUpdatedAt = Date.now();
     invalidateMDCache();
     saveLS(); renderAll(); updTop(); loadSet();
     toast('Sıfırlandı', 'success');
@@ -6909,6 +6949,8 @@ function confirmNewUser() {
   const id = S.nextUid++;
   S.u[id] = mkUser(id);
   S.u[id].name = name;
+  S.u[id].profileUpdatedAt = Date.now();
+  S.u[id].settingsUpdatedAt = Date.now();
   saveLS();
   updLogin();
   closeNewUserModal();
@@ -6920,6 +6962,8 @@ function deleteCurrentUser() {
   const userIds = Object.keys(S.u);
   if (userIds.length <= 1) { toast('Son kullanıcı silinemez', 'error'); return; }
   showConfirm('Hesabı Sil', `"${escHtml(u.name)}" hesabı ve tüm verileri silinecek!`, () => {
+    if (!S.deletedUsers) S.deletedUsers = {};
+    S.deletedUsers[String(S.cu)] = Date.now();
     delete S.u[S.cu];
     saveLS();
     logout();
@@ -8366,35 +8410,50 @@ function showAuthScreen() {
    FIRESTORE SYNC
 ============================================================ */
 
+function mergeDeletedUsers(a, b) {
+  const merged = Object.assign({}, a || {});
+  Object.keys(b || {}).forEach(k => { merged[k] = Math.max(merged[k] || 0, b[k] || 0); });
+  return merged;
+}
+
+function cloneUsersForCloud(users) {
+  const out = {};
+  Object.keys(users || {}).forEach(k => {
+    const u = users[k];
+    if (!u) return;
+    const uc = Object.assign({}, u);
+    if (Array.isArray(uc.documents)) {
+      uc.documents = uc.documents.map(d => {
+        const dm = Object.assign({}, d);
+        delete dm.url;
+        return dm;
+      });
+    }
+    out[k] = uc;
+  });
+  return out;
+}
+
+function mergeUsersMap(localUsers, cloudUsers, deletedUsers) {
+  const users = {};
+  const allKeys = new Set([
+    ...Object.keys(localUsers || {}),
+    ...Object.keys(cloudUsers || {})
+  ]);
+  allKeys.forEach(k => {
+    if (deletedUsers && deletedUsers[k]) return;
+    const i = parseInt(k);
+    if (isNaN(i)) return;
+    users[k] = deepMergeUser(localUsers ? localUsers[k] : null, cloudUsers ? cloudUsers[k] : null);
+  });
+  return users;
+}
+
 // Push local data to Firestore
 function pushToCloud(callback) {
   if (!fbDb || !fbUser || syncInProgress) { if (callback) callback(); return; }
   syncInProgress = true;
   setSyncState('syncing');
-
-  // Belge base64 URL'lerini ana Firestore dokümanına dahil etme (1MB limitini aşmamak için)
-  // S.u bir object (numeric key'li), array değil — Object.keys ile dönüştür
-  const usersForCloud = {};
-  Object.keys(S.u).forEach(k => {
-    const u = S.u[k];
-    if (!u) { usersForCloud[k] = u; return; }
-    const uc = Object.assign({}, u);
-    if (Array.isArray(uc.documents)) {
-      uc.documents = uc.documents.map(d => {
-        const dm = Object.assign({}, d);
-        delete dm.url; // base64 datası sub-collection'da saklanır
-        return dm;
-      });
-    }
-    usersForCloud[k] = uc;
-  });
-  const data = {
-    users: usersForCloud,
-    version: DATA_VERSION,
-    nextUid: S.nextUid,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-    deviceId: getDeviceId()
-  };
 
   // Timeout — takılmayı engelle
   const timeoutId = setTimeout(() => {
@@ -8405,9 +8464,29 @@ function pushToCloud(callback) {
     }
   }, SYNC_TIMEOUT);
 
-  fbDb.collection('userData').doc(fbUser.uid).set(data, { merge: true })
+  const docRef = fbDb.collection('userData').doc(fbUser.uid);
+  let mergedDeletedUsers = null;
+  fbDb.runTransaction(tx => tx.get(docRef).then(snap => {
+    const cloud = snap.exists ? (snap.data() || {}) : {};
+    const deletedUsers = mergeDeletedUsers(S.deletedUsers || {}, cloud.deletedUsers || {});
+    mergedDeletedUsers = deletedUsers;
+    const usersForCloud = mergeUsersMap(cloneUsersForCloud(S.u), cloud.users || {}, deletedUsers);
+    const data = {
+      users: usersForCloud,
+      deletedUsers,
+      version: DATA_VERSION,
+      nextUid: Math.max(S.nextUid || 0, cloud.nextUid || 0),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      deviceId: getDeviceId()
+    };
+    tx.set(docRef, data, { merge: true });
+  }))
     .then(() => {
       clearTimeout(timeoutId);
+      if (mergedDeletedUsers) {
+        S.deletedUsers = mergedDeletedUsers;
+        Object.keys(S.deletedUsers).forEach(k => { delete S.u[k]; });
+      }
       lastSyncTime = Date.now();
       setSyncState('online');
       syncInProgress = false;
@@ -8500,9 +8579,11 @@ function deepMergeUser(local, cloud) {
     if (merged.deletedLeaves[k] < cleanupThreshold) delete merged.deletedLeaves[k];
   });
 
-  // Note merge — notes bir string, cloud'daki boş değilse cloud'dan al
-  if (cloud.notes && typeof cloud.notes === 'string' && cloud.notes.trim()) {
+  const localNT = merged.notesUpdatedAt || 0;
+  const cloudNT = cloud.notesUpdatedAt || 0;
+  if (cloudNT >= localNT && typeof cloud.notes === 'string') {
     merged.notes = cloud.notes;
+    merged.notesUpdatedAt = cloudNT;
   }
 
   // deletedDocs merge — her iki taraftan silinenleri birleştir
@@ -8553,6 +8634,14 @@ function deepMergeUser(local, cloud) {
   }
   // Yerel daha yeni ise: merged zaten yerel değerleri taşıdığından değişiklik yok
 
+  const localPT = merged.profileUpdatedAt || 0;
+  const cloudPT = cloud.profileUpdatedAt || 0;
+  if (cloudPT >= localPT) {
+    if (cloud.name !== undefined) merged.name = cloud.name;
+    if (cloud.startDate !== undefined) merged.startDate = cloud.startDate;
+    merged.profileUpdatedAt = cloudPT;
+  }
+
   return merged;
 }
 
@@ -8572,6 +8661,7 @@ function pullFromCloud(callback) {
         const data = doc.data();
         if (data && data.users) {
           if (data.nextUid) S.nextUid = Math.max(S.nextUid, data.nextUid);
+          S.deletedUsers = mergeDeletedUsers(S.deletedUsers || {}, data.deletedUsers || {});
 
           // Tüm kullanıcıları deep merge ile birleştir
           const allKeys = new Set([
@@ -8579,6 +8669,7 @@ function pullFromCloud(callback) {
             ...Object.keys(data.users || {})
           ]);
           allKeys.forEach(k => {
+            if (S.deletedUsers && S.deletedUsers[k]) { delete S.u[k]; return; }
             const i = parseInt(k);
             if (isNaN(i)) return;
             S.u[i] = deepMergeUser(S.u[i] || null, data.users[i] || null);
@@ -8622,13 +8713,19 @@ function startRealtimeSync() {
          !data.deviceId kontrolü eklenerek deviceId'siz veriler de işlenir. */
       if (!data.deviceId || data.deviceId !== getDeviceId()) {
         // Veri değişmiş mi kontrol et (gereksiz render'ı engelle)
-        const newJson = JSON.stringify(data.users);
+        const newJson = JSON.stringify({ users:data.users, deletedUsers:data.deletedUsers || {} });
         if (newJson === lastSnapshotJson) return;
         lastSnapshotJson = newJson;
 
         // Deep merge ile birleştir (veri kaybını engelle)
         if (data.nextUid) S.nextUid = Math.max(S.nextUid, data.nextUid);
-        Object.keys(data.users).forEach(k => {
+        S.deletedUsers = mergeDeletedUsers(S.deletedUsers || {}, data.deletedUsers || {});
+        const allKeys = new Set([
+          ...Object.keys(S.u || {}),
+          ...Object.keys(data.users || {})
+        ]);
+        allKeys.forEach(k => {
+          if (S.deletedUsers && S.deletedUsers[k]) { delete S.u[k]; return; }
           const i = parseInt(k);
           if (isNaN(i)) return;
           if (data.users[i]) {
@@ -8670,8 +8767,8 @@ function getDeviceId() {
 // Manual sync button
 function manualSync() {
   if (!fbDb || !fbUser) { toast('Bulut hesabı bağlı değil', 'error'); return; }
-  pushToCloud(() => {
-    pullFromCloud(() => {
+  pullFromCloud(() => {
+    pushToCloud(() => {
       loadLS();
       if (cu()) { invalidateMDCache(); renderAll(); updTop(); loadSet(); }
       toast('Senkronize edildi!', 'success');
@@ -8705,8 +8802,8 @@ document.addEventListener('visibilitychange', function() {
 window.addEventListener('online', function() {
   if (fbDb && fbUser) {
     setSyncState('syncing');
-    pushToCloud(function() {
-      pullFromCloud(function() {
+    pullFromCloud(function() {
+      pushToCloud(function() {
         invalidateMDCache();
         if (cu()) { renderAll(); updTop(); }
       });
@@ -9209,14 +9306,14 @@ function getAllHolidaysForYear(y) {
   // Sabit resmi tatiller
   FH.forEach(h => {
     const ds = `${y}-${String(h.m).padStart(2,'0')}-${String(h.d).padStart(2,'0')}`;
-    holidays.push({ date: ds, name: h.n, type: 'fixed' });
+    holidays.push({ date: ds, name: h.n, type: 'fixed', half: !!h.half });
   });
   // Dini tatiller (yıla göre)
   const rh = RH[y];
   if (rh) {
     rh.forEach(h => {
       const ds = `${y}-${String(h.m).padStart(2,'0')}-${String(h.d).padStart(2,'0')}`;
-      holidays.push({ date: ds, name: h.n, type: 'religious' });
+      holidays.push({ date: ds, name: h.n, type: 'religious', half: !!h.half });
     });
   }
   return holidays.sort((a, b) => a.date.localeCompare(b.date));
@@ -9247,15 +9344,16 @@ function renderBankHolidays() {
     const dayName = DTR[dow === 0 ? 6 : dow - 1];
     const isPast = d < new Date(new Date().setHours(0,0,0,0));
     const typeIcon = h.type === 'religious' ? '🕌' : '🏛️';
+    const halfTag = h.half ? ' <small style="color:var(--acc);font-weight:800">(½ gün)</small>' : '';
     listHtml += `<div class="bh-item">
       <span class="bhi-date">${d.getDate()} ${MTR[d.getMonth()].substring(0,3)} ${dayName}</span>
-      <span class="bhi-name">${typeIcon} ${escHtml(h.name)}</span>
+      <span class="bhi-name">${typeIcon} ${escHtml(h.name)}${halfTag}</span>
       ${hasShift ? '<span class="bhi-badge loaded">Çalışıldı</span>' : hasLeave ? '<span class="bhi-badge loaded">İzinli</span>' : isPast ? '<span class="bhi-badge pending">Geçmiş</span>' : ''}
     </div>`;
   });
 
   el.innerHTML = `<div class="bh-section">
-    <h3><i class="fas fa-flag"></i>${y} Resmi Tatiller (${total} gün)</h3>
+    <h3><i class="fas fa-flag"></i>${y} Resmi Tatiller (${holidays.reduce((sum,h)=>sum+(h.half?0.5:1),0)} gün)</h3>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
       <button class="btn btn-primary btn-sm" onclick="autoLoadHolidays(${y})"><i class="fas fa-calendar-plus"></i>Tatilleri Takvime Yükle</button>
       <button class="btn btn-outline btn-sm" onclick="autoLoadHolidays(${y},'remove')"><i class="fas fa-eraser"></i>Tatil İzinlerini Kaldır</button>
