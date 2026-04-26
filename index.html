@@ -2912,6 +2912,10 @@ body.theme-light .doc-cat, body.theme-light-ocean .doc-cat {
       <select id="docCatSelect">
         <option value="hygiene">🧼 Hijyen Belgesi</option>
         <option value="mastery">🏆 Ustalık Belgesi</option>
+        <option value="payslip">🧾 Bordro</option>
+        <option value="contract">📑 İş Sözleşmesi</option>
+        <option value="sgk">🏥 SGK Belgesi</option>
+        <option value="leave_form">🗓️ İzin Formu</option>
         <option value="passport">📘 Pasaport</option>
         <option value="id">🪪 Kimlik / Nüfus Cüzdanı</option>
         <option value="certificate">📜 Sertifika</option>
@@ -3606,6 +3610,7 @@ function mkUser(i) {
     autoTheme: false,
     documents: [],
     deletedDocs: {},
+    payrollChecks: {},
     /* [FIX] Fazla Mesai → İzin Karşılığı (Comp Time) */
     otCompMode: 'pay',      // 'pay' | 'leave'
     otCompRate: 1.5,        // Yasal katsayı (TR İş Kanunu: 1.5)
@@ -6139,7 +6144,8 @@ function renderEarn() {
 
   const d = getMD(y, m);
   if (d.wd === 0 && d.wr === 0 && d.mau === 0 && d.msd === 0 && d.ud === 0) {
-    ec.innerHTML = '<div class="empty"><i class="fas fa-calendar-times"></i><p>Bu ay için veri yok</p></div>';
+    const e0 = calcEarningForMonth(y, m, u.netSalary);
+    ec.innerHTML = '<div class="empty"><i class="fas fa-calendar-times"></i><p>Bu ay için veri yok</p></div>' + renderEmployeeRightsPanel(u, y, m, d, e0);
     return;
   }
 
@@ -6227,9 +6233,233 @@ function renderEarn() {
   ${renderEarnWeekly(u, y, m, d, e)}
   ${renderEarnShiftTypes(u, y, m, e)}
   ${renderTaxBracketCard(u, y, m)}
-  ${renderEarnYearlyCumul(u, y, e)}`;
+  ${renderEarnYearlyCumul(u, y, e)}
+  ${renderEmployeeRightsPanel(u, y, m, d, e)}`;
 
   renderEarnCompare(u, y, m);
+}
+
+function employeeMonthKey(y, m) {
+  return `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+function getPayrollCheck(u, y, m) {
+  if (!u.payrollChecks || typeof u.payrollChecks !== 'object') u.payrollChecks = {};
+  const key = employeeMonthKey(y, m);
+  if (!u.payrollChecks[key]) u.payrollChecks[key] = {};
+  return u.payrollChecks[key];
+}
+function savePayrollCheckField(field, raw) {
+  const u = cu(); if (!u) return;
+  const rec = getPayrollCheck(u, S.ey, S.em);
+  const val = parseFloat(raw);
+  if (raw === '' || raw === null || raw === undefined || !Number.isFinite(val)) delete rec[field];
+  else rec[field] = Math.max(0, val);
+  rec.updatedAt = Date.now();
+  saveLS();
+  renderEarn();
+}
+function estimatePayrollForMonth(u, y, m, d) {
+  if (!u || !u.netSalary || u.netSalary <= 0) return null;
+  const marital = 'single', children = 0, priorYTD = 0;
+  const baseGross = findGrossFromNet(u.netSalary, marital, children, priorYTD, m);
+  const mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : (MH || 195);
+  const hrGross = baseGross / mh;
+  const drGross = baseGross / 30;
+  const compMode = u.otCompMode || 'pay';
+  const compRate = parseFloat(u.otCompRate || 1.5);
+  const otGross = compMode === 'pay' ? d.oh * hrGross * compRate : 0;
+  const holPayDays = d.hpd !== undefined ? d.hpd : d.hdw;
+  const holGross = holPayDays * drGross;
+  const totalGross = baseGross + otGross + holGross;
+  const res = computeNetFromGross(totalGross, marital, children, priorYTD, m);
+  return { ...res, baseGross, otGross, holGross, totalGross, holPayDays };
+}
+function diffBadge(diff) {
+  const abs = Math.abs(diff || 0);
+  const cls = abs < 1 ? 'var(--g)' : diff < 0 ? 'var(--r)' : 'var(--acc)';
+  const sign = diff > 0 ? '+' : diff < 0 ? '-' : '';
+  return `<strong style="color:${cls}">${sign}${fm(abs)}</strong>`;
+}
+function buildWorkLawWarnings(u, y, m, d) {
+  const warnings = [];
+  Object.entries(d.weekTotalHrs || {}).forEach(([wk, hrs]) => {
+    if (hrs > 45) warnings.push({ level:'warning', text:`${wk} haftasında ${hrs.toFixed(1)} saat çalışma var; 45 saati aşan bölüm fazla mesai sayılmalı.` });
+  });
+  const shifts = [];
+  const dim = new Date(y, m + 1, 0).getDate();
+  for (let day = 1; day <= dim; day++) {
+    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const sh = u.shifts[ds];
+    if (!sh || !sh.start || !sh.end) continue;
+    const hrs = calcHr(sh.start, sh.end, sh.break || 0);
+    if (hrs > 11) warnings.push({ level:'danger', text:`${ds} vardiyası ${hrs.toFixed(1)} saat; günlük 11 saat sınırı açısından kontrol edilmeli.` });
+    const st = parseTime(sh.start), en = parseTime(sh.end);
+    if (st !== null && en !== null) {
+      const start = new Date(y, m, day, Math.floor(st / 60), st % 60);
+      const endDay = en <= st ? day + 1 : day;
+      const end = new Date(y, m, endDay, Math.floor(en / 60), en % 60);
+      shifts.push({ ds, start, end });
+    }
+  }
+  shifts.sort((a,b) => a.start - b.start);
+  for (let i = 1; i < shifts.length; i++) {
+    const rest = (shifts[i].start - shifts[i-1].end) / 36e5;
+    if (rest >= 0 && rest < 11) warnings.push({ level:'danger', text:`${shifts[i-1].ds} sonrası ${shifts[i].ds} vardiyasına kadar ${rest.toFixed(1)} saat dinlenme var.` });
+  }
+  if (!warnings.length) warnings.push({ level:'ok', text:'Bu ay haftalık 45 saat, günlük 11 saat ve vardiyalar arası 11 saat dinlenme açısından belirgin uyarı yok.' });
+  return warnings;
+}
+function buildHolidayWorkRows(u, y, m) {
+  const rows = [];
+  const dim = new Date(y, m + 1, 0).getDate();
+  for (let day = 1; day <= dim; day++) {
+    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const sh = u.shifts[ds], h = getHoliday(ds);
+    if (!h || !sh || !sh.start || !sh.end) continue;
+    rows.push({ ds, name:h.n, hours:calcHr(sh.start, sh.end, sh.break || 0), payDays:holidayPayWeight(ds, sh) });
+  }
+  return rows;
+}
+function yearlyOvertimeHours(y) {
+  let total = 0;
+  for (let i = 0; i < 12; i++) total += getMD(y, i).oh || 0;
+  return total;
+}
+function renderEmployeeRightsPanel(u, y, m, d, e) {
+  const rec = getPayrollCheck(u, y, m);
+  const payroll = estimatePayrollForMonth(u, y, m, d);
+  const actualPaid = safeNum(rec.actualPaid, 0);
+  const paidDiff = actualPaid > 0 && e ? actualPaid - e.totalEarning : null;
+  const annualOT = yearlyOvertimeHours(y);
+  const otLeft = 270 - annualOT;
+  const warnings = buildWorkLawWarnings(u, y, m, d);
+  const holidays = buildHolidayWorkRows(u, y, m);
+  const cmp = [];
+  if (payroll) {
+    [
+      ['Brüt', 'slipGross', payroll.gross],
+      ['Net', 'slipNet', payroll.net],
+      ['SGK İşçi', 'slipSgk', payroll.sgkDeduction],
+      ['Gelir Vergisi', 'slipIncomeTax', payroll.netGV],
+      ['Damga Vergisi', 'slipStampTax', payroll.stampTax],
+    ].forEach(([label, key, expected]) => {
+      const entered = safeNum(rec[key], 0);
+      if (entered > 0) cmp.push({ label, entered, expected, diff: entered - expected });
+    });
+  }
+  const input = (field, placeholder) => `<input type="number" min="0" step="0.01" value="${rec[field] ?? ''}" placeholder="${placeholder}" onchange="savePayrollCheckField('${field}',this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--b);border-radius:8px;background:var(--bg);color:var(--t1)">`;
+  const warnHtml = warnings.map(w => `<div class="ai-suggestion ${w.level==='danger'?'warning':''}" style="margin-bottom:6px"><i class="fas ${w.level==='ok'?'fa-check-circle':'fa-triangle-exclamation'}"></i>${escHtml(w.text)}</div>`).join('');
+  const holidayHtml = holidays.length ? holidays.map(h => `<div class="esd"><span class="ek">${h.ds} · ${escHtml(h.name)} · ${h.hours.toFixed(1)}s</span><span class="ev pos">${h.payDays.toFixed(1)}g</span></div>`).join('') : '<div class="ai-empty">Bu ay kayıtlı resmi tatil çalışması yok.</div>';
+  return `<div class="card" style="margin-top:16px">
+    <div class="card-head">
+      <h3><i class="fas fa-scale-balanced"></i>Çalışan Hak Kontrolü</h3>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="exportEmployeeMonthPDF()"><i class="fas fa-file-pdf"></i>PDF</button>
+        <button class="btn btn-outline btn-sm" onclick="exportEmployeeMonthExcel()"><i class="fas fa-file-excel"></i>Excel</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+      <div class="esb" style="margin:0">
+        <div class="esb-title"><i class="fas fa-money-check-alt"></i>Maaş Farkı Kontrolü</div>
+        <label class="fl">Gerçek yatan net tutar</label>
+        ${input('actualPaid','Örn: 42000')}
+        <div style="margin-top:8px;font-size:12px;color:var(--t2)">Beklenen: <strong>${e ? fm(e.totalEarning) : '—'}</strong>${paidDiff !== null ? ` · Fark: ${diffBadge(paidDiff)}` : ''}</div>
+      </div>
+      <div class="esb" style="margin:0">
+        <div class="esb-title"><i class="fas fa-receipt"></i>Bordro Doğrulama</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${input('slipGross','Brüt')}
+          ${input('slipNet','Net')}
+          ${input('slipSgk','SGK')}
+          ${input('slipIncomeTax','GV')}
+          ${input('slipStampTax','DV')}
+        </div>
+        <div style="margin-top:8px">${cmp.length ? cmp.map(c => `<div class="esd"><span class="ek">${c.label}: bordro ${fm(c.entered)} / beklenen ${fm(c.expected)}</span><span class="ev">${diffBadge(c.diff)}</span></div>`).join('') : '<div class="ai-empty">Bordro kalemlerini girince farklar burada görünür.</div>'}</div>
+      </div>
+      <div class="esb" style="margin:0">
+        <div class="esb-title"><i class="fas fa-hourglass-half"></i>270 Saat FM Takibi</div>
+        <div class="esb-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div class="esb-item"><div class="esb-val" style="color:${annualOT>270?'var(--r)':annualOT>240?'var(--acc)':'var(--p)'}">${annualOT.toFixed(1)}s</div><div class="esb-lbl">${y} toplam FM</div></div>
+          <div class="esb-item"><div class="esb-val">${otLeft >= 0 ? otLeft.toFixed(1)+'s' : '+'+Math.abs(otLeft).toFixed(1)+'s'}</div><div class="esb-lbl">${otLeft >= 0 ? 'Kalan' : 'Aşım'}</div></div>
+        </div>
+      </div>
+      <div class="esb" style="margin:0">
+        <div class="esb-title"><i class="fas fa-triangle-exclamation"></i>45 Saat / Dinlenme Uyarıları</div>
+        ${warnHtml}
+      </div>
+      <div class="esb" style="margin:0;grid-column:1/-1">
+        <div class="esb-title"><i class="fas fa-flag"></i>Resmi Tatil Hakediş Raporu</div>
+        ${holidayHtml}
+      </div>
+    </div>
+  </div>`;
+}
+function employeeMonthRows(u, y, m) {
+  const d = getMD(y, m);
+  const e = u.netSalary ? calcEarningForMonth(y, m, u.netSalary) : null;
+  const holidays = buildHolidayWorkRows(u, y, m);
+  const warnings = buildWorkLawWarnings(u, y, m, d);
+  const payroll = estimatePayrollForMonth(u, y, m, d);
+  const rec = getPayrollCheck(u, y, m);
+  const rows = [
+    ['Dönem', `${MTR[m]} ${y}`],
+    ['Çalışan', u.name || ''],
+    ['Toplam saat', `${d.th.toFixed(1)} saat`],
+    ['Fazla mesai', `${d.oh.toFixed(1)} saat`],
+    ['Resmi tatil çalışması', `${(d.hpd || d.hdw || 0).toFixed(1)} gün`],
+    ['Beklenen net kazanç', e ? fm(e.totalEarning) : 'Maaş girilmemiş'],
+  ];
+  if (safeNum(rec.actualPaid, 0) > 0 && e) rows.push(['Gerçek yatan / fark', `${fm(rec.actualPaid)} / ${(rec.actualPaid - e.totalEarning).toFixed(2)} TL`]);
+  if (payroll) {
+    rows.push(['Tahmini brüt bordro', fm(payroll.gross)]);
+    rows.push(['Net gelir vergisi', fm(payroll.netGV)]);
+    rows.push(['Net damga vergisi', fm(payroll.stampTax)]);
+  }
+  rows.push(['Yıllık FM toplamı', `${yearlyOvertimeHours(y).toFixed(1)} saat`]);
+  holidays.forEach(h => rows.push([`Tatil: ${h.ds}`, `${h.name} · ${h.hours.toFixed(1)}s · ${h.payDays.toFixed(1)}g hakediş`]));
+  warnings.forEach(w => rows.push(['Uyarı', w.text]));
+  return rows;
+}
+function exportEmployeeMonthExcel() {
+  const u = cu(); if (!u) return;
+  const rows = employeeMonthRows(u, S.ey, S.em);
+  const htmlRows = rows.map(r => `<tr><td>${escHtml(r[0])}</td><td>${escHtml(r[1])}</td></tr>`).join('');
+  const html = `<html><head><meta charset="utf-8"></head><body><table border="1"><tr><th>Kalem</th><th>Değer</th></tr>${htmlRows}</table></body></html>`;
+  const blob = new Blob([html], { type:'application/vnd.ms-excel;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `calisan_hak_raporu_${employeeMonthKey(S.ey,S.em)}.xls`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast('Excel raporu indirildi', 'success');
+}
+function exportEmployeeMonthPDF() {
+  const u = cu(); if (!u) return;
+  const jspdfLib = window.jspdf || {};
+  const JsPDF = jspdfLib.jsPDF;
+  if (!JsPDF) { toast('PDF kütüphanesi yüklenemedi', 'error'); return; }
+  try {
+    const doc = new JsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    const rows = employeeMonthRows(u, S.ey, S.em).map(r => [String(r[0]), String(r[1])]);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+    doc.text('Calisan Hak ve Bordro Kontrol Raporu', 14, 16);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    doc.text(`${u.name || ''} | ${MTR[S.em]} ${S.ey}`, 14, 24);
+    if (doc.autoTable) {
+      doc.autoTable({ startY: 32, head:[['Kalem','Deger']], body:rows, styles:{ font:'helvetica', fontSize:9, cellPadding:3 }, headStyles:{ fillColor:[99,102,241] } });
+    } else {
+      let y = 34;
+      rows.forEach(r => { if (y > 280) { doc.addPage(); y = 16; } doc.text(`${r[0]}: ${r[1]}`, 14, y); y += 6; });
+    }
+    doc.setFontSize(7); doc.setTextColor(150,150,150);
+    doc.text(`ShiftTrack Pro | ${new Date().toLocaleString('tr-TR')}`, 14, 290);
+    doc.save(`calisan_hak_raporu_${employeeMonthKey(S.ey,S.em)}.pdf`);
+    toast('PDF raporu indirildi', 'success');
+  } catch(e) {
+    console.error(e);
+    toast('PDF oluşturulamadı: ' + e.message, 'error');
+  }
 }
 
 /* Kazanç — Haftalık Kırılım */
@@ -6865,6 +7095,7 @@ function loadLS() {
       S.u[i].settingsUpdatedAt = safeNum(S.u[i].settingsUpdatedAt, 0);
       if (!Array.isArray(S.u[i].customPresets)) S.u[i].customPresets = [];
       if (!Array.isArray(S.u[i].documents)) S.u[i].documents = [];
+      if (!S.u[i].payrollChecks || typeof S.u[i].payrollChecks !== 'object') S.u[i].payrollChecks = {};
       /* [FIX ERR-HANDLE-03] safeNum/safeInt ile NaN/Infinity propagation engellendi */
       S.u[i].netSalary = safeNum(S.u[i].netSalary, 0);
       S.u[i].annualLeave = annualLeaveTotal(S.u[i]);
@@ -6939,6 +7170,7 @@ function importD(e) {
         S.u[i].settingsUpdatedAt = safeNum(S.u[i].settingsUpdatedAt, 0);
         if (!Array.isArray(S.u[i].customPresets)) S.u[i].customPresets = [];
         if (!Array.isArray(S.u[i].documents)) S.u[i].documents = [];
+        if (!S.u[i].payrollChecks || typeof S.u[i].payrollChecks !== 'object') S.u[i].payrollChecks = {};
         S.u[i].netSalary = safeNum(S.u[i].netSalary, 0);
         S.u[i].annualLeave = annualLeaveTotal(S.u[i]);
         S.u[i].goalHours = safeNum(S.u[i].goalHours, 0);
@@ -9033,6 +9265,17 @@ function deepMergeUser(local, cloud) {
     });
   }
 
+  const allPayrollCheckKeys = new Set([
+    ...Object.keys(merged.payrollChecks || {}),
+    ...Object.keys(cloud.payrollChecks || {})
+  ]);
+  if (!merged.payrollChecks || typeof merged.payrollChecks !== 'object') merged.payrollChecks = {};
+  allPayrollCheckKeys.forEach(k => {
+    const lr = merged.payrollChecks[k], cr = cloud.payrollChecks ? cloud.payrollChecks[k] : null;
+    if (!lr && cr) merged.payrollChecks[k] = cr;
+    else if (lr && cr && ((cr.updatedAt || 0) >= (lr.updatedAt || 0))) merged.payrollChecks[k] = cr;
+  });
+
   /* [FIX BUG-R3] Ayarlar için zaman damgası çakışma çözümü.
      settingsUpdatedAt yoksa her iki taraf da 0 kabul edilir — cloud kazanır (geriye uyumlu).
      Yerel daha yeni ise (çevrimdışı değişiklik) yerel korunur. */
@@ -9357,6 +9600,10 @@ if (window.matchMedia) {
 const DOC_CATS = {
   hygiene:     { label: 'Hijyen Belgesi',        icon: '🧼', color: '#22c55e' },
   mastery:     { label: 'Ustalık Belgesi',        icon: '🏆', color: '#f59e0b' },
+  payslip:     { label: 'Bordro',                 icon: '🧾', color: '#6366f1' },
+  contract:    { label: 'İş Sözleşmesi',          icon: '📑', color: '#14b8a6' },
+  sgk:         { label: 'SGK Belgesi',            icon: '🏥', color: '#ef4444' },
+  leave_form:  { label: 'İzin Formu',             icon: '🗓️', color: '#0ea5e9' },
   passport:    { label: 'Pasaport',               icon: '📘', color: '#3b82f6' },
   id:          { label: 'Kimlik',                 icon: '🪪', color: '#8b5cf6' },
   certificate: { label: 'Sertifika',              icon: '📜', color: '#ec4899' },
