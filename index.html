@@ -3329,8 +3329,8 @@ body.theme-light .doc-cat, body.theme-light-ocean .doc-cat {
         <div class="fg">
           <label>FM Modu</label>
           <div class="radio-row">
-            <label class="radio-opt"><input type="radio" name="otMode" value="pay" onchange="sSet('otCompMode',this.value)"> 💰 Ücret öde</label>
-            <label class="radio-opt"><input type="radio" name="otMode" value="leave" onchange="sSet('otCompMode',this.value)"> 🏖️ İzin biriktir</label>
+            <label class="radio-opt"><input type="radio" name="otMode" data-ot-mode="1" value="pay" onchange="sSet('otCompMode',this.value)"> 💰 Ücret öde</label>
+            <label class="radio-opt"><input type="radio" name="otMode" data-ot-mode="1" value="leave" onchange="sSet('otCompMode',this.value)"> 🏖️ İzin biriktir</label>
           </div>
         </div>
         <div class="fg"><label>FM Katsayısı</label><input type="number" id="sOTRate" placeholder="1.5" min="1.5" max="3" step="0.5" onchange="sSet('otCompRate',this.value)"><small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">TR İş Kanunu gereği minimum 1.5×</small></div>
@@ -6453,7 +6453,11 @@ function loadSet() {
   const sGE = $('sGoalEarning'); if (sGE) sGE.value = u.goalEarning || '';
   /* [FIX] FM Yönetimi & Öneriler ayarlarını yükle */
   const sOR = $('sOTRate'); if (sOR) sOR.value = parseFloat(u.otCompRate) || 1.5;
-  document.querySelectorAll('[name="otMode"]').forEach(r => { r.checked = r.value === (u.otCompMode || 'pay'); });
+  const otGroupName = `otMode_${S.cu}`;
+  document.querySelectorAll('[data-ot-mode="1"]').forEach(r => {
+    r.name = otGroupName;
+    r.checked = r.value === (u.otCompMode || 'pay');
+  });
   const hst = $('hideSuggestionsToggle'); if (hst) hst.checked = !u.hideSuggestions;
   const ltOTC = $('ltOptOTComp');
   if (ltOTC) ltOTC.style.display = (u.otCompMode === 'leave') ? '' : 'none';
@@ -6479,6 +6483,8 @@ function sSet(k, v) {
   if (k === 'otCompRate') { v = parseFloat(v); if (isNaN(v) || v < 1.5) v = 1.5; if (v > 3) v = 3; }
   if (k === 'otBalance') { v = parseFloat(v); if (isNaN(v) || v < 0) v = 0; }
   if (k === 'otCompMode') {
+    v = v === 'leave' ? 'leave' : 'pay';
+    document.querySelectorAll('[data-ot-mode="1"]').forEach(r => { r.checked = r.value === v; });
     const ltOTC = $('ltOptOTComp');
     if (ltOTC) ltOTC.style.display = v === 'leave' ? '' : 'none';
   }
