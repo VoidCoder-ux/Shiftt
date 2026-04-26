@@ -28,16 +28,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" integrity="sha384-/o6I2CkkWC//PSjvWC/eYN7l3xM3tJm8ZzVkCOfp//W05QcE3mlGskpoHB6XqI+B" crossorigin="anonymous">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
 <!-- ===== eBORDRO MODULE CDN ===== -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" integrity="sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3" crossorigin="anonymous"></script>
 <!-- ===== eBORDRO MODULE CDN END ===== -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
 <!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" integrity="sha384-sEVIly94UBRLKWdkYoPpSG7GD/e79YHMrxVyZaOk712Ga7+EAw6w1EFi+xBzBdd+" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js" integrity="sha384-EkqK+ezBWJuvO3hfrSx2iVqr3YQbhmnzn8kPhOpBZ+0GMVU5oGSgptwIu8D84HjE" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js" integrity="sha384-M481iNZJtbpypKgvlvZ+78Giq0BsewFLk5r2k+MOcGXlwKCc27DQRZ+WCV/zpmpC" crossorigin="anonymous"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -3622,6 +3622,7 @@ function mkUser(i) {
 
 let confirmCallback = null;
 let mdCache = {};
+let yearlyOTCache = {};
 
 /* ============================================================
    UNDO STACK
@@ -3927,8 +3928,10 @@ function getQuarterlyOT(yr, mo) {
 function invalidateMDCache(uid, y, m) {
   if (uid !== undefined && y !== undefined && m !== undefined) {
     delete mdCache[`${uid}-${y}-${m}`];
+    delete yearlyOTCache[`${uid}-${y}`];
   } else {
     mdCache = {};
+    yearlyOTCache = {};
   }
 }
 
@@ -4262,25 +4265,48 @@ function answerAIQuestion(question, ctx) {
 
 function getDeepSeekSettings() {
   try {
+    const legacyLocalKey = localStorage.getItem('st_deepseek_api_key') || '';
+    const storagePref = localStorage.getItem('st_deepseek_storage');
+    const storage = storagePref === 'local' || (!storagePref && legacyLocalKey) ? 'local' : 'session';
+    const apiKey = storage === 'local'
+      ? legacyLocalKey
+      : (sessionStorage.getItem('st_deepseek_api_key') || '');
     return {
-      apiKey: localStorage.getItem('st_deepseek_api_key') || '',
-      model: localStorage.getItem('st_deepseek_model') || 'deepseek-chat'
+      apiKey,
+      model: localStorage.getItem('st_deepseek_model') || 'deepseek-chat',
+      storage,
+      consent: localStorage.getItem('st_deepseek_remote_consent') === '1'
     };
   } catch(_) {
-    return { apiKey:'', model:'deepseek-chat' };
+    return { apiKey:'', model:'deepseek-chat', storage:'session', consent:false };
   }
 }
 
 function saveDeepSeekSettings() {
   const keyEl = $('aiDeepSeekKey');
   const modelEl = $('aiDeepSeekModel');
+  const rememberEl = $('aiDeepSeekRemember');
+  const consentEl = $('aiDeepSeekConsent');
   const key = keyEl ? keyEl.value.trim() : '';
   const model = modelEl ? modelEl.value.trim() : 'deepseek-chat';
   try {
-    if (key) localStorage.setItem('st_deepseek_api_key', key);
-    else localStorage.removeItem('st_deepseek_api_key');
+    const storage = rememberEl && rememberEl.checked ? 'local' : 'session';
+    localStorage.setItem('st_deepseek_storage', storage);
+    if (key && storage === 'local') {
+      localStorage.setItem('st_deepseek_api_key', key);
+      sessionStorage.removeItem('st_deepseek_api_key');
+    } else if (key) {
+      sessionStorage.setItem('st_deepseek_api_key', key);
+      localStorage.removeItem('st_deepseek_api_key');
+    } else {
+      localStorage.removeItem('st_deepseek_api_key');
+      sessionStorage.removeItem('st_deepseek_api_key');
+    }
     localStorage.setItem('st_deepseek_model', model || 'deepseek-chat');
-    setTxt('aiApiStatus', key ? 'DeepSeek API aktif. Key yalnızca bu tarayıcıda saklanır.' : 'API key boşaltıldı; yerel MVP cevapları kullanılacak.');
+    if (consentEl && consentEl.checked) localStorage.setItem('st_deepseek_remote_consent', '1');
+    else localStorage.removeItem('st_deepseek_remote_consent');
+    const modeText = storage === 'local' ? 'kalıcı olarak bu cihazda' : 'yalnızca bu oturumda';
+    setTxt('aiApiStatus', key ? `DeepSeek API ${consentEl && consentEl.checked ? 'aktif' : 'hazır, dış servis onayı bekliyor'}. Key ${modeText} saklanır.` : 'API key boşaltıldı; yerel MVP cevapları kullanılacak.');
     toast(key ? 'DeepSeek API kaydedildi' : 'DeepSeek API kaldırıldı', key ? 'success' : 'info');
   } catch(e) {
     toast('API ayarı kaydedilemedi', 'error');
@@ -4291,9 +4317,14 @@ function clearDeepSeekSettings() {
   try {
     localStorage.removeItem('st_deepseek_api_key');
     localStorage.removeItem('st_deepseek_model');
+    localStorage.removeItem('st_deepseek_storage');
+    localStorage.removeItem('st_deepseek_remote_consent');
+    sessionStorage.removeItem('st_deepseek_api_key');
   } catch(_) {}
   const keyEl = $('aiDeepSeekKey'); if (keyEl) keyEl.value = '';
   const modelEl = $('aiDeepSeekModel'); if (modelEl) modelEl.value = 'deepseek-chat';
+  const rememberEl = $('aiDeepSeekRemember'); if (rememberEl) rememberEl.checked = false;
+  const consentEl = $('aiDeepSeekConsent'); if (consentEl) consentEl.checked = false;
   setTxt('aiApiStatus', 'DeepSeek API kapalı. Yerel MVP cevapları kullanılacak.');
   toast('DeepSeek API temizlendi', 'info');
 }
@@ -4329,6 +4360,7 @@ function buildDeepSeekPayload(question, ctx) {
 async function askDeepSeek(question, ctx) {
   const cfg = getDeepSeekSettings();
   if (!cfg.apiKey) return null;
+  if (!cfg.consent) return null;
   const payload = buildDeepSeekPayload(question, ctx);
   const res = await fetch('https://api.deepseek.com/chat/completions', {
     method: 'POST',
@@ -4373,11 +4405,12 @@ async function submitAIQuestion() {
   log.insertAdjacentHTML('beforeend', `<div class="ai-msg user">${escHtml(q)}</div>`);
   const bot = document.createElement('div');
   bot.className = 'ai-msg bot';
-  bot.textContent = getDeepSeekSettings().apiKey ? 'DeepSeek yanıtlıyor...' : answerAIQuestion(q, ctx);
+  const aiCfg = getDeepSeekSettings();
+  bot.textContent = aiCfg.apiKey && aiCfg.consent ? 'DeepSeek yanıtlıyor...' : answerAIQuestion(q, ctx);
   log.appendChild(bot);
   input.value = '';
   log.scrollTop = log.scrollHeight;
-  if (!getDeepSeekSettings().apiKey) return;
+  if (!aiCfg.apiKey || !aiCfg.consent) return;
   try {
     const remote = await askDeepSeek(q, ctx);
     bot.textContent = remote || answerAIQuestion(q, ctx);
@@ -4440,12 +4473,14 @@ function renderAIAssistantPage() {
           <div class="ai-api-grid">
             <input id="aiDeepSeekKey" type="password" placeholder="DeepSeek API key" value="${escHtml(apiCfg.apiKey)}" autocomplete="off">
             <input id="aiDeepSeekModel" type="text" placeholder="Model" value="${escHtml(apiCfg.model || 'deepseek-chat')}">
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)"><input id="aiDeepSeekConsent" type="checkbox" ${apiCfg.consent ? 'checked' : ''}>Vardiya/kazanç özetini DeepSeek'e göndermeyi onaylıyorum</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)"><input id="aiDeepSeekRemember" type="checkbox" ${apiCfg.storage === 'local' ? 'checked' : ''}>API key bu cihazda kalıcı saklansın</label>
             <div class="ai-api-actions">
               <button class="btn btn-primary btn-sm" type="button" onclick="saveDeepSeekSettings()"><i class="fas fa-save"></i>Kaydet</button>
               <button class="btn btn-outline btn-sm" type="button" onclick="clearDeepSeekSettings()"><i class="fas fa-trash"></i></button>
             </div>
           </div>
-          <div class="ai-api-status" id="aiApiStatus">${apiCfg.apiKey ? 'DeepSeek API aktif. Key yalnızca bu tarayıcıda saklanır.' : 'API key girilmezse sohbet yerel MVP cevaplarını kullanır.'}</div>
+          <div class="ai-api-status" id="aiApiStatus">${apiCfg.apiKey ? (apiCfg.consent ? `DeepSeek API aktif. Key ${apiCfg.storage === 'local' ? 'bu cihazda kalıcı' : 'bu oturumda'} saklanır.` : 'API key hazır; dış servise veri gönderimi için onay kutusunu işaretleyin.') : 'API key girilmezse sohbet yerel MVP cevaplarını kullanır.'}</div>
         </div>
         <div class="ai-card" style="margin-bottom:16px">
           <h3><i class="fas fa-comments"></i>Takvim Sohbeti</h3>
@@ -6250,6 +6285,8 @@ function getPayrollCheck(u, y, m) {
 }
 function savePayrollCheckField(field, raw) {
   const u = cu(); if (!u) return;
+  const allowed = new Set(['actualPaid','priorYTD','slipGross','slipNet','slipSgk','slipIncomeTax','slipStampTax']);
+  if (!allowed.has(field)) return;
   const rec = getPayrollCheck(u, S.ey, S.em);
   const val = parseFloat(raw);
   if (raw === '' || raw === null || raw === undefined || !Number.isFinite(val)) delete rec[field];
@@ -6260,7 +6297,8 @@ function savePayrollCheckField(field, raw) {
 }
 function estimatePayrollForMonth(u, y, m, d) {
   if (!u || !u.netSalary || u.netSalary <= 0) return null;
-  const marital = 'single', children = 0, priorYTD = 0;
+  const marital = 'single', children = 0;
+  const priorYTD = safeNum(getPayrollCheck(u, y, m).priorYTD, 0);
   const baseGross = findGrossFromNet(u.netSalary, marital, children, priorYTD, m);
   const mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : (MH || 195);
   const hrGross = baseGross / mh;
@@ -6321,8 +6359,11 @@ function buildHolidayWorkRows(u, y, m) {
   return rows;
 }
 function yearlyOvertimeHours(y) {
+  const key = `${S.cu}-${y}`;
+  if (yearlyOTCache[key] !== undefined) return yearlyOTCache[key];
   let total = 0;
   for (let i = 0; i < 12; i++) total += getMD(y, i).oh || 0;
+  yearlyOTCache[key] = total;
   return total;
 }
 function renderEmployeeRightsPanel(u, y, m, d, e) {
@@ -6368,6 +6409,7 @@ function renderEmployeeRightsPanel(u, y, m, d, e) {
       <div class="esb" style="margin:0">
         <div class="esb-title"><i class="fas fa-receipt"></i>Bordro Doğrulama</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${input('priorYTD','Önceki GV matrahı')}
           ${input('slipGross','Brüt')}
           ${input('slipNet','Net')}
           ${input('slipSgk','SGK')}
@@ -6412,6 +6454,7 @@ function employeeMonthRows(u, y, m) {
   if (safeNum(rec.actualPaid, 0) > 0 && e) rows.push(['Gerçek yatan / fark', `${fm(rec.actualPaid)} / ${(rec.actualPaid - e.totalEarning).toFixed(2)} TL`]);
   if (payroll) {
     rows.push(['Tahmini brüt bordro', fm(payroll.gross)]);
+    rows.push(['Önceki kümülatif GV matrahı', fm(safeNum(rec.priorYTD, 0))]);
     rows.push(['Net gelir vergisi', fm(payroll.netGV)]);
     rows.push(['Net damga vergisi', fm(payroll.stampTax)]);
   }
@@ -7122,6 +7165,49 @@ function loadLS() {
   }
 }
 
+function normalizeImportedUser(i, raw, opts = {}) {
+  if (!raw || typeof raw !== 'object') return null;
+  const allowed = ['name','netSalary','startDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
+    'customPresets','weeklyTemplate','notes','profileUpdatedAt','notesUpdatedAt','settingsUpdatedAt','lastLogin',
+    'theme','monthlyHours','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks',
+    'otCompMode','otCompRate','otBalance','hideSuggestions'];
+  const u = mkUser(i);
+  allowed.forEach(k => { if (raw[k] !== undefined) u[k] = raw[k]; });
+  if (typeof u.shifts !== 'object' || !u.shifts) u.shifts = {};
+  if (typeof u.leaves !== 'object' || !u.leaves) u.leaves = {};
+  if (typeof u.deletedShifts !== 'object' || !u.deletedShifts) u.deletedShifts = {};
+  if (typeof u.deletedLeaves !== 'object' || !u.deletedLeaves) u.deletedLeaves = {};
+  if (typeof u.deletedDocs !== 'object' || !u.deletedDocs) u.deletedDocs = {};
+  if (!u.payrollChecks || typeof u.payrollChecks !== 'object') u.payrollChecks = {};
+  u.profileUpdatedAt = safeNum(u.profileUpdatedAt, 0);
+  u.notesUpdatedAt = safeNum(u.notesUpdatedAt, 0);
+  u.settingsUpdatedAt = safeNum(u.settingsUpdatedAt, 0);
+  if (!Array.isArray(u.customPresets)) u.customPresets = [];
+  u.documents = Array.isArray(u.documents) ? u.documents.slice(0, 100).map(d => {
+    const out = {
+      id: String((d && d.id) || '').slice(0, 80),
+      name: String((d && d.name) || 'Belge').slice(0, 80),
+      category: DOC_CATS[(d && d.category)] ? d.category : 'other',
+      fileName: String((d && d.fileName) || '').slice(0, 120),
+      mimeType: String((d && d.mimeType) || '').slice(0, 80),
+      fileSize: safeNum(d && d.fileSize, 0),
+      uploadedAt: safeNum(d && d.uploadedAt, 0)
+    };
+    if (opts.keepDocUrls && typeof d.url === 'string' && d.url.startsWith('data:') && d.url.length < 950000) out.url = d.url;
+    return out.id ? out : null;
+  }).filter(Boolean) : [];
+  u.netSalary = safeNum(u.netSalary, 0);
+  u.annualLeave = annualLeaveTotal(u);
+  u.goalHours = safeNum(u.goalHours, 0);
+  u.goalEarning = safeNum(u.goalEarning, 0);
+  u.monthlyHours = safeNum(u.monthlyHours, 0);
+  u.notes = typeof u.notes === 'string' ? u.notes.substring(0, 1000) : '';
+  Object.keys(u.shifts).filter(k => !parseDS(k) || !u.shifts[k] || typeof u.shifts[k] !== 'object' || !u.shifts[k].start).forEach(k => delete u.shifts[k]);
+  Object.keys(u.leaves).filter(k => !parseDS(k) || !u.leaves[k] || typeof u.leaves[k] !== 'object' || !u.leaves[k].type).forEach(k => delete u.leaves[k]);
+  if (u.pin && u.pin.length !== 64) u.pin = null;
+  return u;
+}
+
 function exportD() {
   let url = null;
   try {
@@ -7157,33 +7243,8 @@ function importD(e) {
       Object.keys(p.users).forEach(k => {
         const i = parseInt(k);
         if (!Number.isFinite(i)) return;
-        const raw = p.users[k];
-        if (!raw || typeof raw !== 'object') return;
-        S.u[i] = Object.assign(mkUser(i), raw);
-        if (typeof S.u[i].shifts !== 'object' || !S.u[i].shifts) S.u[i].shifts = {};
-        if (typeof S.u[i].leaves !== 'object' || !S.u[i].leaves) S.u[i].leaves = {};
-        if (typeof S.u[i].deletedShifts !== 'object' || !S.u[i].deletedShifts) S.u[i].deletedShifts = {};
-        if (typeof S.u[i].deletedLeaves !== 'object' || !S.u[i].deletedLeaves) S.u[i].deletedLeaves = {};
-        if (typeof S.u[i].deletedDocs !== 'object' || !S.u[i].deletedDocs) S.u[i].deletedDocs = {};
-        S.u[i].profileUpdatedAt = safeNum(S.u[i].profileUpdatedAt, 0);
-        S.u[i].notesUpdatedAt = safeNum(S.u[i].notesUpdatedAt, 0);
-        S.u[i].settingsUpdatedAt = safeNum(S.u[i].settingsUpdatedAt, 0);
-        if (!Array.isArray(S.u[i].customPresets)) S.u[i].customPresets = [];
-        if (!Array.isArray(S.u[i].documents)) S.u[i].documents = [];
-        if (!S.u[i].payrollChecks || typeof S.u[i].payrollChecks !== 'object') S.u[i].payrollChecks = {};
-        S.u[i].netSalary = safeNum(S.u[i].netSalary, 0);
-        S.u[i].annualLeave = annualLeaveTotal(S.u[i]);
-        S.u[i].goalHours = safeNum(S.u[i].goalHours, 0);
-        S.u[i].goalEarning = safeNum(S.u[i].goalEarning, 0);
-        if (S.u[i].monthlyHours !== undefined && S.u[i].monthlyHours !== null) {
-          S.u[i].monthlyHours = safeNum(S.u[i].monthlyHours, 0);
-        }
-        S.u[i].notes = typeof S.u[i].notes === 'string' ? S.u[i].notes : '';
-        /* [FIX ERR-HANDLE-05] Import edilen bozuk shift/leave kayıtlarını temizle (loadLS ile aynı politika) */
-        const bs = Object.keys(S.u[i].shifts).filter(k2 => !parseDS(k2) || !S.u[i].shifts[k2] || typeof S.u[i].shifts[k2] !== 'object' || !S.u[i].shifts[k2].start);
-        bs.forEach(k2 => delete S.u[i].shifts[k2]);
-        const bl = Object.keys(S.u[i].leaves).filter(k2 => !parseDS(k2) || !S.u[i].leaves[k2] || typeof S.u[i].leaves[k2] !== 'object' || !S.u[i].leaves[k2].type);
-        bl.forEach(k2 => delete S.u[i].leaves[k2]);
+        const user = normalizeImportedUser(i, p.users[k], { keepDocUrls:true });
+        if (user) S.u[i] = user;
       });
       invalidateMDCache();
       saveLS();
@@ -8461,6 +8522,7 @@ function importFromQR() {
   const el = $('qrImportData'); if (!el) return;
   const raw = el.value.trim();
   if (!raw) { toast('Veri girin', 'error'); return; }
+  if (raw.length > 250000) { toast('QR/import verisi çok büyük', 'error'); return; }
   try {
     const decoded = decodeURIComponent(atob(raw));
     /* [FIX ERR-HANDLE-17] safeParse ile JSON dışı içeriği ve null'u kırılmadan ele al */
@@ -8473,9 +8535,8 @@ function importFromQR() {
       Object.keys(p.users).forEach(k => {
         const i = parseInt(k);
         if (!Number.isFinite(i)) return;
-        const raw = p.users[k];
-        if (!raw || typeof raw !== 'object') return;
-        S.u[i] = Object.assign(mkUser(i), raw);
+        const user = normalizeImportedUser(i, p.users[k], { keepDocUrls:false });
+        if (user) S.u[i] = user;
       });
       invalidateMDCache(); saveLS();
       if (cu()) { applyTheme(cu().theme || 'default'); renderAll(); updTop(); }
@@ -8812,10 +8873,7 @@ function initFirebase() {
     fbAuth = firebase.auth();
     fbDb = firebase.firestore();
 
-    // Offline persistence
-    fbDb.enablePersistence({ synchronizeTabs: true }).catch(err => {
-      // unimplemented — sessizce devam et
-    });
+    // Firestore compat enablePersistence gelecekte kaldırılacak; uygulama offline veriyi localStorage'da korur.
 
     // Auth state listener
     fbAuth.onAuthStateChanged(user => {
@@ -9949,6 +10007,7 @@ async function shareDocWA(doc) {
   if (navigator.share && navigator.canShare) {
     try {
       const blob = dataUrlToBlob(doc.url);
+      if (!blob) throw new Error('invalid document data');
       const file = new File([blob], doc.fileName || (doc.name + '.' + (doc.mimeType === 'application/pdf' ? 'pdf' : 'jpg')), { type: blob.type });
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: doc.name, text: `${nameText} — ${u ? u.name : ''} (${dateText})` });

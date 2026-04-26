@@ -1,5 +1,5 @@
 const CACHE_NAME = 'shifttrack-v20';
-const CORE_ASSETS = ['./', './index.html', './manifest.json'];
+const CORE_ASSETS = ['./', './index.html', './manifest.json', './assets/icons/icon-192.png', './assets/icons/icon-512.png'];
 const CDN_ASSETS = [
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css'
