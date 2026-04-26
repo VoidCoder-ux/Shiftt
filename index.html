@@ -4733,6 +4733,7 @@ function go(p, btn) {
 function setTheme(t) {
   const u = cu(); if (!u) return;
   u.theme = t;
+  markSettingsUpdated(u);
   applyTheme(t);
   saveLS();
   toast(THEME_NAMES[t] + ' teması', 'info');
@@ -4753,6 +4754,7 @@ function toggleAutoTheme(on) {
     u.theme = isLight ? 'light' : 'default';
     applyTheme(u.theme);
   }
+  markSettingsUpdated(u);
   saveLS();
   toast(on ? 'Otomatik tema açık' : 'Otomatik tema kapalı', 'info');
 }
@@ -6440,6 +6442,10 @@ function chgE(d) {
 /* ============================================================
    SETTINGS
 ============================================================ */
+function markSettingsUpdated(u) {
+  if (u) u.settingsUpdatedAt = Date.now();
+}
+
 function loadSet() {
   const u = cu(); if (!u) return;
   const sN = $('sName'), sS = $('sSalary'), sSt = $('sStart'), sL = $('sLeave');
@@ -6468,6 +6474,7 @@ function loadSet() {
   renderCustomPresets();
   renderWeeklyTemplate();
   renderDataUsage();
+  rsSwitch('pct');
   applyTheme(u.theme || 'default');
   _updateInstallCard();
 }
@@ -6507,9 +6514,9 @@ function sSet(k, v) {
   /* [FIX L-04] BUG-R3 ile eklenen settingsUpdatedAt: ayar değişikliklerini zaman damgasıyla işaretle.
      deepMergeUser bu zaman damgasını kullanarak daha yeni değişikliği (yerel/cloud) korur. */
   const settingsKeys = ['netSalary','annualLeave','pin','weeklyTemplate','customPresets',
-    'goalHours','goalEarning','theme','monthlyHours',
+    'goalHours','goalEarning','theme','autoTheme','monthlyHours',
     'otCompMode','otCompRate','otBalance','hideSuggestions'];
-  if (settingsKeys.includes(k)) u.settingsUpdatedAt = Date.now();
+  if (settingsKeys.includes(k)) markSettingsUpdated(u);
   if (k === 'name' || k === 'startDate') u.profileUpdatedAt = Date.now();
   invalidateMDCache();
   saveLS();
@@ -6607,6 +6614,7 @@ function saveCPModal() {
   if (hrs <= 0) { toast('Geçersiz süreler', 'error'); return; }
   if (!u.customPresets) u.customPresets = [];
   u.customPresets.push({ name:name.substring(0,30), icon:S.cpSelectedEmoji, start, end, break:brk });
+  markSettingsUpdated(u);
   saveLS();
   renderCustomPresets();
   closeCPModal();
@@ -6635,6 +6643,7 @@ function renderCustomPresets() {
 function delPreset(i) {
   const u = cu(); if (!u || !u.customPresets || i < 0 || i >= u.customPresets.length) return;
   u.customPresets.splice(i, 1);
+  markSettingsUpdated(u);
   saveLS();
   renderCustomPresets();
   toast('Silindi', 'success');
@@ -6690,6 +6699,7 @@ function wtSetOff() {
   const u = cu(); if (!u || S.wtEditDay === null) return;
   if (!u.weeklyTemplate) u.weeklyTemplate = {};
   u.weeklyTemplate[S.wtEditDay] = { type:'off' };
+  markSettingsUpdated(u);
   saveLS(); renderWeeklyTemplate(); closeWTModal();
   toast(DFL[S.wtEditDay] + ' → İzin', 'info');
 }
@@ -6715,6 +6725,7 @@ function saveWTDay() {
   if (hrs <= 0) { toast('Geçersiz süreler', 'error'); return; }
   if (!u.weeklyTemplate) u.weeklyTemplate = {};
   u.weeklyTemplate[S.wtEditDay] = { start:s, end:e, break:b, type:'shift' };
+  markSettingsUpdated(u);
   saveLS(); renderWeeklyTemplate(); closeWTModal();
   toast(DFL[S.wtEditDay] + ' güncellendi', 'success');
 }
@@ -6754,6 +6765,7 @@ function applyWeeklyTemplate() {
 function clearWeeklyTemplate() {
   const u = cu(); if (!u) return;
   u.weeklyTemplate = {};
+  markSettingsUpdated(u);
   saveLS();
   renderWeeklyTemplate();
   toast('Şablon temizlendi', 'info');
@@ -7296,7 +7308,7 @@ function setupPIN() {
   openPIN('Yeni PIN Belirleyin', 'Hesabınızı koruyun', pin1 => {
     openPIN('PIN Tekrar', 'Doğrulama', async pin2 => {
       if (pin1 === pin2) {
-        const u = cu(); if (u) { u.pin = await hashPIN(pin1); saveLS(); updPinStatus(); toast('PIN ayarlandı!', 'success'); }
+        const u = cu(); if (u) { u.pin = await hashPIN(pin1); markSettingsUpdated(u); saveLS(); updPinStatus(); toast('PIN ayarlandı!', 'success'); }
       } else { toast('PIN eşleşmedi!', 'error'); }
     });
   });
@@ -7311,7 +7323,7 @@ function removePIN() {
   openPIN('Mevcut PIN', 'Kaldırmak için PIN girin', async pin => {
     const h = await hashPIN(pin);
     /* [FIX BUG-R2] Düz metin fallback kaldırıldı — yalnızca hash eşleşmesi */
-    if (h === u.pin) { pinAttempts = 0; u.pin = null; saveLS(); updPinStatus(); toast('PIN kaldırıldı', 'info'); }
+    if (h === u.pin) { pinAttempts = 0; u.pin = null; markSettingsUpdated(u); saveLS(); updPinStatus(); toast('PIN kaldırıldı', 'info'); }
     else {
       pinAttempts++;
       if (pinAttempts >= 5) { pinLockUntil = Date.now() + 30000; pinAttempts = 0; toast('5 hatalı deneme! 30sn kilitlendi.', 'error'); }
@@ -9026,6 +9038,7 @@ function deepMergeUser(local, cloud) {
     if (cloud.goalHours !== undefined) merged.goalHours = cloud.goalHours;
     if (cloud.goalEarning !== undefined) merged.goalEarning = cloud.goalEarning;
     if (cloud.theme) merged.theme = cloud.theme;
+    if (cloud.autoTheme !== undefined) merged.autoTheme = !!cloud.autoTheme;
     if (cloud.monthlyHours !== undefined) merged.monthlyHours = cloud.monthlyHours;
     /* [FIX] FM Yönetimi & Öneriler ayarlarını senkronize et */
     if (cloud.otCompMode !== undefined) merged.otCompMode = cloud.otCompMode;
@@ -9322,6 +9335,7 @@ if (window.matchMedia) {
     if (u && u.autoTheme) {
       const newTheme = e.matches ? 'light' : 'default';
       u.theme = newTheme;
+      markSettingsUpdated(u);
       applyTheme(newTheme);
       saveLS();
     }
