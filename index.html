@@ -124,7 +124,7 @@ body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);c
 .topbar-btn.danger:hover{background:rgba(248,113,113,.1);color:var(--r)}
 .topbar-btn:disabled{opacity:.3;cursor:default;pointer-events:none}
 .nav-tabs{position:fixed;top:56px;left:0;right:0;height:54px;background:var(--glass);backdrop-filter:blur(20px);border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:center;padding:0 12px;gap:4px;z-index:99;overflow-x:auto}
-.nav-tab{flex:1;max-width:140px;padding:9px 6px;border-radius:12px;border:none;background:transparent;font-family:inherit;font-size:13px;font-weight:700;color:var(--t3);cursor:pointer;transition:background-color .25s,color .25s,box-shadow .25s;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap}
+.nav-tab{flex:1;max-width:120px;padding:9px 6px;border-radius:12px;border:none;background:transparent;font-family:inherit;font-size:13px;font-weight:700;color:var(--t3);cursor:pointer;transition:background-color .25s,color .25s,box-shadow .25s;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap}
 .nav-tab:hover{background:var(--p4);color:var(--p)}
 .nav-tab.active{background:var(--p2);color:#fff;box-shadow:0 2px 12px rgba(0,0,0,.3)}
 .nav-tab i{font-size:15px}.nav-tab span{font-size:11px;font-weight:700}
@@ -215,6 +215,40 @@ body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);c
 .ai-sum-card .ais-head{font-size:11px;font-weight:800;color:var(--t1);display:flex;align-items:center;gap:6px;margin-bottom:8px;text-transform:uppercase}
 .ai-sum-card .ais-item{display:flex;align-items:flex-start;gap:7px;padding:5px 0;border-top:1px solid var(--b1);font-size:12px;color:var(--t2);line-height:1.45}
 .ai-sum-card .ais-item:first-of-type{border-top:none;padding-top:0}
+/* LOCAL AI ASSISTANT */
+.ai-page-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr);gap:16px;align-items:start}
+.ai-card{background:var(--card);border:1px solid var(--b1);border-radius:var(--rad);padding:16px;box-shadow:var(--sh1);overflow:hidden}
+.ai-card h3{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;margin-bottom:10px}
+.ai-card h3 i{color:var(--p)}
+.ai-hero{background:var(--pg);color:#fff;border-radius:var(--rad);padding:18px;margin-bottom:16px;box-shadow:var(--sh2)}
+.ai-hero .eyebrow{font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;opacity:.75}
+.ai-hero .value{font-size:28px;font-weight:900;line-height:1.05;margin:6px 0}
+.ai-hero .meta{font-size:12px;font-weight:600;opacity:.82}
+.ai-metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.ai-metric{background:var(--bg3);border:1px solid var(--b1);border-radius:10px;padding:10px;min-width:0}
+.ai-metric .v{font-size:16px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ai-metric .k{font-size:9px;color:var(--t3);font-weight:800;text-transform:uppercase;margin-top:2px}
+.ai-list{display:flex;flex-direction:column;gap:8px}
+.ai-item{display:flex;gap:9px;padding:10px;border-radius:10px;background:var(--bg3);border:1px solid var(--b1);font-size:12px;line-height:1.45;color:var(--t2)}
+.ai-item i{color:var(--p);margin-top:2px;flex-shrink:0}
+.ai-item strong{color:var(--t1)}
+.ai-chat{display:flex;flex-direction:column;gap:10px}
+.ai-chat-log{min-height:180px;max-height:320px;overflow:auto;background:var(--bg3);border:1px solid var(--b1);border-radius:12px;padding:10px}
+.ai-msg{padding:9px 11px;border-radius:12px;margin-bottom:8px;font-size:12px;line-height:1.45;max-width:92%}
+.ai-msg.user{margin-left:auto;background:var(--p2);color:#fff}
+.ai-msg.bot{background:var(--card);border:1px solid var(--b1);color:var(--t2)}
+.ai-quick{display:flex;gap:6px;flex-wrap:wrap}
+.ai-quick button{border:1px solid var(--b1);background:var(--bg3);color:var(--t2);border-radius:999px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer}
+.ai-quick button:hover{border-color:var(--p);color:var(--p)}
+.ai-chat-form{display:flex;gap:8px}
+.ai-chat-form input{flex:1;min-width:0;background:var(--bg3);border:1px solid var(--b1);border-radius:10px;color:var(--t1);padding:10px 12px;font-family:inherit;font-size:12px}
+.ai-chat-form button{width:42px;border:none;border-radius:10px;background:var(--p2);color:#fff;cursor:pointer}
+.ai-api-grid{display:grid;grid-template-columns:1fr 160px auto;gap:8px;align-items:center}
+.ai-api-grid input{min-width:0;background:var(--bg3);border:1px solid var(--b1);border-radius:10px;color:var(--t1);padding:9px 11px;font-family:inherit;font-size:12px}
+.ai-api-status{margin-top:8px;font-size:11px;color:var(--t3);line-height:1.45}
+.ai-api-actions{display:flex;gap:6px}
+.ai-safe{border-left:3px solid var(--acc)}
+.ai-empty{padding:14px;border-radius:12px;background:var(--bg3);border:1px dashed var(--b1);font-size:12px;color:var(--t2);line-height:1.5}
 /* [FIX] FM İzin Yönetimi ayar stilleri */
 .radio-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 .radio-opt{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--t2);cursor:pointer;padding:6px 10px;background:var(--bg2);border-radius:8px;border:1px solid var(--b1);transition:border-color .15s}
@@ -644,6 +678,7 @@ tr:hover td{background:var(--bg3)}
 /* RESPONSIVE */
 @media(max-width:768px){
 .content{padding:118px 10px 28px;max-width:100%;width:100%;overflow-x:hidden}.grid-2,.grid-3{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}
+.ai-page-grid{grid-template-columns:1fr}.ai-metric-grid{grid-template-columns:repeat(2,1fr)}.ai-hero .value{font-size:24px}.ai-api-grid{grid-template-columns:1fr}.ai-api-actions{justify-content:flex-end}
 .cal-cell{min-height:56px;padding:4px 5px}.cal-cell .shift-time,.cal-cell .leave-label,.cal-cell .hol-tag{display:none}.cal-cell .hrs-display{font-size:13px}.cal-cell .leave-display{font-size:9px}.cal-cell .shift-icon{display:block}.ss-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
 .earn-hero .amt{font-size:24px}.nav-tab span{display:none}.nav-tab{padding:10px 12px}.nav-tab i{font-size:17px}
 .login-cards{flex-direction:column;align-items:center}.year-overview{grid-template-columns:repeat(6,1fr)}
@@ -3052,7 +3087,7 @@ body.theme-light .doc-cat, body.theme-light-ocean .doc-cat {
       <button class="topbar-btn notif-bell" id="notifBtn" onclick="showNotifications()" title="Bildirimler"><i class="fas fa-bell"></i><span class="notif-badge" id="notifBadge" style="display:none"></span></button>
       <button class="topbar-btn tb-desktop" onclick="showShortcuts()" title="Kısayollar (?)"><i class="fas fa-keyboard"></i></button>
       <button class="topbar-btn tb-desktop" id="undoBtn" disabled onclick="undo()" title="Geri Al (Ctrl+Z)"><i class="fas fa-undo"></i></button>
-      <div class="topbar-user" onclick="go('settings',document.querySelectorAll('.nav-tab')[5])">
+      <div class="topbar-user" onclick="go('settings',document.querySelectorAll('.nav-tab')[6])">
         <div class="av" id="topAv">U</div>
         <span id="topName">Kullanıcı</span>
       </div>
@@ -3065,6 +3100,7 @@ body.theme-light .doc-cat, body.theme-light-ocean .doc-cat {
     <button class="nav-tab" onclick="go('stats',this)"><i class="fas fa-chart-line"></i><span>İstatistik</span></button>
     <button class="nav-tab" onclick="go('leaves',this)"><i class="fas fa-umbrella-beach"></i><span>İzinler</span></button>
     <button class="nav-tab" onclick="go('earnings',this)"><i class="fas fa-wallet"></i><span>Kazanç</span></button>
+    <button class="nav-tab" onclick="go('ai',this)"><i class="fas fa-wand-magic-sparkles"></i><span>AI</span></button>
     <button class="nav-tab" onclick="go('settings',this)"><i class="fas fa-cog"></i><span>Ayarlar</span></button>
     <button class="nav-tab" onclick="go('documents',this)"><i class="fas fa-folder-open"></i><span>Evrak</span></button>
   </nav>
@@ -3203,6 +3239,15 @@ body.theme-light .doc-cat, body.theme-light-ocean .doc-cat {
       </div>
       <div id="earnContent"></div>
       <div id="earnCompare" style="margin-top:16px"></div>
+    </div>
+
+    <!-- AI ASSISTANT -->
+    <div class="page" id="pg-ai">
+      <div class="page-head">
+        <div><h1>AI Asistan</h1><p>Yerel tahmin, bordro açıklaması ve profil önerileri</p></div>
+        <button class="btn btn-soft btn-sm" onclick="renderAIAssistantPage()"><i class="fas fa-rotate"></i>Yenile</button>
+      </div>
+      <div id="aiAssistantContent"></div>
     </div>
 
     <!-- SETTINGS -->
@@ -4065,6 +4110,356 @@ function calcEarningForMonth(y, m, ns) {
 }
 
 /* ============================================================
+   LOCAL AI ASSISTANT MVP
+============================================================ */
+function buildAIContext(user, year, month) {
+  const u = user || cu();
+  const y = Number.isInteger(year) ? year : S.cy;
+  const m = Number.isInteger(month) ? month : S.cm;
+  const md = getMD(y, m);
+  const salary = safeNum(u && u.netSalary, 0);
+  const earning = salary > 0 ? calcEarningForMonth(y, m, salary) : null;
+  const today = new Date();
+  const isCurrentMonth = y === today.getFullYear() && m === today.getMonth();
+  const monthlyHours = safeNum(u && u.monthlyHours, 0) || 195;
+  const shiftCount = u && u.shifts ? Object.keys(u.shifts).filter(ds => {
+    const p = parseDS(ds);
+    return p && p.y === y && p.m === m;
+  }).length : 0;
+  const leaveCount = u && u.leaves ? Object.keys(u.leaves).filter(ds => {
+    const p = parseDS(ds);
+    return p && p.y === y && p.m === m;
+  }).length : 0;
+  return {
+    user: u, y, m, monthName: MTR[m], md, salary, earning, monthlyHours,
+    shiftCount, leaveCount, isCurrentMonth,
+    payroll: (typeof _eBordroSession !== 'undefined' && _eBordroSession && _eBordroSession.result) ? _eBordroSession.result : null
+  };
+}
+
+function generateEarningsForecast(ctx) {
+  if (!ctx || !ctx.user) return { status:'empty', title:'Kullanıcı yok', lines:['Önce kullanıcı seçin.'] };
+  if (!ctx.salary || ctx.salary <= 0) {
+    return { status:'missing_salary', title:'Maaş bilgisi eksik', total:0, confidence:'Düşük', lines:['Kazanç tahmini için Ayarlar sayfasından aylık net maaş girin.'] };
+  }
+  if (!ctx.earning) {
+    return { status:'empty', title:'Yeterli veri yok', total:0, confidence:'Düşük', lines:['Bu ay için hesaplanabilir kazanç verisi bulunamadı.'] };
+  }
+
+  const e = ctx.earning;
+  const md = ctx.md;
+  let projected = e.totalEarning;
+  let confidence = 'Yüksek';
+  let basis = 'Kayıtlı ay verisi';
+  if (e.isCurrentMonth) {
+    const evalDays = Math.max(1, e.evaluableDays || new Date().getDate());
+    const progress = Math.min(1, evalDays / Math.max(1, e.dim || ctx.md.dim || 30));
+    projected = progress > 0 ? e.totalEarning / progress : e.totalEarning;
+    confidence = evalDays < 10 ? 'Düşük' : evalDays < 20 ? 'Orta' : 'Yüksek';
+    basis = `${evalDays} gün üzerinden ay sonu projeksiyonu`;
+  } else if (e.isFutureMonth) {
+    projected = 0;
+    confidence = 'Düşük';
+    basis = 'Gelecek ay için kayıtlı veri yok';
+  }
+
+  const low = projected > 0 ? projected * 0.92 : 0;
+  const high = projected > 0 ? projected * 1.08 : 0;
+  return {
+    status:'ok', total:projected, low, high, confidence, basis,
+    metrics:[
+      { k:'Çalışma', v:md.th.toFixed(1) + 's' },
+      { k:'FM', v:md.oh.toFixed(1) + 's' },
+      { k:'Tatil', v:md.hdw + 'g' }
+    ],
+    lines:[
+      `${ctx.monthName} için tahmini kazanç ${fm(projected)}.`,
+      projected > 0 ? `Güven aralığı yaklaşık ${fm(low)} - ${fm(high)}.` : 'Tahmin için vardiya veya izin kaydı ekleyin.',
+      `Dayanak: ${basis}.`
+    ]
+  };
+}
+
+function explainPayroll(ctx, payrollResult) {
+  const r = payrollResult || (ctx && ctx.payroll);
+  if (!r) {
+    return [
+      { icon:'fa-file-invoice', text:'Bordro açıklaması için önce Kazanç sayfasından e-Bordro önizlemesi oluşturun.' },
+      { icon:'fa-shield-alt', text:'Açıklamalar yalnızca uygulamadaki hesaplama kalemlerini sadeleştirir; resmi bordro/hukuk danışmanlığı yerine geçmez.' }
+    ];
+  }
+  const items = [
+    { icon:'fa-coins', text:`Temel brüt maaş ${fm(r.baseGross || r.gross || 0)} olarak alındı.` },
+    { icon:'fa-user-shield', text:`SGK işçi payı ${fm(r.sgkDeduction || 0)}, işsizlik sigortası ${fm(r.unemployDeduct || 0)} hesaplandı.` },
+    { icon:'fa-receipt', text:`Gelir vergisi matrahı ${fm(r.gvMatrah || 0)}, net gelir vergisi ${fm(r.netGV || 0)}.` },
+    { icon:'fa-stamp', text:`Damga vergisi ${fm(r.stampTax || 0)} olarak yansıtıldı.` }
+  ];
+  if ((r.otGross || 0) > 0) items.push({ icon:'fa-business-time', text:`Fazla mesai brüt eki ${fm(r.otGross)}; ${safeNum(r.otHours,0).toFixed(1)} saat ve ${safeNum(r.compRate,1.5)} katsayısına göre oluştu.` });
+  if ((r.holGross || 0) > 0) items.push({ icon:'fa-calendar-day', text:`Tatil çalışması ilavesi ${fm(r.holGross)}; ${safeNum(r.holDays,0)} gün üzerinden eklendi.` });
+  if ((r.mealTotal || 0) > 0 || (r.transportTotal || 0) > 0) items.push({ icon:'fa-plus-circle', text:`Yemek/yol yan hakları toplam ${fm((r.mealTotal || 0) + (r.transportTotal || 0))} nete eklendi.` });
+  items.push({ icon:'fa-wallet', text:`Son net maaş ${fm(r.finalNet || r.net || 0)} olarak görünüyor.` });
+  return items;
+}
+
+function generateProfileSuggestions(ctx) {
+  const u = ctx && ctx.user;
+  if (!u) return [{ level:'warning', text:'Profil önerisi için kullanıcı seçin.' }];
+  const out = [];
+  if (!ctx.salary || ctx.salary <= 0) out.push({ level:'warning', text:'Aylık net maaş eksik. Kazanç tahmini ve bordro açıklaması için Ayarlar’dan maaş girin.' });
+  if (!u.monthlyHours || u.monthlyHours < 100 || u.monthlyHours > 400) out.push({ level:'warning', text:'Aylık saat değeri olağan aralığın dışında. Saatlik ücret ve fazla mesai tahmini etkilenebilir.' });
+  if (ctx.md.th > ctx.monthlyHours * 1.15) out.push({ level:'info', text:`Bu ay çalışma saatiniz aylık hedefin %15 üstünde görünüyor (${ctx.md.th.toFixed(1)}s / ${ctx.monthlyHours}s).` });
+  if (ctx.md.oh > 0 && (u.otCompMode || 'pay') === 'leave') out.push({ level:'info', text:`Fazla mesai ücret yerine izin bakiyesine gidiyor. Bu ay ${ctx.md.oh.toFixed(1)}s FM oluştu.` });
+  if (ctx.md.oh > 20) out.push({ level:'warning', text:'Fazla mesai yüksek görünüyor. Dinlenme ve haftalık limitleri ayrıca kontrol edin.' });
+  if (!u.startDate) out.push({ level:'info', text:'İşe başlangıç tarihi boş. Yıllık izin yorumları daha iyi olsun diye ekleyebilirsiniz.' });
+  if (!ctx.shiftCount && !ctx.leaveCount) out.push({ level:'info', text:'Bu ay vardiya veya izin kaydı yok. AI kartları veri geldikçe daha anlamlı tahmin üretir.' });
+  if (!out.length) out.push({ level:'ok', text:'Profilde kritik eksik görünmüyor. Tahminler mevcut ay verisine göre üretilebilir.' });
+  return out;
+}
+
+function answerAIQuestion(question, ctx) {
+  const q = String(question || '').trim();
+  const n = q.toLocaleLowerCase('tr-TR');
+  if (!q) return 'Bir soru yazın ya da hazır sorulardan birini seçin.';
+  if (!ctx || !ctx.user) return 'Önce kullanıcı seçin.';
+
+  if (n.includes('kaç saat') || n.includes('kac saat') || n.includes('saat çalış')) {
+    return `${ctx.monthName} ayında kayıtlı çalışma süreniz ${ctx.md.th.toFixed(1)} saat. Bunun ${ctx.md.oh.toFixed(1)} saati fazla mesai olarak görünüyor.`;
+  }
+  if (n.includes('tahmini') || n.includes('kazanc') || n.includes('kazanç') || n.includes('maaş') || n.includes('maas')) {
+    const f = generateEarningsForecast(ctx);
+    if (f.status !== 'ok') return f.lines.join(' ');
+    return `${ctx.monthName} tahmini kazancınız ${fm(f.total)}. Yaklaşık aralık ${fm(f.low)} - ${fm(f.high)}; güven seviyesi: ${f.confidence}.`;
+  }
+  if (n.includes('fazla mesai') || n.includes('fm')) {
+    if (ctx.md.oh <= 0) return `${ctx.monthName} için fazla mesai görünmüyor.`;
+    const mode = (ctx.user.otCompMode || 'pay') === 'leave' ? 'izin bakiyesine aktarılıyor' : 'ücret olarak hesaplanıyor';
+    return `${ctx.monthName} için ${ctx.md.oh.toFixed(1)} saat fazla mesai var ve mevcut ayara göre ${mode}.`;
+  }
+  if (n.includes('profil') || n.includes('eksik') || n.includes('öner') || n.includes('oner')) {
+    return generateProfileSuggestions(ctx).map(x => x.text).join(' ');
+  }
+  if (n.includes('bordro') || n.includes('kesinti') || n.includes('vergi') || n.includes('sgk')) {
+    return explainPayroll(ctx).map(x => x.text).join(' ');
+  }
+  return 'Bu yerel MVP şu soruları güvenli şekilde yanıtlıyor: "Bu ay kaç saat çalıştım?", "Tahmini kazancım ne?", "Fazla mesaim var mı?", "Profilimde ne eksik?", "Bordromu açıkla".';
+}
+
+function getDeepSeekSettings() {
+  try {
+    return {
+      apiKey: localStorage.getItem('st_deepseek_api_key') || '',
+      model: localStorage.getItem('st_deepseek_model') || 'deepseek-chat'
+    };
+  } catch(_) {
+    return { apiKey:'', model:'deepseek-chat' };
+  }
+}
+
+function saveDeepSeekSettings() {
+  const keyEl = $('aiDeepSeekKey');
+  const modelEl = $('aiDeepSeekModel');
+  const key = keyEl ? keyEl.value.trim() : '';
+  const model = modelEl ? modelEl.value.trim() : 'deepseek-chat';
+  try {
+    if (key) localStorage.setItem('st_deepseek_api_key', key);
+    else localStorage.removeItem('st_deepseek_api_key');
+    localStorage.setItem('st_deepseek_model', model || 'deepseek-chat');
+    setTxt('aiApiStatus', key ? 'DeepSeek API aktif. Key yalnızca bu tarayıcıda saklanır.' : 'API key boşaltıldı; yerel MVP cevapları kullanılacak.');
+    toast(key ? 'DeepSeek API kaydedildi' : 'DeepSeek API kaldırıldı', key ? 'success' : 'info');
+  } catch(e) {
+    toast('API ayarı kaydedilemedi', 'error');
+  }
+}
+
+function clearDeepSeekSettings() {
+  try {
+    localStorage.removeItem('st_deepseek_api_key');
+    localStorage.removeItem('st_deepseek_model');
+  } catch(_) {}
+  const keyEl = $('aiDeepSeekKey'); if (keyEl) keyEl.value = '';
+  const modelEl = $('aiDeepSeekModel'); if (modelEl) modelEl.value = 'deepseek-chat';
+  setTxt('aiApiStatus', 'DeepSeek API kapalı. Yerel MVP cevapları kullanılacak.');
+  toast('DeepSeek API temizlendi', 'info');
+}
+
+function buildDeepSeekPayload(question, ctx) {
+  const f = generateEarningsForecast(ctx);
+  const suggestions = generateProfileSuggestions(ctx).map(x => x.text);
+  const payroll = explainPayroll(ctx).map(x => x.text);
+  return {
+    question,
+    month: `${ctx.monthName} ${ctx.y}`,
+    summary: {
+      totalHours: ctx.md.th,
+      overtimeHours: ctx.md.oh,
+      holidayWorkDays: ctx.md.hdw,
+      shiftCount: ctx.shiftCount,
+      leaveCount: ctx.leaveCount,
+      monthlyHours: ctx.monthlyHours,
+      salaryEntered: ctx.salary > 0,
+      forecast: f.status === 'ok' ? {
+        total: Math.round(f.total * 100) / 100,
+        low: Math.round(f.low * 100) / 100,
+        high: Math.round(f.high * 100) / 100,
+        confidence: f.confidence
+      } : null,
+      overtimeMode: (ctx.user && ctx.user.otCompMode) || 'pay'
+    },
+    profileSuggestions: suggestions,
+    payrollExplanation: payroll
+  };
+}
+
+async function askDeepSeek(question, ctx) {
+  const cfg = getDeepSeekSettings();
+  if (!cfg.apiKey) return null;
+  const payload = buildDeepSeekPayload(question, ctx);
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + cfg.apiKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: cfg.model || 'deepseek-chat',
+      messages: [
+        {
+          role: 'system',
+          content: 'Sen ShiftTrack Pro içinde çalışan Türkçe vardiya, kazanç ve bordro asistanısın. Yalnızca verilen JSON bağlamına dayan. Hukuki/finansal kesin danışmanlık verme; uygulama içi hesaplama ve bilgilendirme dili kullan. Cevabı kısa, net ve güvenli ver.'
+        },
+        {
+          role: 'user',
+          content: JSON.stringify(payload)
+        }
+      ],
+      temperature: 0.2,
+      max_tokens: 450
+    })
+  });
+  if (!res.ok) throw new Error('DeepSeek API HTTP ' + res.status);
+  const data = await res.json();
+  return (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) ? data.choices[0].message.content.trim() : null;
+}
+
+function aiAsk(q) {
+  const input = $('aiChatInput');
+  if (input) input.value = q || input.value;
+  submitAIQuestion();
+}
+
+async function submitAIQuestion() {
+  const input = $('aiChatInput');
+  const log = $('aiChatLog');
+  if (!input || !log) return;
+  const q = input.value.trim();
+  if (!q) return;
+  const ctx = buildAIContext(cu(), S.cy, S.cm);
+  log.insertAdjacentHTML('beforeend', `<div class="ai-msg user">${escHtml(q)}</div>`);
+  const bot = document.createElement('div');
+  bot.className = 'ai-msg bot';
+  bot.textContent = getDeepSeekSettings().apiKey ? 'DeepSeek yanıtlıyor...' : answerAIQuestion(q, ctx);
+  log.appendChild(bot);
+  input.value = '';
+  log.scrollTop = log.scrollHeight;
+  if (!getDeepSeekSettings().apiKey) return;
+  try {
+    const remote = await askDeepSeek(q, ctx);
+    bot.textContent = remote || answerAIQuestion(q, ctx);
+  } catch(e) {
+    bot.textContent = answerAIQuestion(q, ctx) + ' (DeepSeek API çağrısı başarısız oldu; yerel cevap gösterildi.)';
+  }
+  log.scrollTop = log.scrollHeight;
+}
+
+function renderAIItems(items) {
+  return `<div class="ai-list">${items.map(it => `
+    <div class="ai-item"><i class="fas ${escHtml(it.icon || 'fa-circle-info')}"></i><span>${escHtml(it.text || '')}</span></div>
+  `).join('')}</div>`;
+}
+
+function renderAIAssistantPage() {
+  const el = $('aiAssistantContent'); if (!el) return;
+  const ctx = buildAIContext(cu(), S.cy, S.cm);
+  const forecast = generateEarningsForecast(ctx);
+  const profile = generateProfileSuggestions(ctx);
+  const payrollItems = explainPayroll(ctx);
+  const apiCfg = getDeepSeekSettings();
+  const forecastLines = (forecast.lines || []).map(text => ({ icon:'fa-chart-line', text }));
+  const profileItems = profile.map(x => ({
+    icon: x.level === 'warning' ? 'fa-triangle-exclamation' : x.level === 'ok' ? 'fa-check-circle' : 'fa-lightbulb',
+    text: x.text
+  }));
+
+  el.innerHTML = `
+    <div class="ai-hero">
+      <div class="eyebrow">Yerel AI MVP • ${escHtml(ctx.monthName)} ${ctx.y}</div>
+      <div class="value">${forecast.status === 'ok' ? fm(forecast.total) : 'Veri bekleniyor'}</div>
+      <div class="meta">${forecast.status === 'ok' ? `Tahmini kazanç • Güven: ${escHtml(forecast.confidence)}` : escHtml((forecast.lines || ['Tahmin için profil ve vardiya verisi gerekir.'])[0])}</div>
+      <div class="ai-metric-grid">
+        ${(forecast.metrics || [
+          { k:'Çalışma', v:ctx.md.th.toFixed(1) + 's' },
+          { k:'FM', v:ctx.md.oh.toFixed(1) + 's' },
+          { k:'Kayıt', v:(ctx.shiftCount + ctx.leaveCount) + ' gün' }
+        ]).map(x => `<div class="ai-metric"><div class="v">${escHtml(x.v)}</div><div class="k">${escHtml(x.k)}</div></div>`).join('')}
+      </div>
+    </div>
+    <div class="ai-page-grid">
+      <div>
+        <div class="ai-card" style="margin-bottom:16px">
+          <h3><i class="fas fa-chart-simple"></i>Kazanç Tahmini</h3>
+          ${renderAIItems(forecastLines)}
+        </div>
+        <div class="ai-card" style="margin-bottom:16px">
+          <h3><i class="fas fa-file-invoice-dollar"></i>Bordro Açıklaması</h3>
+          ${renderAIItems(payrollItems)}
+        </div>
+        <div class="ai-card ai-safe">
+          <h3><i class="fas fa-scale-balanced"></i>Kural Güvenliği</h3>
+          <div class="ai-empty">Bu asistan hukuki veya finansal kesin danışmanlık vermez. Yanıtlar yalnızca ShiftTrack içindeki profil, vardiya, izin ve bordro hesaplama kurallarına göre bilgilendirme amaçlıdır.</div>
+        </div>
+      </div>
+      <div>
+        <div class="ai-card" style="margin-bottom:16px">
+          <h3><i class="fas fa-key"></i>DeepSeek API</h3>
+          <div class="ai-api-grid">
+            <input id="aiDeepSeekKey" type="password" placeholder="DeepSeek API key" value="${escHtml(apiCfg.apiKey)}" autocomplete="off">
+            <input id="aiDeepSeekModel" type="text" placeholder="Model" value="${escHtml(apiCfg.model || 'deepseek-chat')}">
+            <div class="ai-api-actions">
+              <button class="btn btn-primary btn-sm" type="button" onclick="saveDeepSeekSettings()"><i class="fas fa-save"></i>Kaydet</button>
+              <button class="btn btn-outline btn-sm" type="button" onclick="clearDeepSeekSettings()"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+          <div class="ai-api-status" id="aiApiStatus">${apiCfg.apiKey ? 'DeepSeek API aktif. Key yalnızca bu tarayıcıda saklanır.' : 'API key girilmezse sohbet yerel MVP cevaplarını kullanır.'}</div>
+        </div>
+        <div class="ai-card" style="margin-bottom:16px">
+          <h3><i class="fas fa-comments"></i>Takvim Sohbeti</h3>
+          <div class="ai-chat">
+            <div class="ai-chat-log" id="aiChatLog">
+              <div class="ai-msg bot">Merhaba. Bu ayın saat, kazanç, fazla mesai, bordro ve profil durumunu yerel olarak yorumlayabilirim.</div>
+            </div>
+            <div class="ai-quick">
+              <button onclick="aiAsk('Bu ay kaç saat çalıştım?')">Saat</button>
+              <button onclick="aiAsk('Tahmini kazancım ne?')">Kazanç</button>
+              <button onclick="aiAsk('Fazla mesaim var mı?')">FM</button>
+              <button onclick="aiAsk('Profilimde ne eksik?')">Profil</button>
+              <button onclick="aiAsk('Bordromu açıkla')">Bordro</button>
+            </div>
+            <form class="ai-chat-form" onsubmit="submitAIQuestion();return false">
+              <input id="aiChatInput" type="text" placeholder="Örn: Bu ay kaç saat çalıştım?">
+              <button type="submit" title="Gönder"><i class="fas fa-paper-plane"></i></button>
+            </form>
+          </div>
+        </div>
+        <div class="ai-card">
+          <h3><i class="fas fa-user-gear"></i>Profil Önerileri</h3>
+          ${renderAIItems(profileItems)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
    6-MONTH TREND DATA
 ============================================================ */
 function getTrendData() {
@@ -4102,6 +4497,7 @@ function renderActivePage() {
     case 'pg-stats': renderStats(); break;
     case 'pg-leaves': renderLeaves(); break;
     case 'pg-earnings': renderEarn(); break;
+    case 'pg-ai': renderAIAssistantPage(); break;
     case 'pg-settings': loadSet(); break;
     case 'pg-documents': renderDocs(); break;
   }
@@ -10000,6 +10396,8 @@ function renderBordroPreview() {
     ${transportTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yol Yardımı (${transportDays}g × ${payrollConfig.transportDailyTaxFree}₺)</span><span class="bv">+ ${fmb(transportTotal)}</span></div>` : ''}
     <div class="bordro-row total"><span class="bl">NET MAAŞ</span><span class="bv">${fmb(finalNet)}</span></div>
   `;
+  const activePage = document.querySelector('.page.active');
+  if (activePage && activePage.id === 'pg-ai') renderAIAssistantPage();
 }
 
 // PDF indir (jsPDF + autotable)
