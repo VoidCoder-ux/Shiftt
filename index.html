@@ -3615,6 +3615,7 @@ function mkUser(i) {
     otCompMode: 'pay',      // 'pay' | 'leave'
     otCompRate: 1.5,        // Yasal katsayı (TR İş Kanunu: 1.5)
     otBalance: 0,           // Kullanıcının el ile düzenlediği başlangıç bakiyesi (saat)
+    otCompModeChangedAt: 0,
     /* [FIX] Akıllı Vardiya Önerileri */
     hideSuggestions: false  // Öneri ikonlarını gizle/göster
   };
@@ -3783,16 +3784,41 @@ function holidayWeight(ds) {
   return h ? (h.half ? 0.5 : 1) : 0;
 }
 function holidayPayWeight(ds, sh) {
-  const h = getHoliday(ds);
-  if (!h || !sh) return 0;
+  const parts = getShiftDayParts(ds, sh);
+  if (!parts.length) return 0;
+  return parts.reduce((sum, part) => sum + holidayPayWeightForPart(part), 0);
+}
+
+function getShiftDayParts(ds, sh) {
+  const p = parseDS(ds);
+  const st = parseTime(sh && sh.start), en = parseTime(sh && sh.end);
+  if (!p || st === null || en === null || st === en) return [];
+  let gross = en - st;
+  if (gross <= 0) gross += 1440;
+  const br = Math.max(0, parseInt(sh.break) || 0);
+  const net = Math.max(0, Math.min(gross, gross - br));
+  if (gross <= 0 || net <= 0) return [];
+  const ratio = net / gross;
+  const base = new Date(p.y, p.m, p.d);
+  const firstGross = Math.min(gross, 1440 - st);
+  const out = [];
+  if (firstGross > 0) {
+    out.push({ ds, hours:firstGross * ratio / 60, startMin:st, endMin:st + firstGross });
+  }
+  const secondGross = gross - firstGross;
+  if (secondGross > 0) {
+    const next = new Date(base);
+    next.setDate(base.getDate() + 1);
+    out.push({ ds:dStr(next), hours:secondGross * ratio / 60, startMin:0, endMin:secondGross });
+  }
+  return out;
+}
+
+function holidayPayWeightForPart(part) {
+  const h = getHoliday(part && part.ds);
+  if (!h || !part || part.hours <= 0) return 0;
   if (!h.half) return 1;
-  /* Yarım gün tatillerde saat 13:00 sınırı kullanılır.
-     - Bitiş > 13:00 veya gece yarısı geçen vardiya → öğleden sonra kısmına denk gelir → 0.5 gün ilave ücret (Md.47)
-     - Bitiş ≤ 13:00 → yalnızca sabah kısmında çalışıldı → ilave ücret yok (tatil henüz başlamamış)
-     Kaynak: 2429 sayılı Ulusal Bayram ve Genel Tatiller Hakkında Kanun, tatil başlangıcı 13:00. */
-  const end = parseTime(sh.end), start = parseTime(sh.start);
-  if (start === null || end === null) return 0.5;
-  return (end > 13 * 60 || end <= start) ? 0.5 : 0;
+  return part.endMin > 13 * 60 ? 0.5 : 0;
 }
 /* [FIX N-05] RH veri kapsamı dışındaki yıllar için uyarı — session başına bir kez */
 const _rhWarnedYears = new Set();
@@ -3950,7 +3976,7 @@ function invalidateMDCache(uid, y, m) {
 ============================================================ */
 function getMD(y, m) {
   const u = cu();
-  const empty = { th:0, rh:0, oh:0, hh:0, hhOT:0, hpd:0, wd:0, hdw:0, wh:{}, wr:0, ud:0, yau:0, ysd:0, mau:0, msd:0, hr:0, dim:new Date(y,m+1,0).getDate() };
+  const empty = { th:0, rh:0, oh:0, hh:0, hhOT:0, hpd:0, wd:0, hdw:0, wh:{}, wr:0, ud:0, yau:0, ysd:0, mau:0, msd:0, hr:0, dim:new Date(y,m+1,0).getDate(), weekTotalHrs:{}, weekMonthOTHrs:{} };
   if (!u) return empty;
 
   const ck = `${S.cu}-${y}-${m}`;
@@ -3965,6 +3991,9 @@ function getMD(y, m) {
   const weekMonthHolHrs = {}; // isoWeek -> bu aydaki tatil saatleri
   const weekTotalHrs = {};  // isoWeek -> tüm hafta boyunca toplam (diğer aylar dahil)
   const weekTotalHolHrs = {}; // isoWeek -> tüm hafta tatil saatleri
+  const weekMonthRegularHrs = {};
+  const weekMonthOTHrs = {};
+  const weekMonthHolOTHrs = {};
 
   for (let d = 1; d <= dim; d++) {
     const s = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -3977,11 +4006,20 @@ function getMD(y, m) {
     const wk = getISOWeek(dt);
     if (!weekMonthHrs[wk]) weekMonthHrs[wk] = 0;
     weekMonthHrs[wk] += hrs;
-    if (isH(s)) {
-      hh += hrs; hdw++;
-      hpd += holidayPayWeight(s, sh);
+    const parts = getShiftDayParts(s, sh);
+    const holidayHours = parts.reduce((sum, part) => {
+      const pp = parseDS(part.ds);
+      return pp && pp.y === y && pp.m === m && isH(part.ds) ? sum + part.hours : sum;
+    }, 0);
+    const holidayPayDays = parts.reduce((sum, part) => {
+      const pp = parseDS(part.ds);
+      return pp && pp.y === y && pp.m === m ? sum + holidayPayWeightForPart(part) : sum;
+    }, 0);
+    if (holidayHours > 0 || holidayPayDays > 0) {
+      hh += holidayHours; hdw++;
+      hpd += holidayPayDays;
       if (!weekMonthHolHrs[wk]) weekMonthHolHrs[wk] = 0;
-      weekMonthHolHrs[wk] += hrs;
+      weekMonthHolHrs[wk] += holidayHours;
     }
   }
 
@@ -4000,7 +4038,7 @@ function getMD(y, m) {
     const monday = new Date(jan4);
     monday.setDate(jan4.getDate() - (jan4Dow - 1) + (wkNum - 1) * 7);
 
-    let totalH = 0, totalHolH = 0;
+    let totalH = 0, totalHolH = 0, normalLeft = 45;
     for (let i = 0; i < 7; i++) {
       const dd = new Date(monday);
       dd.setDate(monday.getDate() + i);
@@ -4010,34 +4048,28 @@ function getMD(y, m) {
       if (!sh || !sh.start || !sh.end) continue;
       const hrs = calcHr(sh.start, sh.end, sh.break || 0);
       if (hrs <= 0) continue;
+      const regular = Math.min(hrs, Math.max(0, normalLeft));
+      const overtime = Math.max(0, hrs - regular);
+      normalLeft = Math.max(0, normalLeft - regular);
+      const inTargetMonth = dd.getFullYear() === y && dd.getMonth() === m;
       totalH += hrs;
       if (isH(ds)) totalHolH += hrs;
+      if (inTargetMonth) {
+        weekMonthRegularHrs[wk] = (weekMonthRegularHrs[wk] || 0) + regular;
+        weekMonthOTHrs[wk] = (weekMonthOTHrs[wk] || 0) + overtime;
+        if (isH(ds)) weekMonthHolOTHrs[wk] = (weekMonthHolOTHrs[wk] || 0) + overtime;
+      }
     }
     weekTotalHrs[wk] = totalH;
     weekTotalHolHrs[wk] = totalHolH;
   }
 
-  // FM hesabı: gerçek haftalık toplam üzerinden, sonra bu aya düşen oran
+  // FM hesabı: ISO hafta içinde gün sırasına göre 45 saat dolduktan sonra yazılır.
   let oh = 0, rh = 0, hhOT = 0;
   for (const wk of weeksInMonth) {
-    const totalW = weekTotalHrs[wk] || 0;
-    const monthW = weekMonthHrs[wk] || 0;
-    const totalHolW = weekTotalHolHrs[wk] || 0;
-    const monthHolW = weekMonthHolHrs[wk] || 0;
-
-    if (totalW > 45) {
-      const otTotal = totalW - 45;
-      // Bu aya düşen FM oranı: monthW / totalW * otTotal
-      const monthRatio = totalW > 0 ? monthW / totalW : 0;
-      const monthOT = otTotal * monthRatio;
-      oh += monthOT;
-      rh += monthW - monthOT;
-      // Tatil+FM çakışma oranı
-      const holRatio = totalW > 0 ? monthHolW / totalW : 0;
-      hhOT += Math.max(0, Math.min(monthHolW, otTotal * holRatio));
-    } else {
-      rh += monthW;
-    }
+    rh += weekMonthRegularHrs[wk] || 0;
+    oh += weekMonthOTHrs[wk] || 0;
+    hhOT += weekMonthHolOTHrs[wk] || 0;
   }
 
   let yau = 0, ysd = 0, mau = 0, msd = 0, wr = 0, ud = 0, otcm = 0;
@@ -4048,7 +4080,7 @@ function getMD(y, m) {
       if (v.type === 'annual') mau++;
       if (v.type === 'sick') msd++;
       if (v.type === 'weekly') wr++;
-      if (v.type === 'public_holiday') wr += holidayWeight(k) || 1;
+      if (v.type === 'public_holiday' && isH(k)) wr += holidayWeight(k) || 1;
       if (v.type === 'unpaid') ud++;
       /* [FIX] FM İzni — ücretli, yıllık izinden bağımsız, otBalance'tan düşülür */
       if (v.type === 'ot_comp') otcm++;
@@ -4060,7 +4092,7 @@ function getMD(y, m) {
   // wh: dashboard haftalık chart için — bu aydaki saatler (görüntüleme amaçlı)
   const wh = weekMonthHrs;
   const r = { th, rh, oh, hh, hhOT, hpd, wd, hdw, wh, wr, ud, otcm, yau, ysd, mau, msd, hr, dim,
-    weekTotalHrs }; // chart'ta gerçek haftalık toplamı göstermek için
+    weekTotalHrs, weekMonthOTHrs }; // chart'ta gerçek haftalık toplamı göstermek için
   mdCache[ck] = r;
   return r;
 }
@@ -4093,6 +4125,20 @@ function calcEarningForMonth(y, m, ns) {
   if (isFut) ev = 0;
   else if (isCur) ev = Math.max(0, tD);
   else ev = dim;
+
+  const hasRecordedFutureData = d.th > 0 || d.wr > 0 || d.mau > 0 || d.msd > 0 || d.ud > 0 || (d.otcm || 0) > 0;
+  if (isFut && !hasRecordedFutureData) {
+    return {
+      dailyRate: dr, hourlyRate: hr,
+      basePay: 0, overtimePay: 0, holidayPay: 0, totalEarning: 0,
+      paidDays: 0, workedDays: 0, weeklyDays: 0,
+      annualDays: 0, sickDays: 0, unpaidDays: 0, otCompDays: 0,
+      missingDays: 0, absentDays: 0, freePassDays: 0,
+      dim, totalHours: 0, overtimeHours: 0, holidayHours: 0, holidayDays: 0, holidayPayDays: 0,
+      hhOT: 0, otCompMode: u.otCompMode || 'pay',
+      isFullMonth: false, isCurrentMonth: false, isFutureMonth: true, forecastOnly: true, evaluableDays: 0
+    };
+  }
 
   let fp = 0;
   for (let day = 1; day <= ev; day++) {
@@ -6556,8 +6602,7 @@ function renderEarnWeekly(u, y, m, d, e) {
     const isOT = totalW > 45;
     let weighted = h;
     if (isOT && totalW > 0) {
-      const otTotal = totalW - 45;
-      const monthOT = otTotal * (h / totalW);
+      const monthOT = d.weekMonthOTHrs ? (d.weekMonthOTHrs[wk] || 0) : 0;
       const _compRate = parseFloat(u.otCompRate) || 1.5;
       weighted = (h - monthOT) + monthOT * _compRate;
     }
@@ -6820,8 +6865,9 @@ function sSet(k, v) {
     const ltOTC = $('ltOptOTComp');
     if (ltOTC) ltOTC.style.display = v === 'leave' ? '' : 'none';
     if (v === 'leave' && prevMode === 'pay') {
-      setTimeout(() => toast('⚠️ İzin moduna geçildi: Son 24 aydaki tüm FM saatleri izin bakiyesine eklenir. Önceki dönemler pay modundaysa bakiye şişebilir.', 'warning'), 200);
+      setTimeout(() => toast('⚠️ İzin moduna geçildi: Bu tarihten sonraki FM saatleri izin bakiyesine katsayılı eklenir.', 'warning'), 200);
     }
+    if (v !== prevMode) u.otCompModeChangedAt = Date.now();
   }
   if (k === 'hideSuggestions') { v = !!v; }
   if (k === 'name') {
@@ -6841,7 +6887,7 @@ function sSet(k, v) {
      deepMergeUser bu zaman damgasını kullanarak daha yeni değişikliği (yerel/cloud) korur. */
   const settingsKeys = ['netSalary','annualLeave','pin','weeklyTemplate','customPresets',
     'goalHours','goalEarning','theme','autoTheme','monthlyHours',
-    'otCompMode','otCompRate','otBalance','hideSuggestions'];
+    'otCompMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
   if (settingsKeys.includes(k)) markSettingsUpdated(u);
   if (k === 'name' || k === 'startDate') u.profileUpdatedAt = Date.now();
   invalidateMDCache();
@@ -7156,6 +7202,26 @@ function saveLS() {
   }
 }
 
+function resolveDayConflicts(u) {
+  if (!u || typeof u !== 'object') return u;
+  if (!u.shifts || typeof u.shifts !== 'object') u.shifts = {};
+  if (!u.leaves || typeof u.leaves !== 'object') u.leaves = {};
+  Object.keys(u.leaves).forEach(ds => {
+    const lv = u.leaves[ds];
+    if (lv && lv.type === 'public_holiday' && !isH(ds)) {
+      delete u.leaves[ds];
+    }
+  });
+  Object.keys(u.shifts).forEach(ds => {
+    if (!u.leaves[ds]) return;
+    const shTime = safeNum(u.shifts[ds] && u.shifts[ds].updatedAt, 0);
+    const lvTime = safeNum(u.leaves[ds] && u.leaves[ds].updatedAt, 0);
+    if (lvTime > shTime) delete u.shifts[ds];
+    else delete u.leaves[ds];
+  });
+  return u;
+}
+
 function loadLS() {
   try {
     const s = localStorage.getItem('st_data');
@@ -7193,10 +7259,12 @@ function loadLS() {
       if (S.u[i].monthlyHours !== undefined && S.u[i].monthlyHours !== null) {
         S.u[i].monthlyHours = safeNum(S.u[i].monthlyHours, 0);
       }
+      S.u[i].otCompModeChangedAt = safeNum(S.u[i].otCompModeChangedAt, 0);
       const bs = Object.keys(S.u[i].shifts).filter(k2 => !parseDS(k2) || !S.u[i].shifts[k2] || typeof S.u[i].shifts[k2] !== 'object' || !S.u[i].shifts[k2].start);
       bs.forEach(k2 => delete S.u[i].shifts[k2]);
       const bl = Object.keys(S.u[i].leaves).filter(k2 => !parseDS(k2) || !S.u[i].leaves[k2] || typeof S.u[i].leaves[k2] !== 'object' || !S.u[i].leaves[k2].type);
       bl.forEach(k2 => delete S.u[i].leaves[k2]);
+      resolveDayConflicts(S.u[i]);
       /* [FIX BUG-04] Eski format düz metin PIN migration: hash uzunluğu 64 hex char */
       if (S.u[i].pin && S.u[i].pin.length !== 64) { S.u[i].pin = null; }
     });
@@ -7215,7 +7283,7 @@ function normalizeImportedUser(i, raw, opts = {}) {
   const allowed = ['name','netSalary','startDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
     'customPresets','weeklyTemplate','notes','profileUpdatedAt','notesUpdatedAt','settingsUpdatedAt','lastLogin',
     'theme','monthlyHours','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks',
-    'otCompMode','otCompRate','otBalance','hideSuggestions'];
+    'otCompMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
   const u = mkUser(i);
   allowed.forEach(k => { if (raw[k] !== undefined) u[k] = raw[k]; });
   if (typeof u.shifts !== 'object' || !u.shifts) u.shifts = {};
@@ -7246,9 +7314,11 @@ function normalizeImportedUser(i, raw, opts = {}) {
   u.goalHours = safeNum(u.goalHours, 0);
   u.goalEarning = safeNum(u.goalEarning, 0);
   u.monthlyHours = safeNum(u.monthlyHours, 0);
+  u.otCompModeChangedAt = safeNum(u.otCompModeChangedAt, 0);
   u.notes = typeof u.notes === 'string' ? u.notes.substring(0, 1000) : '';
   Object.keys(u.shifts).filter(k => !parseDS(k) || !u.shifts[k] || typeof u.shifts[k] !== 'object' || !u.shifts[k].start).forEach(k => delete u.shifts[k]);
   Object.keys(u.leaves).filter(k => !parseDS(k) || !u.leaves[k] || typeof u.leaves[k] !== 'object' || !u.leaves[k].type).forEach(k => delete u.leaves[k]);
+  resolveDayConflicts(u);
   if (u.pin && u.pin.length !== 64) u.pin = null;
   return u;
 }
@@ -8084,16 +8154,23 @@ function renderDashFMTracker() {
 function getOTBalance() {
   const u = cu(); if (!u) return 0;
   let bal = parseFloat(u.otBalance) || 0;
+  const compRate = Math.max(1.5, parseFloat(u.otCompRate) || 1.5);
   const today = new Date();
   /* 24-aylık pencere başlangıcı — FM ekleme ve ot_comp düşme aynı pencereyi kullanır */
   let windowStart = new Date(today.getFullYear(), today.getMonth() - 24, 1);
+  const modeChangedAt = safeNum(u.otCompModeChangedAt, 0);
+  if (modeChangedAt > 0) {
+    const modeStart = new Date(modeChangedAt);
+    if (!isNaN(modeStart.getTime()) && modeStart > windowStart) windowStart = new Date(modeStart.getFullYear(), modeStart.getMonth(), 1);
+  }
   if (u.otCompMode === 'leave') {
     for (let i = 1; i <= 24; i++) {
       let y2 = today.getFullYear(), m2 = today.getMonth() - i;
       while (m2 < 0) { m2 += 12; y2--; }
       if (y2 < 2020) break;
+      if (new Date(y2, m2 + 1, 0) < windowStart) continue;
       const md2 = getMD(y2, m2);
-      bal += md2.oh;
+      bal += md2.oh * compRate;
     }
   }
   /* [FIX Y-05] Yalnızca 24 aylık pencere içindeki ot_comp izinleri düş */
@@ -8446,7 +8523,7 @@ function checkRestTime(ds, startTime) {
   if (prevEndMin < prevStartMin) {
     // Gece vardiyası — bitiş saati bugüne taşıyor (ör: 22:00-06:00)
     // Gerçek bitiş bugün prevEndMin'de, bugün başlama curStartMin'de
-    restMinutes = curStartMin - prevEndMin;
+    restMinutes = curStartMin < prevEndMin ? 0 : curStartMin - prevEndMin;
   } else {
     // Normal vardiya — bitiş dün, başlama bugün
     restMinutes = (1440 - prevEndMin) + curStartMin;
@@ -9353,6 +9430,8 @@ function deepMergeUser(local, cloud) {
     if (merged.deletedLeaves[k] < cleanupThreshold) delete merged.deletedLeaves[k];
   });
 
+  resolveDayConflicts(merged);
+
   const localNT = merged.notesUpdatedAt || 0;
   const cloudNT = cloud.notesUpdatedAt || 0;
   if (cloudNT >= localNT && typeof cloud.notes === 'string') {
@@ -9415,6 +9494,7 @@ function deepMergeUser(local, cloud) {
     if (cloud.otCompMode !== undefined) merged.otCompMode = cloud.otCompMode;
     if (cloud.otCompRate !== undefined) merged.otCompRate = cloud.otCompRate;
     if (cloud.otBalance !== undefined) merged.otBalance = cloud.otBalance;
+    if (cloud.otCompModeChangedAt !== undefined) merged.otCompModeChangedAt = cloud.otCompModeChangedAt;
     if (cloud.hideSuggestions !== undefined) merged.hideSuggestions = cloud.hideSuggestions;
     merged.settingsUpdatedAt = cloudST;
   }
@@ -10586,7 +10666,7 @@ initFirebase();
 const payrollConfig = {
   year: 2026,
   minWageGross: 33030,            // 2026 asgari ücret brüt (TL)
-  get sgkCeiling() { return this.minWageGross * 7.5; }, // SGK prime esas kazanç tavanı
+  get sgkCeiling() { return this.minWageGross * 9; }, // 2026 SGK prime esas kazanç tavanı
   sgkEmployee: 0.14,              // İşçi SGK payı: emeklilik %9 + sağlık %5
   unemploymentEmployee: 0.01,     // İşçi işsizlik sigortası %1
   incomeTaxBrackets: [            // 2026 yıllık kümülatif GV dilimleri (GİB)
@@ -10598,8 +10678,8 @@ const payrollConfig = {
   ],
   stampTaxRate: 0.00759,          // Damga vergisi %0.759
   otMultiplier: 1.5,
-  mealDailyTaxFree: 270,          // Yemek yardımı günlük vergisiz limit (TL)
-  transportDailyTaxFree: 150,     // Yol yardımı günlük vergisiz limit (TL)
+  mealDailyTaxFree: 300,          // 2026 yemek yardımı günlük vergisiz limit (TL)
+  transportDailyTaxFree: 158,     // 2026 yol yardımı günlük vergisiz limit (TL)
 };
 
 // Kümülatif gelir vergisi hesabı (yıllık matrah üzerinden)
