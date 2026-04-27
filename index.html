@@ -10844,7 +10844,7 @@ function downloadBordroPDF() {
   doc.text(`${pdfMTR[r.m].toUpperCase()} ${r.y}`, 105, 27, { align: 'center' });
   if (r.company) {
     doc.setFontSize(10);
-    doc.text(r.company, 105, 35, { align: 'center' });
+    doc.text(pdfStr(r.company), 105, 35, { align: 'center' });
   }
 
   // Çalışan bilgileri
@@ -10852,7 +10852,7 @@ function downloadBordroPDF() {
   let yp = 52;
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  if (r.empName) { doc.text('Calisan : ' + r.empName, 15, yp); yp += 6; }
+  if (r.empName) { doc.text('Calisan : ' + pdfStr(r.empName), 15, yp); yp += 6; }
   if (r.tcNo)    { doc.text('TC/SGK  : ' + r.tcNo,    15, yp); yp += 6; }
   doc.text('Donem   : ' + pdfMTR[r.m] + ' ' + r.y, 15, yp); yp += 10;
 
@@ -10900,11 +10900,11 @@ function downloadBordroPDF() {
   doc.setFontSize(7);
   doc.setTextColor(160, 160, 160);
   doc.text(
-    `Olusturulma: ${new Date().toLocaleString('tr-TR')} | ShiftTrack Pro | payrollConfig ${payrollConfig.year}`,
+    pdfStr(`Olusturulma: ${new Date().toLocaleString('tr-TR')} | ShiftTrack Pro | payrollConfig ${payrollConfig.year}`),
     105, footY, { align: 'center' }
   );
 
-  const fname = `Bordro_${pdfMTR[r.m]}_${r.y}${r.empName ? '_' + r.empName.replace(/\s+/g, '_') : ''}.pdf`;
+  const fname = `Bordro_${pdfMTR[r.m]}_${r.y}${r.empName ? '_' + pdfStr(r.empName).replace(/\s+/g, '_') : ''}.pdf`;
   doc.save(fname);
   toast('PDF indirildi', 'success');
   } catch(e) {
