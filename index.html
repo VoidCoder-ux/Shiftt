@@ -3976,14 +3976,16 @@ function invalidateMDCache(uid, y, m) {
 ============================================================ */
 function getMD(y, m) {
   const u = cu();
-  const empty = { th:0, rh:0, oh:0, hh:0, hhOT:0, hpd:0, wd:0, hdw:0, wh:{}, wr:0, ud:0, yau:0, ysd:0, mau:0, msd:0, hr:0, dim:new Date(y,m+1,0).getDate(), weekTotalHrs:{}, weekMonthOTHrs:{} };
+  const empty = { th:0, rh:0, oh:0, hh:0, hhOT:0, hpd:0, wd:0, workDayEquiv:0, hdw:0, wh:{}, wr:0, ud:0, yau:0, ysd:0, mau:0, msd:0, hr:0, dim:new Date(y,m+1,0).getDate(), weekTotalHrs:{}, weekMonthOTHrs:{} };
   if (!u) return empty;
 
   const ck = `${S.cu}-${y}-${m}`;
   if (mdCache[ck]) return mdCache[ck];
 
   const dim = new Date(y, m + 1, 0).getDate();
-  let th = 0, hh = 0, hpd = 0, wd = 0, hdw = 0;
+  let th = 0, hh = 0, hpd = 0;
+  const _mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+  const standardDailyHours = Math.max(1, _mh / 26);
 
   // Bu aydaki her gün için: hangi ISO haftasında, kaç saat, tatil mi?
   // dayData[isoWeek] = { monthHrs, monthHolHrs }
@@ -3994,72 +3996,73 @@ function getMD(y, m) {
   const weekMonthRegularHrs = {};
   const weekMonthOTHrs = {};
   const weekMonthHolOTHrs = {};
+  const allParts = [];
+  const workedStartDates = new Set();
+  let workStartDayEquiv = 0;
+  const holidayWorkedDates = new Set();
 
-  for (let d = 1; d <= dim; d++) {
-    const s = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const sh = u.shifts[s];
-    if (!sh || !sh.start || !sh.end) continue;
-    const hrs = calcHr(sh.start, sh.end, sh.break || 0);
-    if (hrs <= 0) continue;
-    th += hrs; wd++;
-    const dt = new Date(y, m, d);
-    const wk = getISOWeek(dt);
+  Object.entries(u.shifts || {}).forEach(([startDs, sh]) => {
+    if (!sh || !sh.start || !sh.end) return;
+    const parts = getShiftDayParts(startDs, sh);
+    const startP = parseDS(startDs);
+    const shiftHours = parts.reduce((sum, part) => sum + Math.max(0, part.hours || 0), 0);
+    if (startP && startP.y === y && startP.m === m && shiftHours > 0) {
+      workedStartDates.add(startDs);
+      workStartDayEquiv += Math.min(1, shiftHours / standardDailyHours);
+    }
+    parts.forEach(part => {
+      if (!part || part.hours <= 0 || !part.ds) return;
+      const dt = dsToDate(part.ds);
+      if (!dt || isNaN(dt.getTime())) return;
+      allParts.push({
+        ...part,
+        startDs,
+        sh,
+        dt,
+        wk: getISOWeek(dt)
+      });
+    });
+  });
+  allParts.sort((a, b) => (a.dt - b.dt) || ((a.startMin || 0) - (b.startMin || 0)));
+
+  allParts.forEach(part => {
+    const p = parseDS(part.ds);
+    if (!p || p.y !== y || p.m !== m) return;
+    const hrs = part.hours;
+    th += hrs;
+    const wk = part.wk;
     if (!weekMonthHrs[wk]) weekMonthHrs[wk] = 0;
     weekMonthHrs[wk] += hrs;
-    const parts = getShiftDayParts(s, sh);
-    const holidayHours = parts.reduce((sum, part) => {
-      const pp = parseDS(part.ds);
-      return pp && pp.y === y && pp.m === m && isH(part.ds) ? sum + part.hours : sum;
-    }, 0);
-    const holidayPayDays = parts.reduce((sum, part) => {
-      const pp = parseDS(part.ds);
-      return pp && pp.y === y && pp.m === m ? sum + holidayPayWeightForPart(part) : sum;
-    }, 0);
-    if (holidayHours > 0 || holidayPayDays > 0) {
-      hh += holidayHours; hdw++;
-      hpd += holidayPayDays;
+    const holidayPayDays = holidayPayWeightForPart(part);
+    if (isH(part.ds)) {
+      hh += hrs;
+      holidayWorkedDates.add(part.ds);
       if (!weekMonthHolHrs[wk]) weekMonthHolHrs[wk] = 0;
-      weekMonthHolHrs[wk] += holidayHours;
+      weekMonthHolHrs[wk] += hrs;
     }
-  }
+    if (holidayPayDays > 0) hpd += holidayPayDays;
+  });
 
   // Şimdi bu aydaki haftaların GERÇEK toplam saatlerini hesapla
   // (aynı ISO haftasına düşen diğer ayların günlerini de tara)
   const weeksInMonth = Object.keys(weekMonthHrs);
   for (const wk of weeksInMonth) {
-    // ISO hafta numarasını parse et
-    const wkParts = wk.match(/^(\d+)-W(\d+)$/);
-    if (!wkParts) continue;
-    const wkYear = parseInt(wkParts[1]), wkNum = parseInt(wkParts[2]);
-
-    // Bu haftanın Pazartesi gününü bul
-    const jan4 = new Date(wkYear, 0, 4);
-    const jan4Dow = jan4.getDay() || 7;
-    const monday = new Date(jan4);
-    monday.setDate(jan4.getDate() - (jan4Dow - 1) + (wkNum - 1) * 7);
-
     let totalH = 0, totalHolH = 0, normalLeft = 45;
-    for (let i = 0; i < 7; i++) {
-      const dd = new Date(monday);
-      dd.setDate(monday.getDate() + i);
-      const ds = dStr(dd);
-      if (!ds) continue;
-      const sh = u.shifts[ds];
-      if (!sh || !sh.start || !sh.end) continue;
-      const hrs = calcHr(sh.start, sh.end, sh.break || 0);
-      if (hrs <= 0) continue;
+    allParts.filter(part => part.wk === wk).forEach(part => {
+      const hrs = part.hours;
       const regular = Math.min(hrs, Math.max(0, normalLeft));
       const overtime = Math.max(0, hrs - regular);
       normalLeft = Math.max(0, normalLeft - regular);
-      const inTargetMonth = dd.getFullYear() === y && dd.getMonth() === m;
+      const pp = parseDS(part.ds);
+      const inTargetMonth = pp && pp.y === y && pp.m === m;
       totalH += hrs;
-      if (isH(ds)) totalHolH += hrs;
+      if (isH(part.ds)) totalHolH += hrs;
       if (inTargetMonth) {
         weekMonthRegularHrs[wk] = (weekMonthRegularHrs[wk] || 0) + regular;
         weekMonthOTHrs[wk] = (weekMonthOTHrs[wk] || 0) + overtime;
-        if (isH(ds)) weekMonthHolOTHrs[wk] = (weekMonthHolOTHrs[wk] || 0) + overtime;
+        if (isH(part.ds)) weekMonthHolOTHrs[wk] = (weekMonthHolOTHrs[wk] || 0) + overtime;
       }
-    }
+    });
     weekTotalHrs[wk] = totalH;
     weekTotalHolHrs[wk] = totalHolH;
   }
@@ -4087,11 +4090,13 @@ function getMD(y, m) {
     }
   });
 
-  const _mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
   const hr = (u.netSalary > 0 && _mh > 0) ? u.netSalary / _mh : 0;
+  const wd = workedStartDates.size;
+  const hdw = holidayWorkedDates.size;
+  const workDayEquiv = workStartDayEquiv;
   // wh: dashboard haftalık chart için — bu aydaki saatler (görüntüleme amaçlı)
   const wh = weekMonthHrs;
-  const r = { th, rh, oh, hh, hhOT, hpd, wd, hdw, wh, wr, ud, otcm, yau, ysd, mau, msd, hr, dim,
+  const r = { th, rh, oh, hh, hhOT, hpd, wd, workDayEquiv, hdw, wh, wr, ud, otcm, yau, ysd, mau, msd, hr, dim,
     weekTotalHrs, weekMonthOTHrs }; // chart'ta gerçek haftalık toplamı göstermek için
   mdCache[ck] = r;
   return r;
@@ -4126,16 +4131,15 @@ function calcEarningForMonth(y, m, ns) {
   else if (isCur) ev = Math.max(0, tD);
   else ev = dim;
 
-  const hasRecordedFutureData = d.th > 0 || d.wr > 0 || d.mau > 0 || d.msd > 0 || d.ud > 0 || (d.otcm || 0) > 0;
-  if (isFut && !hasRecordedFutureData) {
+  if (isFut) {
     return {
       dailyRate: dr, hourlyRate: hr,
       basePay: 0, overtimePay: 0, holidayPay: 0, totalEarning: 0,
-      paidDays: 0, workedDays: 0, weeklyDays: 0,
-      annualDays: 0, sickDays: 0, unpaidDays: 0, otCompDays: 0,
+      paidDays: 0, workedDays: d.wd || 0, workPaidDays: d.workDayEquiv || 0, weeklyDays: d.wr || 0,
+      annualDays: d.mau || 0, sickDays: d.msd || 0, unpaidDays: d.ud || 0, otCompDays: d.otcm || 0,
       missingDays: 0, absentDays: 0, freePassDays: 0,
-      dim, totalHours: 0, overtimeHours: 0, holidayHours: 0, holidayDays: 0, holidayPayDays: 0,
-      hhOT: 0, otCompMode: u.otCompMode || 'pay',
+      dim, totalHours: d.th || 0, overtimeHours: d.oh || 0, holidayHours: d.hh || 0, holidayDays: d.hdw || 0, holidayPayDays: d.hpd !== undefined ? d.hpd : d.hdw,
+      hhOT: d.hhOT || 0, otCompMode: u.otCompMode || 'pay',
       isFullMonth: false, isCurrentMonth: false, isFutureMonth: true, forecastOnly: true, evaluableDays: 0
     };
   }
@@ -4151,7 +4155,8 @@ function calcEarningForMonth(y, m, ns) {
   }
 
   /* [FIX] otcm (FM İzni günleri) ücretli gün sayısına dahil edilir */
-  const pd = d.wd + d.wr + d.mau + d.msd + (d.otcm || 0);
+  const workPaidDays = Number.isFinite(d.workDayEquiv) ? d.workDayEquiv : d.wd;
+  const pd = workPaidDays + d.wr + d.mau + d.msd + (d.otcm || 0);
   const mis = Math.max(0, ev - pd - d.ud - fp);
   const ab = d.ud + mis;
   const bp = Math.max(0, ns - (ab * dr));
@@ -4170,7 +4175,7 @@ function calcEarningForMonth(y, m, ns) {
   return {
     dailyRate: dr, hourlyRate: hr,
     basePay: bp, overtimePay: op, holidayPay: hp, totalEarning: te,
-    paidDays: pd, workedDays: d.wd, weeklyDays: d.wr,
+    paidDays: Math.round(pd * 100) / 100, workedDays: d.wd, workPaidDays: Math.round(workPaidDays * 100) / 100, weeklyDays: d.wr,
     annualDays: d.mau, sickDays: d.msd, unpaidDays: d.ud, otCompDays: d.otcm || 0,
     missingDays: mis, absentDays: ab, freePassDays: fp,
     dim, totalHours: d.th, overtimeHours: d.oh, holidayHours: d.hh, holidayDays: d.hdw, holidayPayDays: d.hpd !== undefined ? d.hpd : d.hdw,
@@ -6377,14 +6382,20 @@ function savePayrollCheckField(field, raw) {
 }
 function estimatePayrollForMonth(u, y, m, d) {
   if (!u || !u.netSalary || u.netSalary <= 0) return null;
+  d = d || getMD(y, m);
   /* [N-03] Medeni durum/çocuk sayısı 7349 sy. Kanun sonrası GV hesabını etkilemez (AGİ kaldırıldı).
      Bekâr/çocuksuz varsayımı hesap sonucunu değiştirmiyor. */
   const marital = 'single', children = 0;
   const priorYTD = safeNum(getPayrollCheck(u, y, m).priorYTD, 0);
-  const baseGross = findGrossFromNet(u.netSalary, marital, children, priorYTD, m);
+  const earning = calcEarningForMonth(y, m, u.netSalary);
+  if (!earning || earning.isFutureMonth) return null;
+  const baseNet = Math.max(0, safeNum(earning.basePay, 0));
+  if (baseNet <= 0 && d.th <= 0 && d.mau <= 0 && d.msd <= 0 && d.wr <= 0) return null;
+  const fullGross = findGrossFromNet(u.netSalary, marital, children, priorYTD, m);
+  const baseGross = findGrossFromNet(baseNet, marital, children, priorYTD, m);
   const mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
-  const hrGross = baseGross > 0 && mh > 0 ? baseGross / mh : 0;
-  const drGross = baseGross / 30;
+  const hrGross = fullGross > 0 && mh > 0 ? fullGross / mh : 0;
+  const drGross = fullGross / 30;
   const compMode = u.otCompMode || 'pay';
   const compRate = parseFloat(u.otCompRate || 1.5);
   const otGross = compMode === 'pay' ? d.oh * hrGross * compRate : 0;
@@ -6392,7 +6403,7 @@ function estimatePayrollForMonth(u, y, m, d) {
   const holGross = holPayDays * drGross;
   const totalGross = baseGross + otGross + holGross;
   const res = computeNetFromGross(totalGross, marital, children, priorYTD, m);
-  return { ...res, baseGross, otGross, holGross, totalGross, holPayDays, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
+  return { ...res, baseNet, fullGross, baseGross, otGross, holGross, totalGross, holPayDays, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
 }
 function diffBadge(diff) {
   const abs = Math.abs(diff || 0);
@@ -6431,13 +6442,19 @@ function buildWorkLawWarnings(u, y, m, d) {
 }
 function buildHolidayWorkRows(u, y, m) {
   const rows = [];
-  const dim = new Date(y, m + 1, 0).getDate();
-  for (let day = 1; day <= dim; day++) {
-    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const sh = u.shifts[ds], h = getHoliday(ds);
-    if (!h || !sh || !sh.start || !sh.end) continue;
-    rows.push({ ds, name:h.n, hours:calcHr(sh.start, sh.end, sh.break || 0), payDays:holidayPayWeight(ds, sh) });
-  }
+  const byDay = {};
+  Object.entries((u && u.shifts) || {}).forEach(([startDs, sh]) => {
+    if (!sh || !sh.start || !sh.end) return;
+    getShiftDayParts(startDs, sh).forEach(part => {
+      const p = parseDS(part.ds);
+      const h = p && p.y === y && p.m === m ? getHoliday(part.ds) : null;
+      if (!h || !part.hours) return;
+      if (!byDay[part.ds]) byDay[part.ds] = { ds:part.ds, name:h.n, hours:0, payDays:0 };
+      byDay[part.ds].hours += part.hours;
+      byDay[part.ds].payDays += holidayPayWeightForPart(part);
+    });
+  });
+  Object.values(byDay).sort((a, b) => a.ds.localeCompare(b.ds)).forEach(row => rows.push(row));
   return rows;
 }
 function yearlyOvertimeHours(y) {
@@ -6685,10 +6702,16 @@ function renderTaxBracketCard(u, y, m) {
     /* Gerçek YTD: kullanıcının girdiği priorYTD değeri varsa onu kullan,
        yoksa sabit brüt × geçen ay sayısı hesabına dön */
     const priorYTD = safeNum(getPayrollCheck(u, y, m).priorYTD, -1);
-    const fixedGross = findGrossFromNet(u.netSalary, 'single', 0, 0);
-    const sgkBase = Math.min(fixedGross, payrollConfig.sgkCeiling);
-    const monthMatrah = fixedGross - sgkBase * (payrollConfig.sgkEmployee + payrollConfig.unemploymentEmployee);
-    const ytdMatrah = (priorYTD >= 0) ? (priorYTD + monthMatrah) : monthMatrah * (m + 1);
+    const md = getMD(y, m);
+    const payroll = estimatePayrollForMonth(u, y, m, md);
+    let monthMatrah = payroll ? payroll.gvMatrah : 0;
+    let ytdMatrah = payroll ? payroll.ytdMatrah : 0;
+    if (!payroll) {
+      const fixedGross = findGrossFromNet(u.netSalary, 'single', 0, Math.max(0, priorYTD), m);
+      const sgkBase = Math.min(fixedGross, payrollConfig.sgkCeiling);
+      monthMatrah = fixedGross - sgkBase * (payrollConfig.sgkEmployee + payrollConfig.unemploymentEmployee);
+      ytdMatrah = (priorYTD >= 0) ? (priorYTD + monthMatrah) : monthMatrah * (m + 1);
+    }
     let curIdx = 0, prevUp = 0;
     for (let i = 0; i < brackets.length; i++) {
       if (ytdMatrah <= brackets[i].upTo) { curIdx = i; break; }
@@ -10718,6 +10741,8 @@ function _bordroCalcMinWageTaxExemption(gross, thisMonthRawGV, monthIndex) {
 // Brütten net hesaplama (belirli bir ay için kümülatif yöntem)
 function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, monthIndex) {
   const cfg = payrollConfig;
+  gross = Math.max(0, safeNum(gross, 0));
+  priorYTDMatrah = Math.max(0, safeNum(priorYTDMatrah, 0));
   const sgkBase        = Math.min(gross, cfg.sgkCeiling);
   const sgkDeduction   = sgkBase * cfg.sgkEmployee;
   const unemployDeduct = sgkBase * cfg.unemploymentEmployee;
