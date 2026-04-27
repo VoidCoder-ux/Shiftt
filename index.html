@@ -3286,6 +3286,7 @@ body.theme-light .doc-cat, body.theme-light-ocean .doc-cat {
         <h3><i class="fas fa-user"></i>Kişisel Bilgiler</h3>
         <div class="fg"><label>Ad Soyad</label><input type="text" id="sName" placeholder="Adınız" onchange="sSet('name',this.value)"></div>
         <div class="fg"><label>İşe Başlama</label><input type="date" id="sStart" onchange="sSet('startDate',this.value)"></div>
+        <div class="fg"><label>Doğum Tarihi</label><input type="date" id="sBirth" onchange="sSet('birthDate',this.value)"></div>
         <div id="seniorityInfo"></div>
       </div>
 
@@ -3590,6 +3591,7 @@ function mkUser(i) {
     name: 'Kullanıcı ' + i,
     netSalary: 0,
     startDate: '',
+    birthDate: '',
     annualLeave: 0,
     shifts: {},
     leaves: {},
@@ -3611,11 +3613,13 @@ function mkUser(i) {
     documents: [],
     deletedDocs: {},
     payrollChecks: {},
+    conflictLog: [],
     /* [FIX] Fazla Mesai → İzin Karşılığı (Comp Time) */
     otCompMode: 'pay',      // 'pay' | 'leave'
     otCompRate: 1.5,        // Yasal katsayı (TR İş Kanunu: 1.5)
     otBalance: 0,           // Kullanıcının el ile düzenlediği başlangıç bakiyesi (saat)
     otCompModeChangedAt: 0,
+    otCompModeHistory: [],
     /* [FIX] Akıllı Vardiya Önerileri */
     hideSuggestions: false  // Öneri ikonlarını gizle/göster
   };
@@ -3691,16 +3695,29 @@ function safeInt(v, fallback = 0) {
   const n = typeof v === 'number' ? Math.trunc(v) : parseInt(v, 10);
   return Number.isFinite(n) ? n : fallback;
 }
-function annualLeaveTotal(u) {
-  return Math.max(0, safeInt(u && u.annualLeave, 0));
+function ageOnDate(birthDate, refDate = new Date()) {
+  if (!birthDate) return null;
+  const b = new Date(birthDate), r = refDate instanceof Date ? refDate : new Date(refDate);
+  if (Number.isNaN(b.getTime()) || Number.isNaN(r.getTime()) || b > r) return null;
+  let age = r.getFullYear() - b.getFullYear();
+  const beforeBirthday = r.getMonth() < b.getMonth() || (r.getMonth() === b.getMonth() && r.getDate() < b.getDate());
+  if (beforeBirthday) age--;
+  return Math.max(0, age);
 }
-function statutoryAnnualLeaveFromStart(startDate) {
+function annualLeaveTotal(u) {
+  const manual = Math.max(0, safeInt(u && u.annualLeave, 0));
+  const legal = statutoryAnnualLeaveFromStart(u && u.startDate, u && u.birthDate);
+  return Math.max(manual, legal || 0);
+}
+function statutoryAnnualLeaveFromStart(startDate, birthDate) {
   if (!startDate) return null;
   const s = new Date(startDate), n = new Date();
   if (Number.isNaN(s.getTime()) || s > n) return 0;
   const yr = (n - s) / (365.25 * 864e5);
   if (yr < 1) return 0;
-  return yr >= 15 ? 26 : yr >= 5 ? 20 : 14;
+  const base = yr >= 15 ? 26 : yr >= 5 ? 20 : 14;
+  const age = ageOnDate(birthDate, n);
+  return (age !== null && (age < 18 || age >= 50)) ? Math.max(base, 20) : base;
 }
 
 function parseDS(ds) {
@@ -4206,10 +4223,13 @@ function buildAIContext(user, year, month) {
     const p = parseDS(ds);
     return p && p.y === y && p.m === m;
   }).length : 0;
+  const payrollSessionMatches = (typeof _eBordroSession !== 'undefined' && _eBordroSession && _eBordroSession.result &&
+    _eBordroSession.y === y && _eBordroSession.m === m &&
+    (_eBordroSession.userId === undefined || _eBordroSession.userId === S.cu));
   return {
     user: u, y, m, monthName: MTR[m], md, salary, earning, monthlyHours,
     shiftCount, leaveCount, isCurrentMonth,
-    payroll: (typeof _eBordroSession !== 'undefined' && _eBordroSession && _eBordroSession.result) ? _eBordroSession.result : null
+    payroll: payrollSessionMatches ? _eBordroSession.result : null
   };
 }
 
@@ -6840,10 +6860,11 @@ function markSettingsUpdated(u) {
 
 function loadSet() {
   const u = cu(); if (!u) return;
-  const sN = $('sName'), sS = $('sSalary'), sSt = $('sStart'), sL = $('sLeave');
+  const sN = $('sName'), sS = $('sSalary'), sSt = $('sStart'), sB = $('sBirth'), sL = $('sLeave');
   if (sN) sN.value = u.name || '';
   if (sS) sS.value = u.netSalary || '';
   if (sSt) sSt.value = u.startDate || '';
+  if (sB) sB.value = u.birthDate || '';
   if (sL) sL.value = annualLeaveTotal(u);
   const sMH = $('sMH'); if (sMH) sMH.value = u.monthlyHours || 195;
   const uN = $('userNotes'); if (uN) uN.value = u.notes || '';
@@ -6890,7 +6911,13 @@ function sSet(k, v) {
     if (v === 'leave' && prevMode === 'pay') {
       setTimeout(() => toast('⚠️ İzin moduna geçildi: Bu tarihten sonraki FM saatleri izin bakiyesine katsayılı eklenir.', 'warning'), 200);
     }
-    if (v !== prevMode) u.otCompModeChangedAt = Date.now();
+    if (v !== prevMode) {
+      const ts = Date.now();
+      u.otCompModeChangedAt = ts;
+      if (!Array.isArray(u.otCompModeHistory)) u.otCompModeHistory = [];
+      u.otCompModeHistory.push({ at: ts, mode: v });
+      if (u.otCompModeHistory.length > 60) u.otCompModeHistory = u.otCompModeHistory.slice(-60);
+    }
   }
   if (k === 'hideSuggestions') { v = !!v; }
   if (k === 'name') {
@@ -6901,9 +6928,13 @@ function sSet(k, v) {
     const s2 = new Date(v);
     if (isNaN(s2.getTime()) || s2 > new Date()) { toast('Geçersiz tarih', 'error'); return; }
   }
+  if (k === 'birthDate' && v) {
+    const b2 = new Date(v);
+    if (isNaN(b2.getTime()) || b2 > new Date()) { toast('Geçersiz doğum tarihi', 'error'); return; }
+  }
   u[k] = v;
-  if (k === 'startDate' && v) {
-    u.annualLeave = statutoryAnnualLeaveFromStart(v) ?? annualLeaveTotal(u);
+  if ((k === 'startDate' || k === 'birthDate') && u.startDate) {
+    u.annualLeave = statutoryAnnualLeaveFromStart(u.startDate, u.birthDate) ?? annualLeaveTotal(u);
     const sL = $('sLeave'); if (sL) sL.value = u.annualLeave;
   }
   /* [FIX L-04] BUG-R3 ile eklenen settingsUpdatedAt: ayar değişikliklerini zaman damgasıyla işaretle.
@@ -6912,7 +6943,7 @@ function sSet(k, v) {
     'goalHours','goalEarning','theme','autoTheme','monthlyHours',
     'otCompMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
   if (settingsKeys.includes(k)) markSettingsUpdated(u);
-  if (k === 'name' || k === 'startDate') u.profileUpdatedAt = Date.now();
+  if (k === 'name' || k === 'startDate' || k === 'birthDate') u.profileUpdatedAt = Date.now();
   invalidateMDCache();
   saveLS();
   updTop();
@@ -7229,9 +7260,15 @@ function resolveDayConflicts(u) {
   if (!u || typeof u !== 'object') return u;
   if (!u.shifts || typeof u.shifts !== 'object') u.shifts = {};
   if (!u.leaves || typeof u.leaves !== 'object') u.leaves = {};
+  if (!Array.isArray(u.conflictLog)) u.conflictLog = [];
+  const logConflict = (ds, type, detail) => {
+    u.conflictLog.push({ at: Date.now(), ds, type, detail });
+    if (u.conflictLog.length > 50) u.conflictLog = u.conflictLog.slice(-50);
+  };
   Object.keys(u.leaves).forEach(ds => {
     const lv = u.leaves[ds];
     if (lv && lv.type === 'public_holiday' && !isH(ds)) {
+      logConflict(ds, 'invalid_public_holiday_leave', 'Gerçek resmi tatil olmayan public_holiday izin kaydı kaldırıldı.');
       delete u.leaves[ds];
     }
   });
@@ -7239,8 +7276,13 @@ function resolveDayConflicts(u) {
     if (!u.leaves[ds]) return;
     const shTime = safeNum(u.shifts[ds] && u.shifts[ds].updatedAt, 0);
     const lvTime = safeNum(u.leaves[ds] && u.leaves[ds].updatedAt, 0);
-    if (lvTime > shTime) delete u.shifts[ds];
-    else delete u.leaves[ds];
+    if (lvTime > shTime) {
+      logConflict(ds, 'shift_leave_conflict', 'Aynı gün vardiya ve izin vardı; daha güncel izin korundu, vardiya kaldırıldı.');
+      delete u.shifts[ds];
+    } else {
+      logConflict(ds, 'shift_leave_conflict', 'Aynı gün vardiya ve izin vardı; daha güncel vardiya korundu, izin kaldırıldı.');
+      delete u.leaves[ds];
+    }
   });
   return u;
 }
@@ -7272,6 +7314,8 @@ function loadLS() {
       S.u[i].settingsUpdatedAt = safeNum(S.u[i].settingsUpdatedAt, 0);
       if (!Array.isArray(S.u[i].customPresets)) S.u[i].customPresets = [];
       if (!Array.isArray(S.u[i].documents)) S.u[i].documents = [];
+      if (!Array.isArray(S.u[i].conflictLog)) S.u[i].conflictLog = [];
+      if (!Array.isArray(S.u[i].otCompModeHistory)) S.u[i].otCompModeHistory = [];
       if (!S.u[i].payrollChecks || typeof S.u[i].payrollChecks !== 'object') S.u[i].payrollChecks = {};
       /* [FIX ERR-HANDLE-03] safeNum/safeInt ile NaN/Infinity propagation engellendi */
       S.u[i].netSalary = safeNum(S.u[i].netSalary, 0);
@@ -7303,10 +7347,10 @@ function loadLS() {
 
 function normalizeImportedUser(i, raw, opts = {}) {
   if (!raw || typeof raw !== 'object') return null;
-  const allowed = ['name','netSalary','startDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
+  const allowed = ['name','netSalary','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
     'customPresets','weeklyTemplate','notes','profileUpdatedAt','notesUpdatedAt','settingsUpdatedAt','lastLogin',
-    'theme','monthlyHours','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks',
-    'otCompMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
+    'theme','monthlyHours','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks','conflictLog',
+    'otCompMode','otCompRate','otBalance','otCompModeChangedAt','otCompModeHistory','hideSuggestions'];
   const u = mkUser(i);
   allowed.forEach(k => { if (raw[k] !== undefined) u[k] = raw[k]; });
   if (typeof u.shifts !== 'object' || !u.shifts) u.shifts = {};
@@ -7539,31 +7583,62 @@ function renderRaiseSim() {
   if (!Number.isFinite(val)) { res.innerHTML = ''; return; }
   try {
     const curNet = safeNum(u.netSalary, 0);
-    /* [FIX Y-04] Gerçek YTD matrahı kullan (Ocak=0 varsayımı yerine) */
-    const _rsY = new Date().getFullYear(), _rsM = new Date().getMonth();
+    /* Seçili kazanç dönemini ve o dönemin gerçek bordro/puantaj etkisini kullan. */
+    const _rsY = Number.isInteger(S.ey) ? S.ey : new Date().getFullYear();
+    const _rsM = Number.isInteger(S.em) ? S.em : new Date().getMonth();
     const _priorYTD = safeNum(getPayrollCheck(u, _rsY, _rsM).priorYTD, 0);
-    const curGross = findGrossFromNet(curNet, 'single', 0, _priorYTD, _rsM);
+    const _rsMD = getMD(_rsY, _rsM);
+    const _rsEarn = calcEarningForMonth(_rsY, _rsM, curNet);
+    const _paidRatio = curNet > 0 && _rsEarn ? Math.max(0, Math.min(1, safeNum(_rsEarn.basePay, 0) / curNet)) : 1;
+    const _projectByNet = monthlyNet => {
+      const fullGross = findGrossFromNet(monthlyNet, 'single', 0, _priorYTD, _rsM);
+      const baseGross = findGrossFromNet(monthlyNet * _paidRatio, 'single', 0, _priorYTD, _rsM);
+      const mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+      const hrGross = fullGross > 0 && mh > 0 ? fullGross / mh : 0;
+      const drGross = fullGross / 30;
+      const compRate = Math.max(1.5, safeNum(u.otCompRate, 1.5));
+      const otGross = (u.otCompMode || 'pay') === 'pay' ? _rsMD.oh * hrGross * compRate : 0;
+      const holGross = (_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross;
+      const totalGross = baseGross + otGross + holGross;
+      const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM);
+      return { monthlyNet, fullGross, baseGross, totalGross, finalNet:calc.net, calc };
+    };
+    const _projectByGross = monthlyGross => {
+      const fullGross = Math.max(0, safeNum(monthlyGross, 0));
+      const baseGross = fullGross * _paidRatio;
+      const mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+      const hrGross = fullGross > 0 && mh > 0 ? fullGross / mh : 0;
+      const drGross = fullGross / 30;
+      const compRate = Math.max(1.5, safeNum(u.otCompRate, 1.5));
+      const otGross = (u.otCompMode || 'pay') === 'pay' ? _rsMD.oh * hrGross * compRate : 0;
+      const holGross = (_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross;
+      const totalGross = baseGross + otGross + holGross;
+      const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM);
+      return { monthlyNet:calc.net, fullGross, baseGross, totalGross, finalNet:calc.net, calc };
+    };
+    const curProjection = _projectByNet(curNet);
+    const curGross = curProjection.fullGross;
     let newNet, newGross;
     if (_rsMode === 'pct') {
       newNet = curNet * (1 + val / 100);
-      newGross = findGrossFromNet(newNet, 'single', 0, _priorYTD, _rsM);
+      newGross = _projectByNet(newNet).fullGross;
     } else if (_rsMode === 'net') {
       newNet = val;
-      newGross = findGrossFromNet(newNet, 'single', 0, _priorYTD, _rsM);
+      newGross = _projectByNet(newNet).fullGross;
     } else {
       newGross = val;
-      const calc = computeNetFromGross(newGross, 'single', 0, _priorYTD, _rsM);
-      newNet = calc.net;
+      newNet = _projectByGross(newGross).finalNet;
     }
-    const diffNet = newNet - curNet;
+    const newProjection = _rsMode === 'gross' ? _projectByGross(newGross) : _projectByNet(newNet);
+    const diffNet = newProjection.finalNet - curProjection.finalNet;
     const diffGross = newGross - curGross;
-    const pctNet = curNet > 0 ? (diffNet / curNet * 100) : 0;
+    const pctNet = curProjection.finalNet > 0 ? (diffNet / curProjection.finalNet * 100) : 0;
     const pctGross = curGross > 0 ? (diffGross / curGross * 100) : 0;
     const yearlyNet = diffNet * 12;
     res.innerHTML = `
       <div class="rs-grid">
-        <div class="rs-cell"><div class="rs-l">Mevcut Net</div><div class="rs-v">${fm(curNet)}</div></div>
-        <div class="rs-cell"><div class="rs-l">Yeni Net</div><div class="rs-v" style="color:var(--g)">${fm(newNet)}</div></div>
+        <div class="rs-cell"><div class="rs-l">Mevcut Net</div><div class="rs-v">${fm(curProjection.finalNet)}</div></div>
+        <div class="rs-cell"><div class="rs-l">Yeni Net</div><div class="rs-v" style="color:var(--g)">${fm(newProjection.finalNet)}</div></div>
         <div class="rs-cell"><div class="rs-l">Mevcut Brüt</div><div class="rs-v">${fm(curGross)}</div></div>
         <div class="rs-cell"><div class="rs-l">Yeni Brüt</div><div class="rs-v" style="color:var(--g)">${fm(newGross)}</div></div>
       </div>
@@ -7573,7 +7648,7 @@ function renderRaiseSim() {
         <div class="rs-diff-row"><span>Yıllık net etki</span><b class="${yearlyNet>=0?'pos':'neg'}">${yearlyNet>=0?'+':''}${fm(yearlyNet)}</b></div>
       </div>
       ${Math.abs(pctNet - pctGross) > 0.5 ? `<div class="rs-note"><i class="fas fa-info-circle"></i> Vergi dilimi etkisi: net zam (%${pctNet.toFixed(1)}) brüt zamdan (%${pctGross.toFixed(1)}) ${pctNet<pctGross?'daha düşük':'daha yüksek'}.</div>` : ''}
-      <div class="rs-note rs-assumption"><i class="fas fa-info-circle"></i> Varsayım: Cari ay (${MTR[_rsM]}) brütü${_priorYTD > 0 ? `, YTD matrah ${fm(_priorYTD)}` : ', Ocak başlangıcı (YTD=0)'}. Bekâr, çocuksuz (2023 sonrası AGİ yok). Yıllık ortalama için vergi dilimi etkisi ay ay değişir.</div>
+      <div class="rs-note rs-assumption"><i class="fas fa-info-circle"></i> Varsayım: Seçili dönem (${MTR[_rsM]} ${_rsY}) puantajı, FM/tatil etkisi ve ${_priorYTD > 0 ? `YTD matrah ${fm(_priorYTD)}` : 'YTD=0'} kullanıldı. Bekâr, çocuksuz (2023 sonrası AGİ yok). Yıllık ortalama için vergi dilimi etkisi ay ay değişir.</div>
     `;
   } catch (err) {
     console.error('renderRaiseSim error:', err);
@@ -8181,17 +8256,34 @@ function getOTBalance() {
   const today = new Date();
   /* 24-aylık pencere başlangıcı — FM ekleme ve ot_comp düşme aynı pencereyi kullanır */
   let windowStart = new Date(today.getFullYear(), today.getMonth() - 24, 1);
+  const history = Array.isArray(u.otCompModeHistory) ? u.otCompModeHistory
+    .map(x => ({ at:safeNum(x && x.at, 0), mode:(x && x.mode) === 'leave' ? 'leave' : 'pay' }))
+    .filter(x => x.at > 0)
+    .sort((a, b) => a.at - b.at) : [];
   const modeChangedAt = safeNum(u.otCompModeChangedAt, 0);
   if (modeChangedAt > 0) {
     const modeStart = new Date(modeChangedAt);
     if (!isNaN(modeStart.getTime()) && modeStart > windowStart) windowStart = new Date(modeStart.getFullYear(), modeStart.getMonth(), 1);
+  } else if (!history.length && u.otCompMode === 'leave') {
+    windowStart = new Date(today.getFullYear(), today.getMonth(), 1);
   }
+  const modeForMonth = (y, m) => {
+    const monthEnd = new Date(y, m + 1, 0, 23, 59, 59, 999).getTime();
+    if (!history.length) {
+      if (u.otCompMode !== 'leave') return 'pay';
+      return modeChangedAt > 0 && monthEnd >= modeChangedAt ? 'leave' : (modeChangedAt === 0 && y === today.getFullYear() && m === today.getMonth() ? 'leave' : 'pay');
+    }
+    let mode = 'pay';
+    history.forEach(h => { if (h.at <= monthEnd) mode = h.mode; });
+    return mode;
+  };
   if (u.otCompMode === 'leave') {
-    for (let i = 1; i <= 24; i++) {
+    for (let i = 0; i <= 24; i++) {
       let y2 = today.getFullYear(), m2 = today.getMonth() - i;
       while (m2 < 0) { m2 += 12; y2--; }
       if (y2 < 2020) break;
       if (new Date(y2, m2 + 1, 0) < windowStart) continue;
+      if (modeForMonth(y2, m2) !== 'leave') continue;
       const md2 = getMD(y2, m2);
       bal += md2.oh * compRate;
     }
@@ -8200,7 +8292,9 @@ function getOTBalance() {
   Object.entries(u.leaves).forEach(([ds, l]) => {
     if (l && l.type === 'ot_comp') {
       const lDate = dsToDate(ds);
-      if (lDate >= windowStart) bal -= 8;
+      const daily = Math.max(1, ((u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195) / 26);
+      const leaveHours = safeNum(l.hours, 0) > 0 ? safeNum(l.hours, 0) : daily;
+      if (lDate >= windowStart) bal -= leaveHours;
     }
   });
   return Math.max(0, bal);
@@ -9518,6 +9612,7 @@ function deepMergeUser(local, cloud) {
     if (cloud.otCompRate !== undefined) merged.otCompRate = cloud.otCompRate;
     if (cloud.otBalance !== undefined) merged.otBalance = cloud.otBalance;
     if (cloud.otCompModeChangedAt !== undefined) merged.otCompModeChangedAt = cloud.otCompModeChangedAt;
+    if (Array.isArray(cloud.otCompModeHistory)) merged.otCompModeHistory = cloud.otCompModeHistory;
     if (cloud.hideSuggestions !== undefined) merged.hideSuggestions = cloud.hideSuggestions;
     merged.settingsUpdatedAt = cloudST;
   }
@@ -9528,6 +9623,7 @@ function deepMergeUser(local, cloud) {
   if (cloudPT >= localPT) {
     if (cloud.name !== undefined) merged.name = cloud.name;
     if (cloud.startDate !== undefined) merged.startDate = cloud.startDate;
+    if (cloud.birthDate !== undefined) merged.birthDate = cloud.birthDate;
     merged.profileUpdatedAt = cloudPT;
   }
 
@@ -10327,9 +10423,29 @@ function runCalc() {
   const dailyHrs = calcHr(start, end, brk);
   if (dailyHrs <= 0) { toast('Geçersiz vardiya', 'error'); return; }
 
-  let totalDays = 0, totalHrs = 0, otHrs = 0, holWorkedDays = 0, holSkippedDays = 0, holWorkedPayDays = 0, holSkippedPayDays = 0;
-  let currentWeekHrs = 0;
-  let lastWeekNum = null;
+  let totalDays = 0, totalHrs = 0, otHrs = 0, holWorkedDays = 0, holSkippedDays = 0, holWorkedPayDays = 0, holSkippedPayDays = 0, paidDayEquiv = 0;
+  const weekStates = {};
+  const weekStart = dt => {
+    const x = new Date(dt);
+    const dow = x.getDay() || 7;
+    x.setDate(x.getDate() - (dow - 1));
+    x.setHours(0, 0, 0, 0);
+    return x;
+  };
+  const getWeekState = dt => {
+    const wk = getISOWeek(dt);
+    if (weekStates[wk]) return weekStates[wk];
+    let used = 0;
+    const ws = weekStart(dt);
+    const scan = new Date(ws);
+    while (scan < fromD && getISOWeek(scan) === wk) {
+      const ds0 = dStr(scan), sh0 = u.shifts[ds0];
+      if (sh0 && sh0.start && sh0.end) used += calcHr(sh0.start, sh0.end, sh0.break || 0);
+      scan.setDate(scan.getDate() + 1);
+    }
+    weekStates[wk] = { normalLeft: Math.max(0, 45 - used) };
+    return weekStates[wk];
+  };
 
   const d = new Date(fromD);
   while (d <= toD) {
@@ -10337,23 +10453,18 @@ function runCalc() {
     const dow = d.getDay();
     const isWeekend = (dow === 0 || dow === 6);
     const isHoliday = isH(ds);
-    const wk = getISOWeek(d);
-
-    /* [N-04] wk = "YYYY-Wnn" formatı: yıl geçişleri (örn. 2024-W52 → 2025-W01) otomatik doğru işlenir */
-    if (wk !== lastWeekNum) {
-      if (lastWeekNum !== null && currentWeekHrs > 45) {
-        otHrs += currentWeekHrs - 45;
-      }
-      currentWeekHrs = 0;
-      lastWeekNum = wk;
-    }
-
     if (isWeekend && skipWE) { d.setDate(d.getDate() + 1); continue; }
     if (isHoliday && skipHol) { holSkippedDays++; holSkippedPayDays += holidayWeight(ds) || 1; d.setDate(d.getDate() + 1); continue; }
 
     totalDays++;
     totalHrs += dailyHrs;
-    currentWeekHrs += dailyHrs;
+    const st = getWeekState(d);
+    const regular = Math.min(dailyHrs, Math.max(0, st.normalLeft));
+    const overtime = Math.max(0, dailyHrs - regular);
+    st.normalLeft = Math.max(0, st.normalLeft - regular);
+    otHrs += overtime;
+    const _mhCalc = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+    paidDayEquiv += Math.min(1, dailyHrs / Math.max(1, _mhCalc / 26));
     if (isHoliday) {
       holWorkedDays++;
       holWorkedPayDays += holidayPayWeight(ds, { start, end, break: brk });
@@ -10361,14 +10472,11 @@ function runCalc() {
 
     d.setDate(d.getDate() + 1);
   }
-  // Last week OT check
-  if (currentWeekHrs > 45) otHrs += currentWeekHrs - 45;
-
   // Earnings calculation
   const _mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
   const hr = u.netSalary > 0 && _mh > 0 ? u.netSalary / _mh : 0;
   const dr = u.netSalary > 0 ? u.netSalary / 30 : 0;
-  const basePay = totalDays * dr;
+  const basePay = paidDayEquiv * dr;
   const _otRateCalc = parseFloat(u.otCompRate) || 1.5;
   const otPay = otHrs * hr * _otRateCalc;
   const holPay = holWorkedPayDays * dr;  // Md.47: yarım gün tatiller ağırlıklı ilave ücret
@@ -10782,7 +10890,7 @@ let _eBordroSession = {};
 // Kazanç sayfasından modal aç
 function openEBordroModal(y, m) {
   const u = cu();
-  _eBordroSession = { y, m };
+  _eBordroSession = { y, m, userId:S.cu };
   /* [FIX O-06] Bordro parametreleri güncel yıldan eskiyse uyar */
   const _curYear = new Date().getFullYear();
   if (payrollConfig.year < _curYear) {
@@ -10882,6 +10990,7 @@ function renderBordroPreview() {
   // Sonucu oturuma kaydet (PDF/JSON/XML için)
   _eBordroSession.result = {
     ...res, mealTotal, transportTotal, finalNet, marital, children, priorYTD, y, m,
+    userId:S.cu,
     baseGross, otGross, holGross, totalGross,
     otHours: d.oh, holDays: d.hdw, holPayDays, hrGross, drGross, compRate,
     empName:  ($('eb-empName')  || {}).value || '',
