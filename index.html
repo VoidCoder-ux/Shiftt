@@ -3786,17 +3786,22 @@ function holidayPayWeight(ds, sh) {
   const h = getHoliday(ds);
   if (!h || !sh) return 0;
   if (!h.half) return 1;
+  /* Yarım gün tatillerde saat 13:00 sınırı kullanılır.
+     - Bitiş > 13:00 veya gece yarısı geçen vardiya → öğleden sonra kısmına denk gelir → 0.5 gün ilave ücret (Md.47)
+     - Bitiş ≤ 13:00 → yalnızca sabah kısmında çalışıldı → ilave ücret yok (tatil henüz başlamamış)
+     Kaynak: 2429 sayılı Ulusal Bayram ve Genel Tatiller Hakkında Kanun, tatil başlangıcı 13:00. */
   const end = parseTime(sh.end), start = parseTime(sh.start);
   if (start === null || end === null) return 0.5;
   return (end > 13 * 60 || end <= start) ? 0.5 : 0;
 }
-/* [FIX EDGE-CASE-01] RH veri kapsamı dışındaki yıllar için konsol uyarısı — session başına bir kez */
+/* [FIX N-05] RH veri kapsamı dışındaki yıllar için uyarı — session başına bir kez */
 const _rhWarnedYears = new Set();
 function isH(ds) {
   const _p = parseDS(ds);
   if (_p && _p.y > 2032 && !_rhWarnedYears.has(_p.y)) {
     _rhWarnedYears.add(_p.y);
     console.warn(`[Shiftt] ${_p.y} yılı dini tatil verisi eksik (kapsam: 2024–2032). Ramazan/Kurban tatilleri bu yıl için hesaplanamıyor.`);
+    setTimeout(() => toast(`⚠️ ${_p.y} yılı için dini tatil (Ramazan/Kurban) tarihleri tanımlı değil — uygulama kapsamı 2032'ye kadar. Tatil prim hesapları eksik olabilir.`, 'warning'), 400);
   }
   return getH(ds) !== null;
 }
@@ -3837,6 +3842,8 @@ function isNightShift(start, end) {
 }
 
 /* [FIX HESAP-MANTIK-01] UTC-bazlı ISO hafta hesabı — DST sapmalarını önler */
+/* [N-07] Date.UTC() kullanımı DST-safe'dir: yerel saat diliminden bağımsız UTC zaman damgaları karşılaştırılır.
+   Yıl sınırı geçişleri (Aralık 31 → sonraki yılın W01) "YYYY-Wnn" formatı sayesinde doğru işlenir. */
 function getISOWeek(d) {
   const y = d.getFullYear(), m = d.getMonth(), day2 = d.getDate();
   const ts      = Date.UTC(y, m, day2);
@@ -5231,15 +5238,24 @@ function copyShift() {
 
 function pasteShift(ds) {
   const u = cu(); if (!u || !S.clipboard) return;
-  pushUndo('Yapıştır');
-  u.shifts[ds] = { ...S.clipboard, updatedAt:Date.now() };
-  if (u.deletedShifts) delete u.deletedShifts[ds];
-  if (u.leaves[ds]) { if (!u.deletedLeaves) u.deletedLeaves = {}; u.deletedLeaves[ds] = Date.now(); }
-  delete u.leaves[ds];
-  invalidateMDCache();
-  saveLS();
-  renderActivePage();
-  toast('Yapıştırıldı', 'success');
+  const doPaste = () => {
+    pushUndo('Yapıştır');
+    u.shifts[ds] = { ...S.clipboard, updatedAt:Date.now() };
+    if (u.deletedShifts) delete u.deletedShifts[ds];
+    if (u.leaves[ds]) { if (!u.deletedLeaves) u.deletedLeaves = {}; u.deletedLeaves[ds] = Date.now(); }
+    delete u.leaves[ds];
+    invalidateMDCache();
+    saveLS();
+    renderActivePage();
+    toast('Yapıştırıldı', 'success');
+  };
+  /* [FIX N-06] Mevcut izin kaydının üzerine yapıştırma için onay iste */
+  if (u.leaves[ds]) {
+    const existingType = u.leaves[ds].type || 'izin';
+    showConfirm('İzin Kaydı Silinecek', `${ds} için "${existingType}" izin kaydı var. Yapıştırılırsa izin silinecek. Devam?`, doPaste);
+  } else {
+    doPaste();
+  }
 }
 
 function pasteAndClose() {
@@ -5680,7 +5696,7 @@ function updResult() {
     const shiftOT = Math.max(0, weekWithShift.ot - prevWeek.ot);
     let earn = 0;
     if (holPay2 > 0) earn += (u.netSalary / 30) * holPay2;  // Md.47: ilave tatil ücreti
-    if (shiftOT > 0) earn += shiftOT * hr * 1.5;
+    if (shiftOT > 0) earn += shiftOT * hr * (parseFloat(u.otCompRate) || 1.5);
     ep.textContent = (Number.isFinite(earn) && earn > 0) ? `💰 Tahmini ek: ~${fm(earn)}` : '';
   } else { ep.textContent = ''; }
 }
@@ -6315,11 +6331,13 @@ function savePayrollCheckField(field, raw) {
 }
 function estimatePayrollForMonth(u, y, m, d) {
   if (!u || !u.netSalary || u.netSalary <= 0) return null;
+  /* [N-03] Medeni durum/çocuk sayısı 7349 sy. Kanun sonrası GV hesabını etkilemez (AGİ kaldırıldı).
+     Bekâr/çocuksuz varsayımı hesap sonucunu değiştirmiyor. */
   const marital = 'single', children = 0;
   const priorYTD = safeNum(getPayrollCheck(u, y, m).priorYTD, 0);
   const baseGross = findGrossFromNet(u.netSalary, marital, children, priorYTD, m);
   const mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
-  const hrGross = baseGross / mh;
+  const hrGross = baseGross > 0 && mh > 0 ? baseGross / mh : 0;
   const drGross = baseGross / 30;
   const compMode = u.otCompMode || 'pay';
   const compRate = parseFloat(u.otCompRate || 1.5);
@@ -6328,7 +6346,7 @@ function estimatePayrollForMonth(u, y, m, d) {
   const holGross = holPayDays * drGross;
   const totalGross = baseGross + otGross + holGross;
   const res = computeNetFromGross(totalGross, marital, children, priorYTD, m);
-  return { ...res, baseGross, otGross, holGross, totalGross, holPayDays };
+  return { ...res, baseGross, otGross, holGross, totalGross, holPayDays, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
 }
 function diffBadge(diff) {
   const abs = Math.abs(diff || 0);
@@ -6435,6 +6453,7 @@ function renderEmployeeRightsPanel(u, y, m, d, e) {
           ${input('slipStampTax','DV')}
         </div>
         <div style="margin-top:8px">${cmp.length ? cmp.map(c => `<div class="esd"><span class="ek">${c.label}: bordro ${fm(c.entered)} / beklenen ${fm(c.expected)}</span><span class="ev">${diffBadge(c.diff)}</span></div>`).join('') : '<div class="ai-empty">Bordro kalemlerini girince farklar burada görünür.</div>'}</div>
+        ${payroll && payroll._assumption ? `<div style="font-size:10px;color:var(--t3);margin-top:6px"><i class="fas fa-info-circle"></i> ${escHtml(payroll._assumption)}</div>` : ''}
       </div>
       <div class="esb" style="margin:0">
         <div class="esb-title"><i class="fas fa-hourglass-half"></i>270 Saat FM Takibi</div>
@@ -6502,11 +6521,11 @@ function exportEmployeeMonthPDF() {
   if (!JsPDF) { toast('PDF kütüphanesi yüklenemedi', 'error'); return; }
   try {
     const doc = new JsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-    const rows = employeeMonthRows(u, S.ey, S.em).map(r => [String(r[0]), String(r[1])]);
+    const rows = employeeMonthRows(u, S.ey, S.em).map(r => [pdfStr(String(r[0])), pdfStr(String(r[1]))]);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
     doc.text('Calisan Hak ve Bordro Kontrol Raporu', 14, 16);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-    doc.text(`${u.name || ''} | ${MTR[S.em]} ${S.ey}`, 14, 24);
+    doc.text(pdfStr(`${u.name || ''} | ${MTR[S.em]} ${S.ey}`), 14, 24);
     if (doc.autoTable) {
       doc.autoTable({ startY: 32, head:[['Kalem','Deger']], body:rows, styles:{ font:'helvetica', fontSize:9, cellPadding:3 }, headStyles:{ fillColor:[99,102,241] } });
     } else {
@@ -6514,7 +6533,7 @@ function exportEmployeeMonthPDF() {
       rows.forEach(r => { if (y > 280) { doc.addPage(); y = 16; } doc.text(`${r[0]}: ${r[1]}`, 14, y); y += 6; });
     }
     doc.setFontSize(7); doc.setTextColor(150,150,150);
-    doc.text(`ShiftTrack Pro | ${new Date().toLocaleString('tr-TR')}`, 14, 290);
+    doc.text(pdfStr(`ShiftTrack Pro | ${new Date().toLocaleString('tr-TR')}`), 14, 290);
     doc.save(`calisan_hak_raporu_${employeeMonthKey(S.ey,S.em)}.pdf`);
     toast('PDF raporu indirildi', 'success');
   } catch(e) {
@@ -6539,7 +6558,8 @@ function renderEarnWeekly(u, y, m, d, e) {
     if (isOT && totalW > 0) {
       const otTotal = totalW - 45;
       const monthOT = otTotal * (h / totalW);
-      weighted = (h - monthOT) + monthOT * 1.5;
+      const _compRate = parseFloat(u.otCompRate) || 1.5;
+      weighted = (h - monthOT) + monthOT * _compRate;
     }
     return { wk, h, totalW, isOT, weighted, idx: i };
   });
@@ -6757,7 +6777,7 @@ function loadSet() {
   if (sS) sS.value = u.netSalary || '';
   if (sSt) sSt.value = u.startDate || '';
   if (sL) sL.value = annualLeaveTotal(u);
-  const sMH = $('sMH'); if (sMH) sMH.value = u.monthlyHours || 225;
+  const sMH = $('sMH'); if (sMH) sMH.value = u.monthlyHours || 195;
   const uN = $('userNotes'); if (uN) uN.value = u.notes || '';
   const sGH = $('sGoalHours'); if (sGH) sGH.value = u.goalHours || '';
   const sGE = $('sGoalEarning'); if (sGE) sGE.value = u.goalEarning || '';
@@ -6849,7 +6869,8 @@ function updSal() {
     el.style.display = 'block';
     setTxt('salAmt', fm(u.netSalary));
     const _mhSal = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
-    setTxt('salDet', `Günlük: ${fm(u.netSalary/30)} | Saatlik: ${fm(u.netSalary/_mhSal)} | FM: ${fm(u.netSalary/_mhSal*1.5)}`);
+    const _otRateSal = parseFloat(u.otCompRate) || 1.5;
+    setTxt('salDet', `Günlük: ${fm(u.netSalary/30)} | Saatlik: ${fm(u.netSalary/_mhSal)} | FM: ${fm(u.netSalary/_mhSal*_otRateSal)}`);
   } else { el.style.display = 'none'; }
 }
 
@@ -7717,6 +7738,16 @@ function deleteCurrentUser() {
 /* ============================================================
    PDF EXPORT
 ============================================================ */
+/* [FIX O-01] jsPDF helvetica fontu Türkçe karakterleri desteklemez.
+   Bu yardımcı fonksiyon PDF'e yazılacak metni ASCII'ye dönüştürür. */
+function pdfStr(s) {
+  if (typeof s !== 'string') s = String(s == null ? '' : s);
+  return s
+    .replace(/İ/g,'I').replace(/Ş/g,'S').replace(/Ğ/g,'G')
+    .replace(/Ü/g,'U').replace(/Ö/g,'O').replace(/Ç/g,'C')
+    .replace(/ı/g,'i').replace(/ş/g,'s').replace(/ğ/g,'g')
+    .replace(/ü/g,'u').replace(/ö/g,'o').replace(/ç/g,'c');
+}
 function exportPDF() {
   const u = cu(); if (!u) { toast('Giriş yapın', 'error'); return; }
   if (typeof window.jspdf === 'undefined') { toast('PDF kütüphanesi yüklenemedi', 'error'); return; }
@@ -7726,12 +7757,12 @@ function exportPDF() {
     const mStr = MTR[S.cm] + ' ' + S.cy;
     let y = 15;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
-    doc.text('ShiftTrack Pro - Vardiya Raporu', 15, y); y += 8;
+    doc.text(pdfStr('ShiftTrack Pro - Vardiya Raporu'), 15, y); y += 8;
     doc.setFontSize(12); doc.setFont('helvetica', 'normal');
-    doc.text(`${u.name} | ${mStr}`, 15, y); y += 10;
+    doc.text(pdfStr(`${u.name} | ${mStr}`), 15, y); y += 10;
 
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    const cols = ['Tarih','Gün','Tür','Giriş','Çıkış','Net Saat'];
+    const cols = ['Tarih','Gun','Tur','Giris','Cikis','Net Saat'];
     const colW = [28, 22, 28, 20, 20, 22];
     let x = 15;
     doc.setFillColor(124, 58, 237); doc.setTextColor(255, 255, 255);
@@ -7754,19 +7785,19 @@ function exportPDF() {
         const hrs = calcHr(sh.start, sh.end, sh.break || 0);
         totalHrs += hrs; totalDays++;
         doc.text(ds, x + 2, y); x += colW[0];
-        doc.text(dayName, x + 2, y); x += colW[1];
+        doc.text(pdfStr(dayName), x + 2, y); x += colW[1];
         doc.text('Vardiya', x + 2, y); x += colW[2];
         doc.text(sh.start, x + 2, y); x += colW[3];
         doc.text(sh.end, x + 2, y); x += colW[4];
         doc.text(hrs.toFixed(1) + 's', x + 2, y);
       } else if (lv && lv.type) {
-        const tl = {annual:'Yıllık',weekly:'Hafta T.',public_holiday:'R.Tatil',sick:'Rapor',unpaid:'Ücretsiz'};
+        const tl = {annual:'Yillik',weekly:'Hafta T.',public_holiday:'R.Tatil',sick:'Rapor',unpaid:'Ucretsiz',ot_comp:'FM Izin'};
         doc.text(ds, x + 2, y); x += colW[0];
-        doc.text(dayName, x + 2, y); x += colW[1];
-        doc.text(tl[lv.type]||lv.type, x + 2, y);
+        doc.text(pdfStr(dayName), x + 2, y); x += colW[1];
+        doc.text(tl[lv.type] || pdfStr(lv.type), x + 2, y);
       } else if (isH(ds)) {
         doc.text(ds, x + 2, y); x += colW[0];
-        doc.text(dayName, x + 2, y); x += colW[1];
+        doc.text(pdfStr(dayName), x + 2, y); x += colW[1];
         doc.setTextColor(220, 38, 38); doc.text('R.Tatil', x + 2, y); doc.setTextColor(30, 30, 30);
       } else { continue; }
       y += 6;
@@ -7775,14 +7806,14 @@ function exportPDF() {
     y += 8;
     if (y > 260) { doc.addPage(); y = 15; }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
-    doc.text(`Toplam: ${totalDays} gün, ${totalHrs.toFixed(1)} saat`, 15, y); y += 6;
+    doc.text(pdfStr(`Toplam: ${totalDays} gun, ${totalHrs.toFixed(1)} saat`), 15, y); y += 6;
     if (u.netSalary > 0) {
       const earn = calcEarningForMonth(S.cy, S.cm, u.netSalary);
-      if (earn) doc.text(`Tahmini Kazanç: ${fm(earn.totalEarning)}`, 15, y);
+      if (earn) doc.text(pdfStr(`Tahmini Kazanc: ${fm(earn.totalEarning)}`), 15, y);
     }
 
     doc.setFontSize(7); doc.setTextColor(150, 150, 150);
-    doc.text(`ShiftTrack Pro | ${new Date().toLocaleString('tr-TR')}`, 15, 290);
+    doc.text(pdfStr(`ShiftTrack Pro | ${new Date().toLocaleString('tr-TR')}`), 15, 290);
 
     doc.save(`shifttrack_${u.name}_${mStr}.pdf`);
     toast('PDF indirildi!', 'success');
@@ -10205,6 +10236,7 @@ function runCalc() {
     const isHoliday = isH(ds);
     const wk = getISOWeek(d);
 
+    /* [N-04] wk = "YYYY-Wnn" formatı: yıl geçişleri (örn. 2024-W52 → 2025-W01) otomatik doğru işlenir */
     if (wk !== lastWeekNum) {
       if (lastWeekNum !== null && currentWeekHrs > 45) {
         otHrs += currentWeekHrs - 45;
@@ -10230,11 +10262,12 @@ function runCalc() {
   if (currentWeekHrs > 45) otHrs += currentWeekHrs - 45;
 
   // Earnings calculation
-  const _mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 225;
-  const hr = u.netSalary > 0 ? u.netSalary / _mh : 0;
+  const _mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+  const hr = u.netSalary > 0 && _mh > 0 ? u.netSalary / _mh : 0;
   const dr = u.netSalary > 0 ? u.netSalary / 30 : 0;
   const basePay = totalDays * dr;
-  const otPay = otHrs * hr * 1.5;
+  const _otRateCalc = parseFloat(u.otCompRate) || 1.5;
+  const otPay = otHrs * hr * _otRateCalc;
   const holPay = holWorkedPayDays * dr;  // Md.47: yarım gün tatiller ağırlıklı ilave ücret
   const totalEarn = basePay + otPay + holPay;
 
