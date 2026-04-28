@@ -3695,6 +3695,48 @@ function safeInt(v, fallback = 0) {
   const n = typeof v === 'number' ? Math.trunc(v) : parseInt(v, 10);
   return Number.isFinite(n) ? n : fallback;
 }
+function clampNum(v, min, max, fallback = min) {
+  const n = safeNum(v, fallback);
+  return Math.min(max, Math.max(min, n));
+}
+function clampInt(v, min, max, fallback = min) {
+  const n = safeInt(v, fallback);
+  return Math.min(max, Math.max(min, n));
+}
+function minuteLabel(mins) {
+  const n = ((safeInt(mins, 0) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(n / 60)).padStart(2,'0')}:${String(n % 60).padStart(2,'0')}`;
+}
+function getMonthlyHours(u) {
+  const mh = safeNum(u && u.monthlyHours, 0);
+  return mh > 0 ? mh : 195;
+}
+function getStandardDailyHours(u) {
+  return Math.max(1, getMonthlyHours(u) / 26);
+}
+function getOTRate(u) {
+  return clampNum(u && u.otCompRate, 1.5, 3, 1.5);
+}
+function getOTCompLeaveHours(u, leave) {
+  const stored = safeNum(leave && leave.hours, 0);
+  return stored > 0 ? stored : 8;
+}
+function validateShiftInput(start, end, breakMinutes, opts = {}) {
+  const st = parseTime(start), en = parseTime(end);
+  if (st === null || en === null) return { ok:false, msg:'Saatleri girin' };
+  if (st === en) return { ok:false, msg:'Giriş ve çıkış aynı olamaz' };
+  let grossMin = en - st;
+  if (grossMin <= 0) grossMin += 1440;
+  const grossHours = grossMin / 60;
+  if (grossHours <= 0) return { ok:false, msg:'Geçersiz süre' };
+  if (grossHours > MAX_GROSS_HOURS) return { ok:false, msg:`Vardiya ${MAX_GROSS_HOURS}s brüt aşamaz` };
+  const br = safeInt(breakMinutes, 0);
+  if (br < 0) return { ok:false, msg:'Mola negatif olamaz' };
+  if (br >= grossMin) return { ok:false, msg:`Mola süresi (${br} dk) vardiya toplam süresini (${grossMin} dk) aşıyor` };
+  const netHours = (grossMin - br) / 60;
+  if (netHours <= 0) return { ok:false, msg:'Mola vardiya süresinden uzun olamaz' };
+  return { ok:true, start, end, breakMinutes:br, grossMin, grossHours, netHours };
+}
 function ageOnDate(birthDate, refDate = new Date()) {
   if (!birthDate) return null;
   const b = new Date(birthDate), r = refDate instanceof Date ? refDate : new Date(refDate);
@@ -3812,6 +3854,7 @@ function getShiftDayParts(ds, sh) {
   if (!p || st === null || en === null || st === en) return [];
   let gross = en - st;
   if (gross <= 0) gross += 1440;
+  if (gross / 60 > MAX_GROSS_HOURS) return [];
   const br = Math.max(0, parseInt(sh.break) || 0);
   const net = Math.max(0, Math.min(gross, gross - br));
   if (gross <= 0 || net <= 0) return [];
@@ -3874,6 +3917,104 @@ function grossHr(s, e) {
   let d = en - st;
   if (d <= 0) d += 1440;
   return Math.max(0, d / 60);
+}
+
+function getShiftPartRows(u, filterFn) {
+  const rows = [];
+  Object.entries((u && u.shifts) || {}).forEach(([startDs, sh]) => {
+    if (!sh || !sh.start || !sh.end) return;
+    getShiftDayParts(startDs, sh).forEach((part, idx) => {
+      if (!part || !part.ds || part.hours <= 0) return;
+      const dt = dsToDate(part.ds);
+      if (!dt || isNaN(dt.getTime())) return;
+      const row = {
+        ...part,
+        sourceDs:startDs,
+        sh,
+        partIndex:idx,
+        dt,
+        wk:getISOWeek(dt),
+        startLabel:minuteLabel(part.startMin),
+        endLabel:minuteLabel(part.endMin)
+      };
+      if (!filterFn || filterFn(row)) rows.push(row);
+    });
+  });
+  rows.sort((a, b) => (a.dt - b.dt) || ((a.startMin || 0) - (b.startMin || 0)) || a.sourceDs.localeCompare(b.sourceDs));
+  return rows;
+}
+
+function getShiftPartsForDate(u, ds) {
+  return getShiftPartRows(u, part => part.ds === ds);
+}
+
+function getShiftPartsForMonth(u, y, m) {
+  return getShiftPartRows(u, part => {
+    const p = parseDS(part.ds);
+    return p && p.y === y && p.m === m;
+  });
+}
+
+function getShiftHoursForDate(u, ds) {
+  return getShiftPartsForDate(u, ds).reduce((sum, part) => sum + Math.max(0, part.hours || 0), 0);
+}
+
+function getAllWorkedDates(u) {
+  return new Set(getShiftPartRows(u).map(part => part.ds));
+}
+
+function normalizeShiftRecord(sh) {
+  if (!sh || typeof sh !== 'object') return null;
+  const check = validateShiftInput(sh.start, sh.end, sh.break || 0);
+  if (!check.ok) return null;
+  return {
+    start:check.start,
+    end:check.end,
+    break:check.breakMinutes,
+    note:typeof sh.note === 'string' ? sh.note.substring(0, 100) : '',
+    updatedAt:safeNum(sh.updatedAt, 0)
+  };
+}
+
+function normalizeLeaveRecord(lv) {
+  if (!lv || typeof lv !== 'object' || !lv.type) return null;
+  const allowed = new Set(['annual','weekly','public_holiday','sick','unpaid','ot_comp']);
+  const type = allowed.has(lv.type) ? lv.type : null;
+  if (!type) return null;
+  const out = {
+    type,
+    note:typeof lv.note === 'string' ? lv.note.substring(0, 100) : '',
+    updatedAt:safeNum(lv.updatedAt, 0)
+  };
+  if (type === 'ot_comp') out.hours = getOTCompLeaveHours(null, lv);
+  return out;
+}
+
+function normalizeUserCalculations(u) {
+  if (!u || typeof u !== 'object') return u;
+  u.netSalary = Math.max(0, safeNum(u.netSalary, 0));
+  u.annualLeave = clampInt(u.annualLeave, 0, 40, 0);
+  u.monthlyHours = clampInt(u.monthlyHours || 195, 100, 400, 195);
+  u.goalHours = Math.max(0, safeNum(u.goalHours, 0));
+  u.goalEarning = Math.max(0, safeNum(u.goalEarning, 0));
+  u.otCompMode = u.otCompMode === 'leave' ? 'leave' : 'pay';
+  u.otCompRate = getOTRate(u);
+  u.otBalance = Math.max(0, safeNum(u.otBalance, 0));
+  u.otCompModeChangedAt = safeNum(u.otCompModeChangedAt, 0);
+  if (!Array.isArray(u.otCompModeHistory)) u.otCompModeHistory = [];
+  if (!u.shifts || typeof u.shifts !== 'object') u.shifts = {};
+  if (!u.leaves || typeof u.leaves !== 'object') u.leaves = {};
+  Object.keys(u.shifts).forEach(ds => {
+    const p = parseDS(ds), sh = normalizeShiftRecord(u.shifts[ds]);
+    if (!p || !sh) delete u.shifts[ds];
+    else u.shifts[ds] = sh;
+  });
+  Object.keys(u.leaves).forEach(ds => {
+    const p = parseDS(ds), lv = normalizeLeaveRecord(u.leaves[ds]);
+    if (!p || !lv || (lv.type === 'public_holiday' && !isH(ds))) delete u.leaves[ds];
+    else u.leaves[ds] = lv;
+  });
+  return u;
 }
 
 /* [FIX] Gece vardiyası tespiti */
@@ -3949,10 +4090,18 @@ function getAnnualUsed(uid, yr, excArr) {
   Object.entries(u.leaves).forEach(([k, v]) => {
     if (!v || v.type !== 'annual') return;
     const p = parseDS(k); if (!p || p.y !== yr) return;
+    if (!isAnnualLeaveChargeable(k)) return;
     if (excSet.has(k)) return;
     c++;
   });
   return c;
+}
+
+function isAnnualLeaveChargeable(ds) {
+  const p = parseDS(ds); if (!p) return false;
+  const d = new Date(p.y, p.m, p.d);
+  const dow = d.getDay();
+  return dow !== 0 && dow !== 6 && !isH(ds);
 }
 
 /* [FEAT F3] Yıllık toplam FM (yasal sınır 270s — İş K. Md.41) */
@@ -3977,7 +4126,8 @@ function getQuarterlyOT(yr, mo) {
 ============================================================ */
 function invalidateMDCache(uid, y, m) {
   if (uid !== undefined && y !== undefined && m !== undefined) {
-    delete mdCache[`${uid}-${y}-${m}`];
+    const prefix = `${uid}-${y}-${m}-`;
+    Object.keys(mdCache).forEach(k => { if (k === `${uid}-${y}-${m}` || k.startsWith(prefix)) delete mdCache[k]; });
     delete yearlyOTCache[`${uid}-${y}`];
   } else {
     mdCache = {};
@@ -3991,17 +4141,18 @@ function invalidateMDCache(uid, y, m) {
    Bir ISO haftası iki aya taşarsa, her iki aydaki saatler gerçek hafta toplamında
    birleştirilir. FM hesabı doğru hafta bazında yapılır.
 ============================================================ */
-function getMD(y, m) {
+function getMD(y, m, opts = {}) {
   const u = cu();
-  const empty = { th:0, rh:0, oh:0, hh:0, hhOT:0, hpd:0, wd:0, workDayEquiv:0, hdw:0, wh:{}, wr:0, ud:0, yau:0, ysd:0, mau:0, msd:0, hr:0, dim:new Date(y,m+1,0).getDate(), weekTotalHrs:{}, weekMonthOTHrs:{} };
+  const dim = new Date(y, m + 1, 0).getDate();
+  const throughDay = opts && opts.throughDay !== undefined ? clampInt(opts.throughDay, 0, dim, dim) : null;
+  const empty = { th:0, rh:0, oh:0, hh:0, hhOT:0, hpd:0, wd:0, workDayEquiv:0, hdw:0, wh:{}, wr:0, weeklyRestDays:0, publicHolidayPaidDays:0, ud:0, yau:0, ysd:0, mau:0, msd:0, hr:0, dim, weekTotalHrs:{}, weekMonthOTHrs:{} };
   if (!u) return empty;
 
-  const ck = `${S.cu}-${y}-${m}`;
+  const ck = `${S.cu}-${y}-${m}-${throughDay === null ? 'all' : throughDay}`;
   if (mdCache[ck]) return mdCache[ck];
 
-  const dim = new Date(y, m + 1, 0).getDate();
   let th = 0, hh = 0, hpd = 0;
-  const _mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+  const _mh = getMonthlyHours(u);
   const standardDailyHours = Math.max(1, _mh / 26);
 
   // Bu aydaki her gün için: hangi ISO haftasında, kaç saat, tatil mi?
@@ -4023,12 +4174,14 @@ function getMD(y, m) {
     const parts = getShiftDayParts(startDs, sh);
     const startP = parseDS(startDs);
     const shiftHours = parts.reduce((sum, part) => sum + Math.max(0, part.hours || 0), 0);
-    if (startP && startP.y === y && startP.m === m && shiftHours > 0) {
+    if (startP && startP.y === y && startP.m === m && (throughDay === null || startP.d <= throughDay) && shiftHours > 0) {
       workedStartDates.add(startDs);
       workStartDayEquiv += Math.min(1, shiftHours / standardDailyHours);
     }
     parts.forEach(part => {
       if (!part || part.hours <= 0 || !part.ds) return;
+      const pp = parseDS(part.ds);
+      if (throughDay !== null && pp && pp.y === y && pp.m === m && pp.d > throughDay) return;
       const dt = dsToDate(part.ds);
       if (!dt || isNaN(dt.getTime())) return;
       allParts.push({
@@ -4092,15 +4245,21 @@ function getMD(y, m) {
     hhOT += weekMonthHolOTHrs[wk] || 0;
   }
 
-  let yau = 0, ysd = 0, mau = 0, msd = 0, wr = 0, ud = 0, otcm = 0;
+  let yau = 0, ysd = 0, mau = 0, msd = 0, wr = 0, weeklyRestDays = 0, publicHolidayPaidDays = 0, ud = 0, otcm = 0;
   Object.entries(u.leaves).forEach(([k, v]) => {
     const p = parseDS(k); if (!p || !v || !v.type) return;
-    if (p.y === y) { if (v.type === 'annual') yau++; if (v.type === 'sick') ysd++; }
+    const withinCutoff = throughDay === null || p.y !== y || p.m !== m || p.d <= throughDay;
+    if (p.y === y && withinCutoff) { if (v.type === 'annual') yau++; if (v.type === 'sick') ysd++; }
     if (p.y === y && p.m === m) {
+      if (!withinCutoff) return;
       if (v.type === 'annual') mau++;
       if (v.type === 'sick') msd++;
-      if (v.type === 'weekly') wr++;
-      if (v.type === 'public_holiday' && isH(k)) wr += holidayWeight(k) || 1;
+      if (v.type === 'weekly') { wr++; weeklyRestDays++; }
+      if (v.type === 'public_holiday' && isH(k)) {
+        const hw = holidayWeight(k) || 1;
+        wr += hw;
+        publicHolidayPaidDays += hw;
+      }
       if (v.type === 'unpaid') ud++;
       /* [FIX] FM İzni — ücretli, yıllık izinden bağımsız, otBalance'tan düşülür */
       if (v.type === 'ot_comp') otcm++;
@@ -4113,7 +4272,7 @@ function getMD(y, m) {
   const workDayEquiv = workStartDayEquiv;
   // wh: dashboard haftalık chart için — bu aydaki saatler (görüntüleme amaçlı)
   const wh = weekMonthHrs;
-  const r = { th, rh, oh, hh, hhOT, hpd, wd, workDayEquiv, hdw, wh, wr, ud, otcm, yau, ysd, mau, msd, hr, dim,
+  const r = { th, rh, oh, hh, hhOT, hpd, wd, workDayEquiv, hdw, wh, wr, weeklyRestDays, publicHolidayPaidDays, ud, otcm, yau, ysd, mau, msd, hr, dim,
     weekTotalHrs, weekMonthOTHrs }; // chart'ta gerçek haftalık toplamı göstermek için
   mdCache[ck] = r;
   return r;
@@ -4133,15 +4292,14 @@ function calcEarningForMonth(y, m, ns) {
   ns = safeNum(ns, 0);
   if (!ns || ns <= 0 || !Number.isFinite(ns)) return null;
   const u = cu(); if (!u) return null;
-  const d = getMD(y, m);
-  /* [FIX BUG-02] Saatlik ücret hesabında kullanıcının monthlyHours'unu kullan */
-  const _mhRaw = safeNum(u.monthlyHours, 0);
-  const _mh = (_mhRaw > 0) ? _mhRaw : 195;
-  const dim = d.dim, dr = ns / 30, hr = _mh > 0 ? ns / _mh : 0;
   const today = new Date();
   const tY = today.getFullYear(), tM = today.getMonth(), tD = today.getDate();
   const isCur = (y === tY && m === tM);
   const isFut = (y > tY || (y === tY && m > tM));
+  const d = getMD(y, m, isCur ? { throughDay:tD } : undefined);
+  /* [FIX BUG-02] Saatlik ücret hesabında kullanıcının monthlyHours'unu kullan */
+  const _mh = getMonthlyHours(u);
+  const dim = d.dim, dr = ns / 30, hr = _mh > 0 ? ns / _mh : 0;
 
   let ev;
   if (isFut) ev = 0;
@@ -4183,7 +4341,7 @@ function calcEarningForMonth(y, m, ns) {
   const hp = (d.hpd !== undefined ? d.hpd : d.hdw) * dr;
   /* [FIX] otCompMode: 'leave' modunda FM eki ödenmez, saatler bakiyeye eklenir */
   const compMode = u.otCompMode || 'pay';
-  const compRate = safeNum(u.otCompRate, 1.5);
+  const compRate = getOTRate(u);
   const op = compMode === 'leave' ? 0 : d.oh * hr * compRate;
   /* [FIX ERR-HANDLE-08] NaN propagation engellendi — bozuk md sonuçları 0'a sabitlenir */
   const teRaw = bp + op + hp;
@@ -4209,16 +4367,13 @@ function buildAIContext(user, year, month) {
   const u = user || cu();
   const y = Number.isInteger(year) ? year : S.cy;
   const m = Number.isInteger(month) ? month : S.cm;
-  const md = getMD(y, m);
-  const salary = safeNum(u && u.netSalary, 0);
-  const earning = salary > 0 ? calcEarningForMonth(y, m, salary) : null;
   const today = new Date();
   const isCurrentMonth = y === today.getFullYear() && m === today.getMonth();
-  const monthlyHours = safeNum(u && u.monthlyHours, 0) || 195;
-  const shiftCount = u && u.shifts ? Object.keys(u.shifts).filter(ds => {
-    const p = parseDS(ds);
-    return p && p.y === y && p.m === m;
-  }).length : 0;
+  const md = getMD(y, m, isCurrentMonth ? { throughDay:today.getDate() } : undefined);
+  const salary = safeNum(u && u.netSalary, 0);
+  const earning = salary > 0 ? calcEarningForMonth(y, m, salary) : null;
+  const monthlyHours = getMonthlyHours(u);
+  const shiftCount = u ? new Set(getShiftPartsForMonth(u, y, m).map(part => part.sourceDs || part.ds)).size : 0;
   const leaveCount = u && u.leaves ? Object.keys(u.leaves).filter(ds => {
     const p = parseDS(ds);
     return p && p.y === y && p.m === m;
@@ -4556,7 +4711,7 @@ function renderAIAssistantPage() {
           <div class="ai-api-grid">
             <input id="aiDeepSeekKey" type="password" placeholder="DeepSeek API key" value="${escHtml(apiCfg.apiKey)}" autocomplete="off">
             <input id="aiDeepSeekModel" type="text" placeholder="Model" value="${escHtml(apiCfg.model || 'deepseek-chat')}">
-            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)"><input id="aiDeepSeekConsent" type="checkbox" ${apiCfg.consent ? 'checked' : ''}>Vardiya/kazanç özetini DeepSeek'e göndermeyi onaylıyorum</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)"><input id="aiDeepSeekConsent" type="checkbox" ${apiCfg.consent ? 'checked' : ''}>Vardiya, izin, kazanç ve varsa bordro özetini DeepSeek'e göndermeyi onaylıyorum</label>
             <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)"><input id="aiDeepSeekRemember" type="checkbox" ${apiCfg.storage === 'local' ? 'checked' : ''}>API key bu cihazda kalıcı saklansın</label>
             <div class="ai-api-actions">
               <button class="btn btn-primary btn-sm" type="button" onclick="saveDeepSeekSettings()"><i class="fas fa-save"></i>Kaydet</button>
@@ -4603,7 +4758,8 @@ function getTrendData() {
   for (let i = 5; i >= 0; i--) {
     let m = today.getMonth() - i, y = today.getFullYear();
     while (m < 0) { m += 12; y--; }
-    const md = getMD(y, m);
+    const now = new Date();
+    const md = getMD(y, m, (y === now.getFullYear() && m === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
     const earn = u.netSalary ? calcEarningForMonth(y, m, u.netSalary) : null;
     data.push({
       y, m,
@@ -4896,7 +5052,8 @@ function toggleAutoTheme(on) {
 ============================================================ */
 function renderDash() {
   const u = cu(); if (!u) return;
-  const d = getMD(S.cy, S.cm), prev = getPrevMD();
+  const now = new Date();
+  const d = getMD(S.cy, S.cm, (S.cy === now.getFullYear() && S.cm === now.getMonth()) ? { throughDay:now.getDate() } : undefined), prev = getPrevMD();
   setTxt('dashSub', `${MTR[S.cm]} ${S.cy} — ${u.name}`);
   const streak = getStreak();
   setHtml('dashStreak', streak > 0 ? `<div class="streak-badge"><i class="fas fa-fire"></i>${streak} gün seri</div>` : '');
@@ -4943,7 +5100,8 @@ function renderDash() {
   info += `
     <div class="info-row"><span class="k"><i class="fas fa-umbrella-beach"></i>Kalan Y.İzin</span><span class="v ${ar <= 3 ? 'neg' : ''}">${ar}g</span></div>
     <div class="info-row"><span class="k"><i class="fas fa-notes-medical"></i>Rapor (yıl)</span><span class="v">${d.ysd}g</span></div>
-    <div class="info-row"><span class="k"><i class="fas fa-couch"></i>H.Tatil (ay)</span><span class="v">${d.wr}g</span></div>
+    <div class="info-row"><span class="k"><i class="fas fa-couch"></i>H.Tatil (ay)</span><span class="v">${d.weeklyRestDays || 0}g</span></div>
+    <div class="info-row"><span class="k"><i class="fas fa-flag"></i>R.Tatil İzni</span><span class="v">${(d.publicHolidayPaidDays || 0).toFixed(1)}g</span></div>
     <div class="info-row"><span class="k"><i class="fas fa-coins"></i>Saatlik (baz)</span><span class="v">${u.netSalary ? fm(d.hr) : '—'}</span></div>
     <div class="info-row"><span class="k"><i class="fas fa-chart-line"></i>İş Günü Dol.</span><span class="v">${d.dim > 0 ? workdays + '/' + d.dim : '—'}</span></div>
   `;
@@ -4997,20 +5155,21 @@ function renderDashReports(u, d, e) {
 
   /* 1. Vardiya Dağılımı Mini */
   const shiftDist = {};
-  for (const [ds, sh] of Object.entries(u.shifts)) {
-    if (!sh || !sh.start || !sh.end) continue;
-    const p = parseDS(ds); if (!p || p.y !== y || p.m !== m) continue;
+  getShiftPartsForMonth(u, y, m).forEach(part => {
+    const sh = part.sh;
+    if (!sh || !sh.start || !sh.end) return;
     const st = getShiftType(sh);
-    if (!shiftDist[st.name]) shiftDist[st.name] = { icon:st.icon, days:0, hours:0 };
-    shiftDist[st.name].days++;
-    shiftDist[st.name].hours += calcHr(sh.start, sh.end, sh.break||0);
-  }
+    if (!shiftDist[st.name]) shiftDist[st.name] = { icon:st.icon, days:new Set(), hours:0 };
+    shiftDist[st.name].days.add(part.sourceDs || part.ds);
+    shiftDist[st.name].hours += Math.max(0, safeNum(part.hours, 0));
+  });
   let shiftHtml = '';
-  const sdSorted = Object.entries(shiftDist).sort((a,b) => b[1].days - a[1].days);
+  const sdSorted = Object.entries(shiftDist).sort((a,b) => (b[1].days && b[1].days.size || 0) - (a[1].days && a[1].days.size || 0));
   if (sdSorted.length) {
     sdSorted.forEach(([name, v]) => {
-      const pct = d.wd > 0 ? (v.days / d.wd * 100).toFixed(0) : 0;
-      shiftHtml += `<div class="dr-row"><span class="drk">${v.icon} ${escHtml(name)}</span><span class="drv">${v.days}g · ${v.hours.toFixed(1)}s <small style="color:var(--t3);font-weight:600">(${pct}%)</small></span></div>`;
+      const days = v.days && typeof v.days.size === 'number' ? v.days.size : safeInt(v.days, 0);
+      const pct = d.wd > 0 ? (days / d.wd * 100).toFixed(0) : 0;
+      shiftHtml += `<div class="dr-row"><span class="drk">${v.icon} ${escHtml(name)}</span><span class="drv">${days}g · ${v.hours.toFixed(1)}s <small style="color:var(--t3);font-weight:600">(${pct}%)</small></span></div>`;
     });
   } else {
     shiftHtml = '<div style="font-size:11px;color:var(--t3);text-align:center;padding:8px">Veri yok</div>';
@@ -5023,7 +5182,8 @@ function renderDashReports(u, d, e) {
     <div class="dr-row"><span class="drk"><i class="fas fa-umbrella-beach" style="color:#60a5fa"></i>Y.İzin</span><span class="drv">${ar}/${al}g kalan</span></div>
     <div class="dr-mini-bar"><div class="dr-fill" style="width:${alPct}%;background:linear-gradient(90deg,#3b82f6,#60a5fa)"></div></div>
     <div class="dr-row" style="margin-top:4px"><span class="drk"><i class="fas fa-notes-medical" style="color:#fb923c"></i>Rapor</span><span class="drv">${d.ysd}g</span></div>
-    <div class="dr-row"><span class="drk"><i class="fas fa-couch" style="color:var(--p)"></i>H.Tatil (ay)</span><span class="drv">${d.wr}g</span></div>
+    <div class="dr-row"><span class="drk"><i class="fas fa-couch" style="color:var(--p)"></i>H.Tatil (ay)</span><span class="drv">${d.weeklyRestDays || 0}g</span></div>
+    <div class="dr-row"><span class="drk"><i class="fas fa-flag" style="color:var(--r)"></i>R.Tatil İzni</span><span class="drv">${(d.publicHolidayPaidDays || 0).toFixed(1)}g</span></div>
     <div class="dr-row"><span class="drk"><i class="fas fa-ban" style="color:var(--r)"></i>Ücretsiz</span><span class="drv ${d.ud > 0 ? 'neg' : ''}">${d.ud}g</span></div>`;
 
   /* 3. Kazanç Detay Mini */
@@ -5052,17 +5212,18 @@ function renderDashReports(u, d, e) {
     perfMini += `<div class="dr-row"><span class="drk"><i class="fas fa-chart-area" style="color:var(--s)"></i>Ay Sonu Tah.</span><span class="drv">${proj2.projected}s</span></div>`;
   }
   // Son 5 vardiya
-  const recentShifts = Object.entries(u.shifts)
-    .filter(([ds, sh]) => sh && sh.start && sh.end && ds.startsWith(`${y}-${String(m+1).padStart(2,'0')}`))
-    .sort((a, b) => b[0].localeCompare(a[0]))
+  const recentShifts = getShiftPartsForMonth(u, y, m)
+    .slice()
+    .sort((a, b) => b.ds.localeCompare(a.ds) || (b.startMin || 0) - (a.startMin || 0))
     .slice(0, 5);
   if (recentShifts.length) {
     perfMini += '<div style="margin-top:8px;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase">Son Vardiyalar</div>';
-    recentShifts.forEach(([ds, sh]) => {
+    recentShifts.forEach(part => {
+      const ds = part.ds, sh = part.sh;
       const dd = dsToDate(ds);
-      const h = calcHr(sh.start, sh.end, sh.break||0);
+      const h = Math.max(0, safeNum(part.hours, 0));
       const st = getShiftType(sh);
-      perfMini += `<div class="dr-row"><span class="drk">${st.icon} ${dd.getDate()} ${MTR[dd.getMonth()].substring(0,3)}</span><span class="drv">${sh.start}–${sh.end} <small style="color:var(--t3)">${h.toFixed(1)}s</small></span></div>`;
+      perfMini += `<div class="dr-row"><span class="drk">${st.icon} ${dd.getDate()} ${MTR[dd.getMonth()].substring(0,3)}</span><span class="drv">${part.startLabel}–${part.endLabel} <small style="color:var(--t3)">${h.toFixed(1)}s</small></span></div>`;
     });
   }
 
@@ -5108,13 +5269,11 @@ function renderMultiBar() {
 function multiApplyShift() {
   const u = cu(); if (!u || !S.selectedDates.length) return;
   const defaultStart = '08:00', defaultEnd = '16:00', defaultBreak = 30;
-  const g = grossHr(defaultStart, defaultEnd);
-  if (g > MAX_GROSS_HOURS || g <= 0) { toast('Geçersiz varsayılan vardiya', 'error'); return; }
-  const h = calcHr(defaultStart, defaultEnd, defaultBreak);
-  if (h <= 0) { toast('Geçersiz varsayılan vardiya', 'error'); return; }
+  const check = validateShiftInput(defaultStart, defaultEnd, defaultBreak);
+  if (!check.ok) { toast(check.msg || 'Geçersiz varsayılan vardiya', 'error'); return; }
   pushUndo('Çoklu vardiya');
   S.selectedDates.forEach(ds => {
-    u.shifts[ds] = { start:defaultStart, end:defaultEnd, break:defaultBreak, updatedAt:Date.now() };
+    u.shifts[ds] = { start:defaultStart, end:defaultEnd, break:check.breakMinutes, updatedAt:Date.now() };
     if (u.deletedShifts) delete u.deletedShifts[ds];
     if (u.leaves[ds]) { if (!u.deletedLeaves) u.deletedLeaves = {}; u.deletedLeaves[ds] = Date.now(); }
     delete u.leaves[ds];
@@ -5129,6 +5288,11 @@ function multiApplyShift() {
 function multiApplyLeave(t) {
   const u = cu(); if (!u || !S.selectedDates.length) return;
   if (t === 'annual') {
+    const blocked = S.selectedDates.filter(ds => !isAnnualLeaveChargeable(ds));
+    if (blocked.length) {
+      toast(`Yıllık izin hafta sonu/resmi tatil gününe yazılamaz (${blocked[0]})`, 'error');
+      return;
+    }
     const yg = {};
     S.selectedDates.forEach(ds => {
       const p = parseDS(ds); if (!p) return;
@@ -5146,9 +5310,25 @@ function multiApplyLeave(t) {
       }
     }
   }
+  if (t === 'public_holiday') {
+    const blocked = S.selectedDates.filter(ds => !isH(ds));
+    if (blocked.length) {
+      toast(`Resmi tatil izni resmi tatil olmayan güne yazılamaz (${blocked[0]})`, 'error');
+      return;
+    }
+  }
+  if (t === 'ot_comp') {
+    const required = S.selectedDates.length * 8;
+    const bal = getOTBalance();
+    if (bal < required) {
+      toast(`FM izin bakiyesi yetersiz! (Mevcut: ${bal.toFixed(1)}s, gereken: ${required}s)`, 'error');
+      return;
+    }
+  }
   pushUndo('Çoklu izin');
   S.selectedDates.forEach(ds => {
     u.leaves[ds] = { type:t, note:'', updatedAt:Date.now() };
+    if (t === 'ot_comp') u.leaves[ds].hours = 8;
     if (u.deletedLeaves) delete u.deletedLeaves[ds];
     if (u.shifts[ds]) { if (!u.deletedShifts) u.deletedShifts = {}; u.deletedShifts[ds] = Date.now(); }
     delete u.shifts[ds];
@@ -5193,11 +5373,14 @@ function renderCal() {
     let c = 'cal-cell';
     if (s === td) c += ' today';
     const hol = getH(s), sh = u.shifts[s], lv = u.leaves[s];
+    const dayParts = getShiftPartsForDate(u, s);
+    const dayHours = dayParts.reduce((sum, part) => sum + Math.max(0, part.hours || 0), 0);
+    const displayShift = sh || (dayParts[0] && dayParts[0].sh);
     const dow = new Date(y, m, d).getDay();
     const dn = DTR[dow === 0 ? 6 : dow - 1];
-    if (sh && sh.start && sh.end) {
+    if (dayParts.length && displayShift && displayShift.start && displayShift.end) {
       c += ' has-shift';
-      const stp = getShiftType(sh);
+      const stp = getShiftType(displayShift);
       if (stp.key.includes('morning')) c += ' shift-morning';
       else if (stp.key.includes('afternoon')) c += ' shift-afternoon';
       else if (stp.key.includes('evening') || stp.key.includes('night')) c += ' shift-evening';
@@ -5208,19 +5391,22 @@ function renderCal() {
 
     let inner = `<div class="num"><span>${d}</span><small>${dn}</small></div>`;
     /* [FIX] Akıllı öneri ikonu — boş gün ve öneri varsa göster */
-    if (!sh && !lv && suggestions[s]) {
+    if (!dayParts.length && !lv && suggestions[s]) {
       inner += `<span class="suggestion-dot" title="✅ Yasal sınırlara uygun, eklenebilir (11s dinlenme & 45s/hafta)">💡</span>`;
     }
-    if (sh && sh.start && sh.end) {
-      const h = calcHr(sh.start, sh.end, sh.break || 0);
+    if (dayParts.length && displayShift && displayShift.start && displayShift.end) {
+      const h = dayHours;
       if (h > 0) { mH += h; mD++; }
-      const sType = getShiftType(sh);
+      const sType = getShiftType(displayShift);
+      const firstPart = dayParts[0];
+      const partLabel = dayParts.length === 1 ? `${firstPart.startLabel}–${firstPart.endLabel}` : `${dayParts.length} parça`;
+      const shiftLabel = sh ? `${escHtml(sh.start)}–${escHtml(sh.end)}` : `${escHtml(partLabel)} (devam)`;
       /* [FIX L-06] FM yasal olarak 45s/hafta bazlıdır, günlük 9s sınırı yoktur.
          CSS sınıfı 'long-shift' olarak yeniden adlandırıldı; 8.5s üstü uzun vardiya göstergesi. */
       inner += `<div class="hrs-display ${h > 8.5 ? 'long-shift' : ''}">${h.toFixed(1)}s</div>`;
       inner += `<div class="shift-icon">${sType.icon}</div>`;
-      inner += `<div class="shift-time">${escHtml(sh.start)}–${escHtml(sh.end)}${isNightShift(sh.start, sh.end) ? ' 🌙' : ''}</div>`;
-      if (sh.note) inner += `<div class="shift-time" style="color:var(--p3);opacity:.7">📝 ${escHtml(sh.note.substring(0,20))}</div>`;
+      inner += `<div class="shift-time">${shiftLabel}${isNightShift(displayShift.start, displayShift.end) ? ' 🌙' : ''}</div>`;
+      if (displayShift.note) inner += `<div class="shift-time" style="color:var(--p3);opacity:.7">📝 ${escHtml(displayShift.note.substring(0,20))}</div>`;
       if (hol) inner += `<span class="hol-tag">🏛️ ${escHtml(hol)}</span>`;
     } else if (lv && lv.type) {
       /* [FIX] FM İzni dahil tüm izin türleri */
@@ -5239,7 +5425,7 @@ function renderCal() {
     e.setAttribute('role', 'button');
     /* [FIX ERİŞİLEBİLİRLİK-01] Ekran okuyucuya vardiya saatleri ve izin türü iletiliyor */
     const _lvA11y = {annual:'Yıllık İzin',weekly:'Haftalık Tatil',public_holiday:'Resmi Tatil',sick:'Rapor',unpaid:'Ücretsiz İzin',ot_comp:'FM İzni'};
-    const _a11yDesc = sh ? `${sh.start}–${sh.end} (${calcHr(sh.start,sh.end,sh.break||0).toFixed(1)}s)${hol?' — '+hol:''}` : lv ? (_lvA11y[lv.type]||'İzin') : hol || 'Boş';
+    const _a11yDesc = dayParts.length && displayShift ? `${displayShift.start}–${displayShift.end} (${dayHours.toFixed(1)}s)${hol?' — '+hol:''}` : lv ? (_lvA11y[lv.type]||'İzin') : hol || 'Boş';
     e.setAttribute('aria-label', `${d} ${MTR[m]} ${y}: ${_a11yDesc}`);
     if (sh && sh.start) e.draggable = true;
     g.appendChild(e);
@@ -5309,11 +5495,15 @@ function copyShift() {
 
 function pasteShift(ds) {
   const u = cu(); if (!u || !S.clipboard) return;
+  const clippedShift = normalizeShiftRecord(S.clipboard);
+  if (!clippedShift) { toast('Kopyalanan vardiya geçersiz', 'error'); return; }
   const doPaste = () => {
     pushUndo('Yapıştır');
-    u.shifts[ds] = { ...S.clipboard, updatedAt:Date.now() };
+    const nowTs = Date.now();
+    if (u.shifts[ds]) { if (!u.deletedShifts) u.deletedShifts = {}; u.deletedShifts[ds] = nowTs; }
+    u.shifts[ds] = { ...clippedShift, updatedAt:nowTs };
     if (u.deletedShifts) delete u.deletedShifts[ds];
-    if (u.leaves[ds]) { if (!u.deletedLeaves) u.deletedLeaves = {}; u.deletedLeaves[ds] = Date.now(); }
+    if (u.leaves[ds]) { if (!u.deletedLeaves) u.deletedLeaves = {}; u.deletedLeaves[ds] = nowTs; }
     delete u.leaves[ds];
     invalidateMDCache();
     saveLS();
@@ -5321,9 +5511,9 @@ function pasteShift(ds) {
     toast('Yapıştırıldı', 'success');
   };
   /* [FIX N-06] Mevcut izin kaydının üzerine yapıştırma için onay iste */
-  if (u.leaves[ds]) {
-    const existingType = u.leaves[ds].type || 'izin';
-    showConfirm('İzin Kaydı Silinecek', `${ds} için "${existingType}" izin kaydı var. Yapıştırılırsa izin silinecek. Devam?`, doPaste);
+  if (u.leaves[ds] || u.shifts[ds]) {
+    const existingType = u.leaves[ds] ? (u.leaves[ds].type || 'izin') : 'vardiya';
+    showConfirm('Kayıt Değiştirilecek', `${ds} için mevcut "${existingType}" kaydı var. Yapıştırılırsa bu kayıt değişecek. Devam?`, doPaste);
   } else {
     doPaste();
   }
@@ -5364,11 +5554,16 @@ function copyThisWeekToNext() {
       const ds = dStr(targetDate);
       if (u.shifts[ds] || u.leaves[ds]) return;
       if (item.shift) {
-        u.shifts[ds] = { ...item.shift, updatedAt: Date.now() };
+        const copiedShift = normalizeShiftRecord(item.shift);
+        if (!copiedShift) return;
+        u.shifts[ds] = { ...copiedShift, updatedAt: Date.now() };
         if (u.deletedShifts) delete u.deletedShifts[ds];
         count++;
       } else if (item.leave) {
-        u.leaves[ds] = { ...item.leave, updatedAt: Date.now() };
+        const copiedLeave = normalizeLeaveRecord(item.leave);
+        if (!copiedLeave) return;
+        if (copiedLeave.type === 'annual' && !isAnnualLeaveChargeable(ds)) return;
+        u.leaves[ds] = { ...copiedLeave, updatedAt: Date.now() };
         if (u.deletedLeaves) delete u.deletedLeaves[ds];
       }
     });
@@ -5403,11 +5598,16 @@ function repeatLastWeek() {
       const ds = dStr(targetDate);
       if (u.shifts[ds] || u.leaves[ds]) return;
       if (item.shift) {
-        u.shifts[ds] = { ...item.shift, updatedAt: Date.now() };
+        const copiedShift = normalizeShiftRecord(item.shift);
+        if (!copiedShift) return;
+        u.shifts[ds] = { ...copiedShift, updatedAt: Date.now() };
         if (u.deletedShifts) delete u.deletedShifts[ds];
         count++;
       } else if (item.leave) {
-        u.leaves[ds] = { ...item.leave, updatedAt: Date.now() };
+        const copiedLeave = normalizeLeaveRecord(item.leave);
+        if (!copiedLeave) return;
+        if (copiedLeave.type === 'annual' && !isAnnualLeaveChargeable(ds)) return;
+        u.leaves[ds] = { ...copiedLeave, updatedAt: Date.now() };
         if (u.deletedLeaves) delete u.deletedLeaves[ds];
       }
     });
@@ -5439,7 +5639,8 @@ function getShiftType(sh) {
 function renderCalMonthSummary() {
   const el = $('calMonthSummary'); if (!el) return;
   const u = cu(); if (!u) { el.innerHTML = ''; return; }
-  const md = getMD(S.cy, S.cm);
+  const now = new Date();
+  const md = getMD(S.cy, S.cm, (S.cy === now.getFullYear() && S.cm === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   if (md.wd === 0 && md.wr === 0) { el.innerHTML = ''; return; }
   const e = u.netSalary ? calcEarningForMonth(S.cy, S.cm, u.netSalary) : null;
   const avgDaily = md.wd > 0 ? (md.th / md.wd).toFixed(1) : '0';
@@ -5461,28 +5662,29 @@ function renderShiftStats() {
 
   /* Aylık verileri topla */
   const y = S.cy, m = S.cm;
-  const mPrefix = `${y}-${String(m+1).padStart(2,'0')}`;
   const monthData = {}, yearData = {};
 
-  for (const [ds, sh] of Object.entries(u.shifts)) {
-    if (!sh || !sh.start || !sh.end) continue;
+  getShiftPartRows(u).forEach(part => {
+    const ds = part.ds, sh = part.sh;
+    const p = parseDS(ds);
+    if (!p || !sh || !sh.start || !sh.end) return;
     const sType = getShiftType(sh);
     const groupKey = sType.name;
-    const h = calcHr(sh.start, sh.end, sh.break || 0);
+    const h = Math.max(0, safeNum(part.hours, 0));
 
     /* Yıllık */
-    if (ds.startsWith(String(y) + '-')) {
-      if (!yearData[groupKey]) yearData[groupKey] = { icon:sType.icon, days:0, hours:0 };
-      yearData[groupKey].days++;
+    if (p.y === y) {
+      if (!yearData[groupKey]) yearData[groupKey] = { icon:sType.icon, days:new Set(), hours:0 };
+      yearData[groupKey].days.add(ds);
       yearData[groupKey].hours += h;
     }
     /* Aylık */
-    if (ds.startsWith(mPrefix)) {
-      if (!monthData[groupKey]) monthData[groupKey] = { icon:sType.icon, days:0, hours:0 };
-      monthData[groupKey].days++;
+    if (p.y === y && p.m === m) {
+      if (!monthData[groupKey]) monthData[groupKey] = { icon:sType.icon, days:new Set(), hours:0 };
+      monthData[groupKey].days.add(ds);
       monthData[groupKey].hours += h;
     }
-  }
+  });
 
   if (Object.keys(monthData).length === 0 && Object.keys(yearData).length === 0) {
     el.innerHTML = '';
@@ -5491,13 +5693,13 @@ function renderShiftStats() {
 
   function buildCards(data) {
     if (Object.keys(data).length === 0) return '<div class="ss-empty">Henüz vardiya verisi yok</div>';
-    const sorted = Object.entries(data).sort((a, b) => b[1].days - a[1].days);
+    const sorted = Object.entries(data).sort((a, b) => (b[1].days && b[1].days.size || 0) - (a[1].days && a[1].days.size || 0));
     const topKey = sorted[0][0];
     return '<div class="ss-grid">' + sorted.map(([name, d]) =>
       `<div class="ss-card ${name === topKey ? 'ss-top' : ''}">
         <div class="ss-icon">${d.icon}</div>
         <div class="ss-name">${escHtml(name)}${name === topKey ? ' <i class="fas fa-crown" style="color:var(--g);font-size:8px"></i>' : ''}</div>
-        <div class="ss-count">${d.days} <small style="font-size:10px;font-weight:600">gün</small></div>
+        <div class="ss-count">${d.days && d.days.size || 0} <small style="font-size:10px;font-weight:600">gün</small></div>
         <div class="ss-hours">${d.hours.toFixed(1)} saat</div>
       </div>`
     ).join('') + '</div>';
@@ -5526,7 +5728,8 @@ function switchSSTab(tab, btn) {
 function renderCopyBar() {
   const el = $('copyBar'); if (!el) return;
   if (S.clipboard && S.clipboard.start && S.clipboard.end) {
-    const h = calcHr(S.clipboard.start, S.clipboard.end, S.clipboard.break || 0);
+    const check = validateShiftInput(S.clipboard.start, S.clipboard.end, S.clipboard.break || 0);
+    const h = check.ok ? check.netHours : 0;
     el.innerHTML = `<div class="copy-bar"><span><i class="fas fa-clipboard"></i> ${escHtml(S.clipboard.start)}–${escHtml(S.clipboard.end)} (${h.toFixed(1)}s)</span><button class="btn btn-soft btn-xs" onclick="clearClipboard()"><i class="fas fa-times"></i></button></div>`;
   } else { el.innerHTML = ''; }
 }
@@ -5695,18 +5898,18 @@ function applyPreset(key, el) {
 }
 
 /* [FIX] Haftalık FM hesabı: seçili gün dahil, o haftadaki tüm saatleri toplar */
-function getWeekOTForDay(ds, currentNet) {
+function getWeekOTForDay(ds, currentNet, currentShift) {
   const u = cu(); if (!u || !ds) return { ot: 0, weekTotal: 0 };
-  const d = dsToDate(ds);
-  const todayDow = d.getDay() === 0 ? 6 : d.getDay() - 1;
-  const monday = new Date(d); monday.setDate(d.getDate() - todayDow);
+  const wk = getISOWeek(dsToDate(ds));
   let weekTotal = 0;
-  for (let i = 0; i < 7; i++) {
-    const dd = new Date(monday); dd.setDate(monday.getDate() + i);
-    const dds = dStr(dd);
-    if (dds === ds) { weekTotal += currentNet; continue; }
-    const sh = u.shifts[dds];
-    if (sh && sh.start && sh.end) weekTotal += calcHr(sh.start, sh.end, sh.break || 0);
+  getShiftPartRows(u, part => part.wk === wk && part.sourceDs !== ds)
+    .forEach(part => { weekTotal += Math.max(0, part.hours || 0); });
+  if (currentShift && currentShift.start && currentShift.end) {
+    getShiftDayParts(ds, currentShift).forEach(part => {
+      if (getISOWeek(dsToDate(part.ds)) === wk) weekTotal += Math.max(0, part.hours || 0);
+    });
+  } else {
+    weekTotal += Math.max(0, safeNum(currentNet, 0));
   }
   const ot = Math.max(0, weekTotal - 45);
   return { ot, weekTotal };
@@ -5717,14 +5920,24 @@ function updResult() {
   if (!isEl || !ieEl || !ibEl) return;
   const s = isEl.value, e = ieEl.value, b = parseInt(ibEl.value) || 0;
   if (!s || !e) return;
-  const net = calcHr(s, e, b), gross = grossHr(s, e);
+  const shiftCheck = validateShiftInput(s, e, b, { allowEqual: false });
+  const gross = grossHr(s, e);
+  if (!shiftCheck.ok) {
+    setTxt('rbGross', Number.isFinite(gross) ? gross.toFixed(1) + 's' : '—');
+    setTxt('rbBreak', Math.max(0, b) + 'dk');
+    setTxt('rbNet', '—');
+    setTxt('rbOT', '—');
+    const epInvalid = $('mEarningPreview'); if (epInvalid) epInvalid.textContent = '';
+    return;
+  }
+  const net = shiftCheck.netHours;
   setTxt('rbGross', gross.toFixed(1) + 's');
   setTxt('rbBreak', b + 'dk');
   setTxt('rbNet', net.toFixed(1) + 's');
   /* [FIX] FM: haftalık 45s bazlı gösterim (tek vardiya değil) */
   const rbOT = $('rbOT');
   if (rbOT) {
-    const weekOT = getWeekOTForDay(S.sd, net);
+    const weekOT = getWeekOTForDay(S.sd, net, { start:s, end:e, break:b });
     rbOT.textContent = weekOT.ot > 0 ? '+' + weekOT.ot.toFixed(1) + 's' : '—';
     rbOT.style.color = weekOT.ot > 0 ? 'var(--acc)' : 'var(--t3)';
     rbOT.title = weekOT.ot > 0 ? `Hafta toplamı: ${weekOT.weekTotal.toFixed(1)}s (45s limit)` : 'Haftalık 45s aşılmadı';
@@ -5735,7 +5948,7 @@ function updResult() {
   if (ni) {
     if (isNightShift(s, e)) {
       ni.style.display = 'flex';
-      setTxt('mNightTx', 'Gece vardiyası — saatler giriş gününe kaydedilir, ertesi güne taşmaz.');
+      setTxt('mNightTx', 'Gece vardiyası — saatler gün bazında bölünür; rapor ve dışa aktarımda ertesi gün payı ayrıca görünür.');
     } else {
       ni.style.display = 'none';
     }
@@ -5755,19 +5968,18 @@ function updResult() {
 
   const u = cu(); const ep = $('mEarningPreview'); if (!ep) return;
   if (u && u.netSalary > 0 && net > 0) {
-    const _mhRaw = safeNum(u.monthlyHours, 0);
-    const _mh2 = (_mhRaw > 0) ? _mhRaw : 195;
+    const _mh2 = getMonthlyHours(u);
     const hr = u.netSalary / _mh2;
-    const holPay2 = holidayPayWeight(S.sd, { start:S.sd ? $('iStart')?.value : '', end:S.sd ? $('iEnd')?.value : '' });
+    const holPay2 = holidayPayWeight(S.sd, { start:s, end:e, break:b });
     /* [FIX L-05] Yalnızca bu vardiyaya atfedilen FM eki gösterilmeli.
        Önceki hafta toplamını (bu gün hariç, 0 saat) alıp farkı hesapla:
        shiftOT = max(0, (öncekiHafta+net) - 45) - max(0, öncekiHafta - 45) */
     const prevWeek = getWeekOTForDay(S.sd, 0);
-    const weekWithShift = getWeekOTForDay(S.sd, net);
+    const weekWithShift = getWeekOTForDay(S.sd, net, { start:s, end:e, break:b });
     const shiftOT = Math.max(0, weekWithShift.ot - prevWeek.ot);
     let earn = 0;
     if (holPay2 > 0) earn += (u.netSalary / 30) * holPay2;  // Md.47: ilave tatil ücreti
-    if (shiftOT > 0) earn += shiftOT * hr * (parseFloat(u.otCompRate) || 1.5);
+    if (shiftOT > 0 && (u.otCompMode || 'pay') !== 'leave') earn += shiftOT * hr * getOTRate(u);
     ep.textContent = (Number.isFinite(earn) && earn > 0) ? `💰 Tahmini ek: ~${fm(earn)}` : '';
   } else { ep.textContent = ''; }
 }
@@ -5778,16 +5990,11 @@ function saveEntry() {
   if (S.mt === 'shift') {
     const isE = $('iStart'), ieE = $('iEnd'), ibE = $('iBreak');
     if (!isE || !ieE || !ibE) return;
-    const st = isE.value, en = ieE.value, br = parseInt(ibE.value) || 0;
-    if (!st || !en) { toast('Saatleri girin', 'error'); return; }
-    if (st === en) { toast('Giriş ve çıkış aynı olamaz', 'error'); return; }
-    const gross = grossHr(st, en);
-    if (gross <= 0) { toast('Geçersiz süre', 'error'); return; }
-    if (gross > MAX_GROSS_HOURS) { toast(`Vardiya ${MAX_GROSS_HOURS}s brüt aşamaz`, 'error'); return; }
-    const grossMin = (function(){ let d = parseTime(en) - parseTime(st); if (d <= 0) d += 1440; return d; })();
-    if (br >= grossMin) { toast(`Mola süresi (${br} dk) vardiya toplam süresini (${grossMin} dk) aşıyor`, 'error'); return; }
-    const hrs = calcHr(st, en, br);
-    if (hrs <= 0) { toast('Mola vardiya süresinden uzun olamaz', 'error'); return; }
+    const st = isE.value, en = ieE.value, brRaw = parseInt(ibE.value) || 0;
+    const shiftCheck = validateShiftInput(st, en, brRaw);
+    if (!shiftCheck.ok) { toast(shiftCheck.msg, 'error'); return; }
+    const br = shiftCheck.breakMinutes;
+    const hrs = shiftCheck.netHours;
 
     /* [FIX Md.68] Zorunlu mola uyarısı — engellemez, bildirir */
     const _minBrk = hrs > 7.5 ? 60 : hrs > 4 ? 30 : hrs > 0 ? 15 : 0;
@@ -5864,9 +6071,17 @@ function saveEntry() {
 
     doSave();
     return;
-  } else {
+    } else {
     if (!S.lt) { toast('İzin türü seçin', 'error'); return; }
+    if (S.lt === 'public_holiday' && !isH(S.sd)) {
+      toast('Resmi tatil izni yalnızca resmi tatil gününe yazılabilir', 'error');
+      return;
+    }
     if (S.lt === 'annual') {
+      if (!isAnnualLeaveChargeable(S.sd)) {
+        toast('Yıllık izin hafta sonu veya resmi tatil gününe yazılamaz', 'error');
+        return;
+      }
       const p = parseDS(S.sd);
       if (p) {
         const isAlreadyAnnual = u.leaves[S.sd] && u.leaves[S.sd].type === 'annual';
@@ -5878,8 +6093,9 @@ function saveEntry() {
     /* [FIX] FM İzni — bakiye kontrolü (her gün = 8 saat FM hakkı) */
     if (S.lt === 'ot_comp') {
       const bal = getOTBalance();
-      if (bal < 8) {
-        toast(`FM izin bakiyesi yetersiz! (Mevcut: ${bal.toFixed(1)}s, gereken: 8s)`, 'error');
+      const required = 8;
+      if (bal < required) {
+        toast(`FM izin bakiyesi yetersiz! (Mevcut: ${bal.toFixed(1)}s, gereken: ${required}s)`, 'error');
         return;
       }
     }
@@ -5888,6 +6104,7 @@ function saveEntry() {
       pushUndo('İzin');
       const inEl = $('iNote');
       u.leaves[S.sd] = { type:S.lt, note:(inEl ? inEl.value : '').trim().substring(0, 100), updatedAt:Date.now() };
+      if (S.lt === 'ot_comp') u.leaves[S.sd].hours = 8;
       if (u.deletedLeaves) delete u.deletedLeaves[S.sd];
       if (u.shifts[S.sd]) { if (!u.deletedShifts) u.deletedShifts = {}; u.deletedShifts[S.sd] = Date.now(); }
       delete u.shifts[S.sd];
@@ -6282,7 +6499,8 @@ function renderEarn() {
     return;
   }
 
-  const d = getMD(y, m);
+  const now = new Date();
+  const d = getMD(y, m, (y === now.getFullYear() && m === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   if (d.wd === 0 && d.wr === 0 && d.mau === 0 && d.msd === 0 && d.ud === 0) {
     const e0 = calcEarningForMonth(y, m, u.netSalary);
     ec.innerHTML = '<div class="empty"><i class="fas fa-calendar-times"></i><p>Bu ay için veri yok</p></div>' + renderEmployeeRightsPanel(u, y, m, d, e0);
@@ -6307,14 +6525,15 @@ function renderEarn() {
   for (let i = 0; i < fdow; i++) dgHtml += '<div class="edg-cell"></div>';
   for (let d2 = 1; d2 <= dim; d2++) {
     const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d2).padStart(2,'0')}`;
-    const sh = u.shifts[ds], lv = u.leaves[ds];
+    const parts = getShiftPartsForDate(u, ds);
+    const dayHours = parts.reduce((sum, part) => sum + Math.max(0, safeNum(part.hours, 0)), 0);
+    const lv = u.leaves[ds];
     const hol2 = isH(ds);
     const today = new Date();
     const isToday = (y === today.getFullYear() && m === today.getMonth() && d2 === today.getDate());
     let cls = 'edg-cell', title = String(d2);
-    if (sh && sh.start && sh.end) {
-      const hrs = calcHr(sh.start, sh.end, sh.break || 0);
-      cls += hrs > 7.5 ? ' edg-ot' : ' edg-worked';
+    if (dayHours > 0) {
+      cls += dayHours > 7.5 ? ' edg-ot' : ' edg-worked';
     } else if (lv && lv.type) { cls += ' edg-leave'; }
     else if (hol2) { cls += ' edg-hol'; }
     else { const dt = new Date(y, m, d2); const dow = dt.getDay(); if (dow===0||dow===6) cls += ' edg-hol'; else cls += ' edg-absent'; }
@@ -6358,8 +6577,8 @@ function renderEarn() {
       ${e.missingDays > 0 ? `<div class="esd"><span class="ek">Eksik Gün (${e.missingDays}g × ${fm(e.dailyRate)})</span><span class="ev neg">−${fm(e.missingDays*e.dailyRate)}</span></div>` : ''}
       ` : ''}
       ${e.overtimePay > 0 ? `
-      <div class="esd-head" style="color:#f97316">🔥 FAZLA MESAİ (${safeNum(u.otCompRate, 1.5)}×)</div>
-      <div class="esd"><span class="ek">${e.overtimeHours.toFixed(1)}s × ${fm(e.hourlyRate)} × ${safeNum(u.otCompRate, 1.5)}</span><span class="ev pos">+${fm(e.overtimePay)}</span></div>
+      <div class="esd-head" style="color:#f97316">🔥 FAZLA MESAİ (${getOTRate(u)}×)</div>
+      <div class="esd"><span class="ek">${e.overtimeHours.toFixed(1)}s × ${fm(e.hourlyRate)} × ${getOTRate(u)}</span><span class="ev pos">+${fm(e.overtimePay)}</span></div>
       ` : ''}
       ${e.holidayPay > 0 ? `
       <div class="esd-head" style="color:var(--g)">🏛️ TATİL PRİMLERİ</div>
@@ -6402,7 +6621,8 @@ function savePayrollCheckField(field, raw) {
 }
 function estimatePayrollForMonth(u, y, m, d) {
   if (!u || !u.netSalary || u.netSalary <= 0) return null;
-  d = d || getMD(y, m);
+  const now = new Date();
+  d = d || getMD(y, m, (y === now.getFullYear() && m === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   /* [N-03] Medeni durum/çocuk sayısı 7349 sy. Kanun sonrası GV hesabını etkilemez (AGİ kaldırıldı).
      Bekâr/çocuksuz varsayımı hesap sonucunu değiştirmiyor. */
   const marital = 'single', children = 0;
@@ -6413,11 +6633,11 @@ function estimatePayrollForMonth(u, y, m, d) {
   if (baseNet <= 0 && d.th <= 0 && d.mau <= 0 && d.msd <= 0 && d.wr <= 0) return null;
   const fullGross = findGrossFromNet(u.netSalary, marital, children, priorYTD, m);
   const baseGross = findGrossFromNet(baseNet, marital, children, priorYTD, m);
-  const mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+  const mh = getMonthlyHours(u);
   const hrGross = fullGross > 0 && mh > 0 ? fullGross / mh : 0;
   const drGross = fullGross / 30;
   const compMode = u.otCompMode || 'pay';
-  const compRate = parseFloat(u.otCompRate || 1.5);
+  const compRate = getOTRate(u);
   const otGross = compMode === 'pay' ? d.oh * hrGross * compRate : 0;
   const holPayDays = d.hpd !== undefined ? d.hpd : d.hdw;
   const holGross = holPayDays * drGross;
@@ -6557,7 +6777,8 @@ function renderEmployeeRightsPanel(u, y, m, d, e) {
   </div>`;
 }
 function employeeMonthRows(u, y, m) {
-  const d = getMD(y, m);
+  const now = new Date();
+  const d = getMD(y, m, (y === now.getFullYear() && m === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   const e = u.netSalary ? calcEarningForMonth(y, m, u.netSalary) : null;
   const holidays = buildHolidayWorkRows(u, y, m);
   const warnings = buildWorkLawWarnings(u, y, m, d);
@@ -6616,7 +6837,7 @@ function exportEmployeeMonthPDF() {
       rows.forEach(r => { if (y > 280) { doc.addPage(); y = 16; } doc.text(`${r[0]}: ${r[1]}`, 14, y); y += 6; });
     }
     doc.setFontSize(7); doc.setTextColor(150,150,150);
-    doc.text(pdfStr(`ShiftTrack Pro | ${new Date().toLocaleString('tr-TR')}`), 14, 290);
+    doc.text(pdfStr(`Tahmini kontrol raporu; resmi bordro yerine gecmez. ShiftTrack Pro | ${new Date().toLocaleString('tr-TR')}`), 14, 290);
     doc.save(`calisan_hak_raporu_${employeeMonthKey(S.ey,S.em)}.pdf`);
     toast('PDF raporu indirildi', 'success');
   } catch(e) {
@@ -6640,7 +6861,7 @@ function renderEarnWeekly(u, y, m, d, e) {
     let weighted = h;
     if (isOT && totalW > 0) {
       const monthOT = d.weekMonthOTHrs ? (d.weekMonthOTHrs[wk] || 0) : 0;
-      const _compRate = parseFloat(u.otCompRate) || 1.5;
+      const _compRate = getOTRate(u);
       weighted = (h - monthOT) + monthOT * _compRate;
     }
     return { wk, h, totalW, isOT, weighted, idx: i };
@@ -6670,16 +6891,15 @@ function renderEarnWeekly(u, y, m, d, e) {
 
 /* Kazanç — Vardiya Tipi Bazında Kazanç */
 function renderEarnShiftTypes(u, y, m, e) {
-  const prefix = `${y}-${String(m+1).padStart(2,'0')}`;
   const types = {};
-  for (const [ds, sh] of Object.entries(u.shifts)) {
-    if (!sh || !sh.start || !sh.end || !ds.startsWith(prefix)) continue;
+  getShiftPartsForMonth(u, y, m).forEach(part => {
+    const sh = part.sh;
+    if (!sh || !sh.start || !sh.end) return;
     const st = getShiftType(sh);
-    const h = calcHr(sh.start, sh.end, sh.break || 0);
-    if (!types[st.name]) types[st.name] = { icon: st.icon, days: 0, hours: 0, earn: 0 };
-    types[st.name].days++;
-    types[st.name].hours += h;
-  }
+    if (!types[st.name]) types[st.name] = { icon: st.icon, days: new Set(), hours: 0, earn: 0 };
+    types[st.name].days.add(part.sourceDs || part.ds);
+    types[st.name].hours += Math.max(0, safeNum(part.hours, 0));
+  });
   /* [FIX BUG-05] Kazanç dağıtımı: FM/tatil primlerini de dikkate alan ağırlıklı hesap.
      Toplam, e.totalEarning'e normalize edilir — aylık toplamla tutarlıdır. */
   const totalH = Object.values(types).reduce((a, v) => a + v.hours, 0);
@@ -6695,12 +6915,13 @@ function renderEarnShiftTypes(u, y, m, e) {
   if (!sorted.length) return '';
   let cards = '<div class="earn-type-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(180px,100%),1fr));gap:8px">';
   sorted.forEach(([name, v]) => {
-    const dayAvg = v.days > 0 ? (v.hours / v.days).toFixed(1) : '0';
+    const days = v.days && typeof v.days.size === 'number' ? v.days.size : safeInt(v.days, 0);
+    const dayAvg = days > 0 ? (v.hours / days).toFixed(1) : '0';
     cards += `<div class="earn-type-card">
       <div class="etc-icon">${v.icon}</div>
       <div class="etc-info">
         <div class="etc-name">${escHtml(name)}</div>
-        <div class="etc-detail">${v.days}g · ${v.hours.toFixed(1)}s · ort ${dayAvg}s/g</div>
+        <div class="etc-detail">${days}g · ${v.hours.toFixed(1)}s · ort ${dayAvg}s/g</div>
       </div>
       <div class="etc-val">${fm(v.earn)}</div>
     </div>`;
@@ -6866,12 +7087,12 @@ function loadSet() {
   if (sSt) sSt.value = u.startDate || '';
   if (sB) sB.value = u.birthDate || '';
   if (sL) sL.value = annualLeaveTotal(u);
-  const sMH = $('sMH'); if (sMH) sMH.value = u.monthlyHours || 195;
+  const sMH = $('sMH'); if (sMH) sMH.value = getMonthlyHours(u);
   const uN = $('userNotes'); if (uN) uN.value = u.notes || '';
   const sGH = $('sGoalHours'); if (sGH) sGH.value = u.goalHours || '';
   const sGE = $('sGoalEarning'); if (sGE) sGE.value = u.goalEarning || '';
   /* [FIX] FM Yönetimi & Öneriler ayarlarını yükle */
-  const sOR = $('sOTRate'); if (sOR) sOR.value = parseFloat(u.otCompRate) || 1.5;
+  const sOR = $('sOTRate'); if (sOR) sOR.value = getOTRate(u);
   const otGroupName = `otMode_${S.cu}`;
   document.querySelectorAll('[data-ot-mode="1"]').forEach(r => {
     r.name = otGroupName;
@@ -6968,8 +7189,8 @@ function updSal() {
   if (u.netSalary > 0) {
     el.style.display = 'block';
     setTxt('salAmt', fm(u.netSalary));
-    const _mhSal = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
-    const _otRateSal = parseFloat(u.otCompRate) || 1.5;
+    const _mhSal = getMonthlyHours(u);
+    const _otRateSal = getOTRate(u);
     setTxt('salDet', `Günlük: ${fm(u.netSalary/30)} | Saatlik: ${fm(u.netSalary/_mhSal)} | FM: ${fm(u.netSalary/_mhSal*_otRateSal)}`);
   } else { el.style.display = 'none'; }
 }
@@ -7035,12 +7256,10 @@ function saveCPModal() {
   if (!name) { toast('Şablon adı gerekli', 'error'); return; }
   const start = cpS.value, end = cpE.value;
   const brk = parseInt(cpB.value) || 0;
-  if (!start || !end) { toast('Saatleri girin', 'error'); return; }
-  if (grossHr(start, end) > MAX_GROSS_HOURS) { toast(`${MAX_GROSS_HOURS}s aşılamaz`, 'error'); return; }
-  const hrs = calcHr(start, end, brk);
-  if (hrs <= 0) { toast('Geçersiz süreler', 'error'); return; }
+  const check = validateShiftInput(start, end, brk);
+  if (!check.ok) { toast(check.msg, 'error'); return; }
   if (!u.customPresets) u.customPresets = [];
-  u.customPresets.push({ name:name.substring(0,30), icon:S.cpSelectedEmoji, start, end, break:brk });
+  u.customPresets.push({ name:name.substring(0,30), icon:S.cpSelectedEmoji, start, end, break:check.breakMinutes });
   markSettingsUpdated(u);
   saveLS();
   renderCustomPresets();
@@ -7147,11 +7366,10 @@ function saveWTDay() {
   const wsE = $('wtStart'), weE = $('wtEnd'), wbE = $('wtBreak');
   if (!wsE || !weE || !wbE) return;
   const s = wsE.value, e = weE.value, b = parseInt(wbE.value) || 0;
-  if (!s || !e) { toast('Saatleri girin', 'error'); return; }
-  const hrs = calcHr(s, e, b);
-  if (hrs <= 0) { toast('Geçersiz süreler', 'error'); return; }
+  const check = validateShiftInput(s, e, b);
+  if (!check.ok) { toast(check.msg, 'error'); return; }
   if (!u.weeklyTemplate) u.weeklyTemplate = {};
-  u.weeklyTemplate[S.wtEditDay] = { start:s, end:e, break:b, type:'shift' };
+  u.weeklyTemplate[S.wtEditDay] = { start:s, end:e, break:check.breakMinutes, type:'shift' };
   markSettingsUpdated(u);
   saveLS(); renderWeeklyTemplate(); closeWTModal();
   toast(DFL[S.wtEditDay] + ' güncellendi', 'success');
@@ -7179,7 +7397,9 @@ function applyWeeklyTemplate() {
         u.leaves[ds] = { type:'weekly', note:'Şablon', updatedAt:Date.now() };
         continue;
       }
-      u.shifts[ds] = { start:conf.start, end:conf.end, break:conf.break || 30, updatedAt:Date.now() };
+      const check = validateShiftInput(conf.start, conf.end, conf.break || 30);
+      if (!check.ok) continue;
+      u.shifts[ds] = { start:conf.start, end:conf.end, break:check.breakMinutes, updatedAt:Date.now() };
       count++;
     }
     invalidateMDCache();
@@ -7269,6 +7489,13 @@ function resolveDayConflicts(u) {
     const lv = u.leaves[ds];
     if (lv && lv.type === 'public_holiday' && !isH(ds)) {
       logConflict(ds, 'invalid_public_holiday_leave', 'Gerçek resmi tatil olmayan public_holiday izin kaydı kaldırıldı.');
+      if (!u.deletedLeaves) u.deletedLeaves = {};
+      u.deletedLeaves[ds] = Date.now();
+      delete u.leaves[ds];
+    } else if (lv && lv.type === 'annual' && !isAnnualLeaveChargeable(ds)) {
+      logConflict(ds, 'invalid_annual_leave_day', 'Yıllık izin hafta sonu/resmi tatil gününe yazılamaz; kayıt kaldırıldı.');
+      if (!u.deletedLeaves) u.deletedLeaves = {};
+      u.deletedLeaves[ds] = Date.now();
       delete u.leaves[ds];
     }
   });
@@ -7278,9 +7505,13 @@ function resolveDayConflicts(u) {
     const lvTime = safeNum(u.leaves[ds] && u.leaves[ds].updatedAt, 0);
     if (lvTime > shTime) {
       logConflict(ds, 'shift_leave_conflict', 'Aynı gün vardiya ve izin vardı; daha güncel izin korundu, vardiya kaldırıldı.');
+      if (!u.deletedShifts) u.deletedShifts = {};
+      u.deletedShifts[ds] = Date.now();
       delete u.shifts[ds];
     } else {
       logConflict(ds, 'shift_leave_conflict', 'Aynı gün vardiya ve izin vardı; daha güncel vardiya korundu, izin kaldırıldı.');
+      if (!u.deletedLeaves) u.deletedLeaves = {};
+      u.deletedLeaves[ds] = Date.now();
       delete u.leaves[ds];
     }
   });
@@ -7318,19 +7549,9 @@ function loadLS() {
       if (!Array.isArray(S.u[i].otCompModeHistory)) S.u[i].otCompModeHistory = [];
       if (!S.u[i].payrollChecks || typeof S.u[i].payrollChecks !== 'object') S.u[i].payrollChecks = {};
       /* [FIX ERR-HANDLE-03] safeNum/safeInt ile NaN/Infinity propagation engellendi */
-      S.u[i].netSalary = safeNum(S.u[i].netSalary, 0);
+      normalizeUserCalculations(S.u[i]);
       S.u[i].annualLeave = annualLeaveTotal(S.u[i]);
       if (typeof S.u[i].notes !== 'string') S.u[i].notes = '';
-      S.u[i].goalHours = safeNum(S.u[i].goalHours, 0);
-      S.u[i].goalEarning = safeNum(S.u[i].goalEarning, 0);
-      if (S.u[i].monthlyHours !== undefined && S.u[i].monthlyHours !== null) {
-        S.u[i].monthlyHours = safeNum(S.u[i].monthlyHours, 0);
-      }
-      S.u[i].otCompModeChangedAt = safeNum(S.u[i].otCompModeChangedAt, 0);
-      const bs = Object.keys(S.u[i].shifts).filter(k2 => !parseDS(k2) || !S.u[i].shifts[k2] || typeof S.u[i].shifts[k2] !== 'object' || !S.u[i].shifts[k2].start);
-      bs.forEach(k2 => delete S.u[i].shifts[k2]);
-      const bl = Object.keys(S.u[i].leaves).filter(k2 => !parseDS(k2) || !S.u[i].leaves[k2] || typeof S.u[i].leaves[k2] !== 'object' || !S.u[i].leaves[k2].type);
-      bl.forEach(k2 => delete S.u[i].leaves[k2]);
       resolveDayConflicts(S.u[i]);
       /* [FIX BUG-04] Eski format düz metin PIN migration: hash uzunluğu 64 hex char */
       if (S.u[i].pin && S.u[i].pin.length !== 64) { S.u[i].pin = null; }
@@ -7376,15 +7597,9 @@ function normalizeImportedUser(i, raw, opts = {}) {
     if (opts.keepDocUrls && typeof d.url === 'string' && d.url.startsWith('data:') && d.url.length < 950000) out.url = d.url;
     return out.id ? out : null;
   }).filter(Boolean) : [];
-  u.netSalary = safeNum(u.netSalary, 0);
+  normalizeUserCalculations(u);
   u.annualLeave = annualLeaveTotal(u);
-  u.goalHours = safeNum(u.goalHours, 0);
-  u.goalEarning = safeNum(u.goalEarning, 0);
-  u.monthlyHours = safeNum(u.monthlyHours, 0);
-  u.otCompModeChangedAt = safeNum(u.otCompModeChangedAt, 0);
   u.notes = typeof u.notes === 'string' ? u.notes.substring(0, 1000) : '';
-  Object.keys(u.shifts).filter(k => !parseDS(k) || !u.shifts[k] || typeof u.shifts[k] !== 'object' || !u.shifts[k].start).forEach(k => delete u.shifts[k]);
-  Object.keys(u.leaves).filter(k => !parseDS(k) || !u.leaves[k] || typeof u.leaves[k] !== 'object' || !u.leaves[k].type).forEach(k => delete u.leaves[k]);
   resolveDayConflicts(u);
   if (u.pin && u.pin.length !== 64) u.pin = null;
   return u;
@@ -7504,21 +7719,25 @@ function exportCSV() {
   let url = null;
   try {
     let csv = 'Tarih,Gün,Tür,Giriş,Çıkış,Mola(dk),Net Saat,Brüt Saat,Not\n';
-    const allDates = new Set([...Object.keys(u.shifts), ...Object.keys(u.leaves)]);
-    const sorted = [...allDates].sort();
-    sorted.forEach(ds => {
+    const shiftRows = getShiftPartRows(u);
+    const workedDates = new Set();
+    shiftRows.forEach(part => {
+      workedDates.add(part.ds);
+      const d = dsToDate(part.ds);
+      const dow = d.getDay();
+      const dayName = DFL[dow === 0 ? 6 : dow - 1];
+      const gross = Math.max(0, (safeNum(part.endMin, 0) - safeNum(part.startMin, 0)) / 60);
+      const allocatedBreak = Math.max(0, Math.round(gross * 60 - safeNum(part.hours, 0) * 60));
+      const type = part.sourceDs === part.ds ? 'Vardiya' : `Vardiya (devam: ${part.sourceDs})`;
+      csv += [csvEsc(part.ds), csvEsc(dayName), csvEsc(type), csvEsc(part.startLabel), csvEsc(part.endLabel), csvEsc(allocatedBreak), csvEsc(part.hours.toFixed(1)), csvEsc(gross.toFixed(1)), csvEsc((part.sh && part.sh.note) || '')].join(',') + '\n';
+    });
+    Object.entries(u.leaves || {}).sort((a,b) => a[0].localeCompare(b[0])).forEach(([ds, lv]) => {
+      if (!lv || !lv.type || workedDates.has(ds)) return;
       const d = dsToDate(ds);
       const dow = d.getDay();
       const dayName = DFL[dow === 0 ? 6 : dow - 1];
-      const sh = u.shifts[ds], lv = u.leaves[ds];
-      if (sh && sh.start && sh.end) {
-        const net = calcHr(sh.start, sh.end, sh.break || 0);
-        const gross = grossHr(sh.start, sh.end);
-        csv += [csvEsc(ds), csvEsc(dayName), csvEsc('Vardiya'), csvEsc(sh.start), csvEsc(sh.end), csvEsc(sh.break||0), csvEsc(net.toFixed(1)), csvEsc(gross.toFixed(1)), csvEsc(sh.note||'')].join(',') + '\n';
-      } else if (lv && lv.type) {
-        const tl = {annual:'Yıllık İzin',weekly:'Hafta Tatili',public_holiday:'Resmi Tatil',sick:'Rapor',unpaid:'Ücretsiz'};
-        csv += [csvEsc(ds), csvEsc(dayName), csvEsc(tl[lv.type]||lv.type), '', '', '', '', '', csvEsc(lv.note||'')].join(',') + '\n';
-      }
+      const tl = {annual:'Yıllık İzin',weekly:'Hafta Tatili',public_holiday:'Resmi Tatil',sick:'Rapor',unpaid:'Ücretsiz',ot_comp:'FM İzni'};
+      csv += [csvEsc(ds), csvEsc(dayName), csvEsc(tl[lv.type]||lv.type), '', '', '', '', '', csvEsc(lv.note||'')].join(',') + '\n';
     });
     const bom = '\uFEFF';
     const b = new Blob([bom + csv], { type:'text/csv;charset=utf-8' });
@@ -7587,16 +7806,17 @@ function renderRaiseSim() {
     const _rsY = Number.isInteger(S.ey) ? S.ey : new Date().getFullYear();
     const _rsM = Number.isInteger(S.em) ? S.em : new Date().getMonth();
     const _priorYTD = safeNum(getPayrollCheck(u, _rsY, _rsM).priorYTD, 0);
-    const _rsMD = getMD(_rsY, _rsM);
+    const _rsNow = new Date();
+    const _rsMD = getMD(_rsY, _rsM, (_rsY === _rsNow.getFullYear() && _rsM === _rsNow.getMonth()) ? { throughDay:_rsNow.getDate() } : undefined);
     const _rsEarn = calcEarningForMonth(_rsY, _rsM, curNet);
     const _paidRatio = curNet > 0 && _rsEarn ? Math.max(0, Math.min(1, safeNum(_rsEarn.basePay, 0) / curNet)) : 1;
     const _projectByNet = monthlyNet => {
       const fullGross = findGrossFromNet(monthlyNet, 'single', 0, _priorYTD, _rsM);
       const baseGross = findGrossFromNet(monthlyNet * _paidRatio, 'single', 0, _priorYTD, _rsM);
-      const mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+      const mh = getMonthlyHours(u);
       const hrGross = fullGross > 0 && mh > 0 ? fullGross / mh : 0;
       const drGross = fullGross / 30;
-      const compRate = Math.max(1.5, safeNum(u.otCompRate, 1.5));
+      const compRate = getOTRate(u);
       const otGross = (u.otCompMode || 'pay') === 'pay' ? _rsMD.oh * hrGross * compRate : 0;
       const holGross = (_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross;
       const totalGross = baseGross + otGross + holGross;
@@ -7606,10 +7826,10 @@ function renderRaiseSim() {
     const _projectByGross = monthlyGross => {
       const fullGross = Math.max(0, safeNum(monthlyGross, 0));
       const baseGross = fullGross * _paidRatio;
-      const mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+      const mh = getMonthlyHours(u);
       const hrGross = fullGross > 0 && mh > 0 ? fullGross / mh : 0;
       const drGross = fullGross / 30;
-      const compRate = Math.max(1.5, safeNum(u.otCompRate, 1.5));
+      const compRate = getOTRate(u);
       const otGross = (u.otCompMode || 'pay') === 'pay' ? _rsMD.oh * hrGross * compRate : 0;
       const holGross = (_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross;
       const totalGross = baseGross + otGross + holGross;
@@ -7658,7 +7878,8 @@ function renderRaiseSim() {
 
 function shareMonthReport() {
   const u = cu(); if (!u) return;
-  const md = getMD(S.cy, S.cm);
+  const now = new Date();
+  const md = getMD(S.cy, S.cm, (S.cy === now.getFullYear() && S.cm === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   const e = u.netSalary ? calcEarningForMonth(S.cy, S.cm, u.netSalary) : null;
   const avgDaily = md.wd > 0 ? (md.th / md.wd).toFixed(1) : '0';
   let text = `📊 ${u.name} — ${MTR[S.cm]} ${S.cy}\n`;
@@ -7771,13 +7992,16 @@ function getDayOfWeekStats() {
   const u = cu(); if (!u) return null;
   const days = [0,0,0,0,0,0,0];
   const hours = [0,0,0,0,0,0,0];
-  Object.entries(u.shifts).forEach(([k, v]) => {
-    if (!v || !v.start || !v.end) return;
-    const p = parseDS(k); if (!p) return;
-    const dt = new Date(p.y, p.m, p.d);
+  const seenDays = new Set();
+  getShiftPartRows(u).forEach(part => {
+    const dt = dsToDate(part.ds);
+    if (!dt || isNaN(dt.getTime())) return;
     let dow = dt.getDay(); dow = dow === 0 ? 6 : dow - 1;
-    const h = calcHr(v.start, v.end, v.break || 0);
-    if (h > 0) { days[dow]++; hours[dow] += h; }
+    const h = Math.max(0, safeNum(part.hours, 0));
+    if (h > 0) {
+      if (!seenDays.has(part.ds)) { days[dow]++; seenDays.add(part.ds); }
+      hours[dow] += h;
+    }
   });
   return { days, hours };
 }
@@ -7939,42 +8163,53 @@ function exportPDF() {
     y += 9; doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30);
 
     const dim = new Date(S.cy, S.cm + 1, 0).getDate();
-    let totalHrs = 0, totalDays = 0;
+    let totalHrs = 0;
+    const workedDaySet = new Set();
     for (let d = 1; d <= dim; d++) {
       const ds = `${S.cy}-${String(S.cm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const dt = new Date(S.cy, S.cm, d);
       let dow = dt.getDay(); dow = dow === 0 ? 6 : dow - 1;
       const dayName = DTR[dow];
-      const sh = u.shifts[ds], lv = u.leaves[ds];
-      x = 15;
-      if (y > 270) { doc.addPage(); y = 15; }
-      if (d % 2 === 0) { doc.setFillColor(245, 243, 255); doc.rect(15, y - 4, 140, 6, 'F'); }
-      if (sh && sh.start && sh.end) {
-        const hrs = calcHr(sh.start, sh.end, sh.break || 0);
-        totalHrs += hrs; totalDays++;
-        doc.text(ds, x + 2, y); x += colW[0];
-        doc.text(pdfStr(dayName), x + 2, y); x += colW[1];
-        doc.text('Vardiya', x + 2, y); x += colW[2];
-        doc.text(sh.start, x + 2, y); x += colW[3];
-        doc.text(sh.end, x + 2, y); x += colW[4];
-        doc.text(hrs.toFixed(1) + 's', x + 2, y);
+      const parts = getShiftPartsForDate(u, ds);
+      const lv = u.leaves[ds];
+      if (parts.length) {
+        parts.forEach(part => {
+          x = 15;
+          if (y > 270) { doc.addPage(); y = 15; }
+          if (d % 2 === 0) { doc.setFillColor(245, 243, 255); doc.rect(15, y - 4, 140, 6, 'F'); }
+          totalHrs += part.hours; workedDaySet.add(ds);
+          doc.text(ds, x + 2, y); x += colW[0];
+          doc.text(pdfStr(dayName), x + 2, y); x += colW[1];
+          doc.text(part.sourceDs === ds ? 'Vardiya' : 'Devam', x + 2, y); x += colW[2];
+          doc.text(part.startLabel, x + 2, y); x += colW[3];
+          doc.text(part.endLabel, x + 2, y); x += colW[4];
+          doc.text(part.hours.toFixed(1) + 's', x + 2, y);
+          y += 6;
+        });
       } else if (lv && lv.type) {
+        x = 15;
+        if (y > 270) { doc.addPage(); y = 15; }
+        if (d % 2 === 0) { doc.setFillColor(245, 243, 255); doc.rect(15, y - 4, 140, 6, 'F'); }
         const tl = {annual:'Yillik',weekly:'Hafta T.',public_holiday:'R.Tatil',sick:'Rapor',unpaid:'Ucretsiz',ot_comp:'FM Izin'};
         doc.text(ds, x + 2, y); x += colW[0];
         doc.text(pdfStr(dayName), x + 2, y); x += colW[1];
         doc.text(tl[lv.type] || pdfStr(lv.type), x + 2, y);
+        y += 6;
       } else if (isH(ds)) {
+        x = 15;
+        if (y > 270) { doc.addPage(); y = 15; }
+        if (d % 2 === 0) { doc.setFillColor(245, 243, 255); doc.rect(15, y - 4, 140, 6, 'F'); }
         doc.text(ds, x + 2, y); x += colW[0];
         doc.text(pdfStr(dayName), x + 2, y); x += colW[1];
         doc.setTextColor(220, 38, 38); doc.text('R.Tatil', x + 2, y); doc.setTextColor(30, 30, 30);
+        y += 6;
       } else { continue; }
-      y += 6;
     }
 
     y += 8;
     if (y > 260) { doc.addPage(); y = 15; }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
-    doc.text(pdfStr(`Toplam: ${totalDays} gun, ${totalHrs.toFixed(1)} saat`), 15, y); y += 6;
+    doc.text(pdfStr(`Toplam: ${workedDaySet.size} gun, ${totalHrs.toFixed(1)} saat`), 15, y); y += 6;
     if (u.netSalary > 0) {
       const earn = calcEarningForMonth(S.cy, S.cm, u.netSalary);
       if (earn) doc.text(pdfStr(`Tahmini Kazanc: ${fm(earn.totalEarning)}`), 15, y);
@@ -8001,8 +8236,9 @@ function renderDashWeekSummary() {
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday); d.setDate(monday.getDate() + i);
     const ds = dStr(d);
-    const sh = u.shifts[ds];
-    if (sh && sh.start && sh.end) { wkHrs += calcHr(sh.start, sh.end, sh.break || 0); wkDays++; }
+    const parts = getShiftPartsForDate(u, ds);
+    const dayHours = parts.reduce((sum, part) => sum + Math.max(0, safeNum(part.hours, 0)), 0);
+    if (dayHours > 0) { wkHrs += dayHours; wkDays++; }
   }
   if (wkDays === 0 && S.cy === now.getFullYear() && S.cm === now.getMonth()) {
     el.innerHTML = '';
@@ -8042,6 +8278,8 @@ function renderDashHeatmap() {
   for (let i = 0; i < offset; i++) h += '<div class="hm-cell" style="visibility:hidden"></div>';
   for (let d = 1; d <= dim; d++) {
     const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const parts = getShiftPartsForDate(u, ds);
+    const dayHours = parts.reduce((sum, part) => sum + Math.max(0, safeNum(part.hours, 0)), 0);
     const sh = u.shifts[ds], lv = u.leaves[ds];
     const isToday = d === now.getDate() && m === now.getMonth() && y === now.getFullYear();
     let cls = 'hm-cell';
@@ -8049,12 +8287,11 @@ function renderDashHeatmap() {
     if (lv && lv.type) {
       cls += lv.type === 'sick' ? ' hm-holiday' : ' hm-leave';
     /* [FIX L-03] sh.end kontrolü eklendi — eksik bitiş saati yanlış sınıf vermiyecek */
-    } else if (sh && sh.start && sh.end) {
-      const hrs = calcHr(sh.start, sh.end, sh.break || 0);
-      cls += hrs > 10 ? ' hm-4' : hrs > 8 ? ' hm-3' : hrs > 4 ? ' hm-2' : ' hm-1';
+    } else if (dayHours > 0) {
+      cls += dayHours > 10 ? ' hm-4' : dayHours > 8 ? ' hm-3' : dayHours > 4 ? ' hm-2' : ' hm-1';
     } else if (isH(ds)) { cls += ' hm-holiday'; }
     else { cls += ' hm-0'; }
-    h += `<div class="${cls}" title="${d} ${MTR[m]} - ${sh && sh.start && sh.end ? calcHr(sh.start,sh.end,sh.break||0).toFixed(1)+'s' : lv ? 'İzin' : ''}"></div>`;
+    h += `<div class="${cls}" title="${d} ${MTR[m]} - ${dayHours > 0 ? dayHours.toFixed(1)+'s' : lv ? 'İzin' : ''}"></div>`;
   }
   h += '</div>';
   h += '<div class="hm-legend"><span style="background:var(--bg3);opacity:.3"></span>Boş <span style="background:var(--p);opacity:.5"></span>Vardiya <span style="background:var(--s);opacity:.5"></span>İzin <span style="background:var(--r);opacity:.4"></span>Tatil</div>';
@@ -8070,6 +8307,9 @@ function renderDashTodayWidget() {
   const now = new Date();
   if (S.cy !== now.getFullYear() || S.cm !== now.getMonth()) { el.innerHTML = ''; return; }
   const ds = dStr(now);
+  const parts = getShiftPartsForDate(u, ds);
+  const dayHours = parts.reduce((sum, part) => sum + Math.max(0, safeNum(part.hours, 0)), 0);
+  const displayPart = parts[0] || null;
   const sh = u.shifts[ds], lv = u.leaves[ds];
   const hol = getH(ds);
   const dow = now.getDay();
@@ -8088,13 +8328,12 @@ function renderDashTodayWidget() {
   } else { tmrText = 'Yarın: Plan yok'; }
 
   let icon, title, sub, badge;
-  if (sh && sh.start && sh.end) {
-    const hrs = calcHr(sh.start, sh.end, sh.break || 0);
-    const sType = getShiftType(sh);
+  if (dayHours > 0 && displayPart) {
+    const sType = getShiftType(displayPart.sh);
     icon = sType.icon;
-    title = `${dayName} — ${sh.start} → ${sh.end}`;
-    sub = `${hrs.toFixed(1)} saat ${hol ? '(Tatil!)' : ''} · ${tmrText}`;
-    badge = `${hrs.toFixed(1)}s`;
+    title = `${dayName} — ${displayPart.startLabel} → ${displayPart.endLabel}${displayPart.sourceDs !== ds ? ' (devam)' : ''}`;
+    sub = `${dayHours.toFixed(1)} saat ${hol ? '(Tatil!)' : ''} · ${tmrText}`;
+    badge = `${dayHours.toFixed(1)}s`;
   } else if (lv && lv.type) {
     const lb = {annual:'Yıllık İzin',weekly:'Hafta Tatili',public_holiday:'Resmi Tatil',sick:'Rapor',unpaid:'Ücretsiz İzin'};
     const ic = {annual:'🏖️',weekly:'🛋️',public_holiday:'🏛️',sick:'🏥',unpaid:'⛔'};
@@ -8116,7 +8355,7 @@ function renderDashTodayWidget() {
 
   /* [FEAT F6] Bugün için vardiya yoksa hızlı ekle butonları göster */
   let quickAdd = '';
-  if (!sh && !lv) {
+  if (!dayHours && !sh && !lv) {
     const ps = getAllPresets();
     const _names = { morning:'Sabah', afternoon:'Öğlen', evening:'Akşam' };
     const _icons = { morning:'🌅', afternoon:'🌇', evening:'🌙' };
@@ -8139,19 +8378,21 @@ function quickAddToday(presetKey) {
   const ps = getAllPresets();
   const p = ps[presetKey];
   if (!p || !p.start || !p.end) { toast('Preset bulunamadı', 'error'); return; }
+  const check = validateShiftInput(p.start, p.end, safeInt(p.break, 0));
+  if (!check.ok) { toast(check.msg, 'error'); return; }
   const ds = dStr(new Date());
   if (u.shifts[ds] || u.leaves[ds]) { toast('Bugün için kayıt zaten var', 'warning'); return; }
   pushUndo('Hızlı ekle');
   u.shifts[ds] = {
     start: p.start,
     end: p.end,
-    break: safeInt(p.break, 0),
+    break: check.breakMinutes,
     note: '',
     updatedAt: Date.now()
   };
   if (u.deletedShifts) delete u.deletedShifts[ds];
   invalidateMDCache(); saveLS(); renderActivePage();
-  const hrs = calcHr(p.start, p.end, p.break || 0);
+  const hrs = check.netHours;
   toast(`Vardiya eklendi: ${p.start}–${p.end} (${hrs.toFixed(1)}s)`, 'success');
 }
 
@@ -8164,8 +8405,8 @@ function renderDashProgressBar() {
   const now = new Date();
   const y = S.cy, m = S.cm;
   const dim = new Date(y, m + 1, 0).getDate();
-  const md = getMD(y, m);
   const isCurrent = y === now.getFullYear() && m === now.getMonth();
+  const md = getMD(y, m, isCurrent ? { throughDay:now.getDate() } : undefined);
   const dayOfMonth = isCurrent ? now.getDate() : dim;
   const timePct = Math.min(100, (dayOfMonth / dim) * 100);
 
@@ -8205,13 +8446,14 @@ function renderDashProgressBar() {
 function renderDashFMTracker() {
   const el = $('dashFMTracker'); if (!el) return;
   const u = cu(); if (!u) { el.innerHTML = ''; return; }
-  const md = getMD(S.cy, S.cm);
+  const now = new Date();
+  const md = getMD(S.cy, S.cm, (S.cy === now.getFullYear() && S.cm === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   const e = u.netSalary ? calcEarningForMonth(S.cy, S.cm, u.netSalary) : null;
-  const _mhFM = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+  const _mhFM = getMonthlyHours(u);
   const hr = (u.netSalary > 0 && _mhFM > 0) ? u.netSalary / _mhFM : 0;
   /* [FIX] 'leave' modunda FM ek ücreti ödenmez; bakiyeye eklenir */
   const compMode = u.otCompMode || 'pay';
-  const fmEarn = compMode === 'leave' ? 0 : md.oh * hr * (parseFloat(u.otCompRate) || 1.5);
+  const fmEarn = compMode === 'leave' ? 0 : md.oh * hr * getOTRate(u);
   const holEarn = u.netSalary > 0 ? (md.hpd !== undefined ? md.hpd : md.hdw) * (u.netSalary / 30) : 0;
   const avgDaily = md.wd > 0 ? md.th / md.wd : 0;
   const fmPct = md.th > 0 ? (md.oh / md.th * 100) : 0;
@@ -8252,7 +8494,7 @@ function renderDashFMTracker() {
 function getOTBalance() {
   const u = cu(); if (!u) return 0;
   let bal = parseFloat(u.otBalance) || 0;
-  const compRate = Math.max(1.5, parseFloat(u.otCompRate) || 1.5);
+  const compRate = getOTRate(u);
   const today = new Date();
   /* 24-aylık pencere başlangıcı — FM ekleme ve ot_comp düşme aynı pencereyi kullanır */
   let windowStart = new Date(today.getFullYear(), today.getMonth() - 24, 1);
@@ -8261,7 +8503,7 @@ function getOTBalance() {
     .filter(x => x.at > 0)
     .sort((a, b) => a.at - b.at) : [];
   const modeChangedAt = safeNum(u.otCompModeChangedAt, 0);
-  if (modeChangedAt > 0) {
+  if (!history.length && modeChangedAt > 0) {
     const modeStart = new Date(modeChangedAt);
     if (!isNaN(modeStart.getTime()) && modeStart > windowStart) windowStart = new Date(modeStart.getFullYear(), modeStart.getMonth(), 1);
   } else if (!history.length && u.otCompMode === 'leave') {
@@ -8277,23 +8519,20 @@ function getOTBalance() {
     history.forEach(h => { if (h.at <= monthEnd) mode = h.mode; });
     return mode;
   };
-  if (u.otCompMode === 'leave') {
-    for (let i = 0; i <= 24; i++) {
-      let y2 = today.getFullYear(), m2 = today.getMonth() - i;
-      while (m2 < 0) { m2 += 12; y2--; }
-      if (y2 < 2020) break;
-      if (new Date(y2, m2 + 1, 0) < windowStart) continue;
-      if (modeForMonth(y2, m2) !== 'leave') continue;
-      const md2 = getMD(y2, m2);
-      bal += md2.oh * compRate;
-    }
+  for (let i = 0; i <= 24; i++) {
+    let y2 = today.getFullYear(), m2 = today.getMonth() - i;
+    while (m2 < 0) { m2 += 12; y2--; }
+    if (y2 < 2020) break;
+    if (new Date(y2, m2 + 1, 0) < windowStart) continue;
+    if (modeForMonth(y2, m2) !== 'leave') continue;
+    const md2 = getMD(y2, m2, (y2 === today.getFullYear() && m2 === today.getMonth()) ? { throughDay:today.getDate() } : undefined);
+    bal += md2.oh * compRate;
   }
   /* [FIX Y-05] Yalnızca 24 aylık pencere içindeki ot_comp izinleri düş */
   Object.entries(u.leaves).forEach(([ds, l]) => {
     if (l && l.type === 'ot_comp') {
       const lDate = dsToDate(ds);
-      const daily = Math.max(1, ((u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195) / 26);
-      const leaveHours = safeNum(l.hours, 0) > 0 ? safeNum(l.hours, 0) : daily;
+      const leaveHours = getOTCompLeaveHours(u, l);
       if (lDate >= windowStart) bal -= leaveHours;
     }
   });
@@ -8316,7 +8555,8 @@ function renderDashOTComp() {
   const el = $('dashOTComp'); if (!el) return;
   const u = cu(); if (!u || u.otCompMode !== 'leave') { el.innerHTML = ''; return; }
   const bal = getOTBalance();
-  const md = getMD(S.cy, S.cm);
+  const now = new Date();
+  const md = getMD(S.cy, S.cm, (S.cy === now.getFullYear() && S.cm === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   el.innerHTML = `<div class="fm-tracker">
     <div class="fmt-head">
       <div class="fmt-title"><i class="fas fa-exchange-alt"></i>FM İzin Bakiyesi</div>
@@ -8352,13 +8592,10 @@ function getSmartSuggestions(y, m) {
 
   // Haftalık saat toplamlarını hesapla
   const weekHrs = {};
-  for (let d2 = 1; d2 <= dim; d2++) {
-    const ds2 = `${y}-${String(m+1).padStart(2,'0')}-${String(d2).padStart(2,'0')}`;
-    const sh2 = u.shifts[ds2]; if (!sh2) continue;
-    const dt2 = new Date(y, m, d2);
-    const wk2 = getISOWeek(dt2);
-    weekHrs[wk2] = (weekHrs[wk2] || 0) + calcHr(sh2.start, sh2.end, sh2.break || 0);
-  }
+  getShiftPartRows(u).forEach(part => {
+    const wk2 = part.wk || getISOWeek(dsToDate(part.ds));
+    weekHrs[wk2] = (weekHrs[wk2] || 0) + Math.max(0, safeNum(part.hours, 0));
+  });
 
   const result = {};
   for (let d2 = 1; d2 <= dim; d2++) {
@@ -8375,7 +8612,8 @@ function getSmartSuggestions(y, m) {
 
     // 11s dinlenme — önceki gün
     const prevDs = dStr(new Date(y, m, d2 - 1));
-    const prevSh = prevDs ? u.shifts[prevDs] : null;
+    const prevPart = prevDs ? getShiftPartsForDate(u, prevDs).slice(-1)[0] : null;
+    const prevSh = prevPart ? prevPart.sh : (prevDs ? u.shifts[prevDs] : null);
     if (prevSh && prevSh.end) {
       let prevEndMins = parseTime(prevSh.end);
       if (prevEndMins === null) continue;
@@ -8387,7 +8625,8 @@ function getSmartSuggestions(y, m) {
 
     // 11s dinlenme — sonraki güne etkisi
     const nextDs = dStr(new Date(y, m, d2 + 1));
-    const nextSh = nextDs ? u.shifts[nextDs] : null;
+    const nextPart = nextDs ? getShiftPartsForDate(u, nextDs)[0] : null;
+    const nextSh = nextPart ? nextPart.sh : (nextDs ? u.shifts[nextDs] : null);
     if (nextSh && nextSh.start) {
       const nextStartMins = parseTime(nextSh.start);
       if (nextStartMins === null) continue;
@@ -8409,7 +8648,7 @@ function getSmartSuggestions(y, m) {
  * Parametre: u=kullanıcı, md=getMD(), earn=calcEarningForMonth()
  * Dönüş: [{icon, text, type}] dizisi
  */
-function generateReportSummary(u, md, earn) {
+function generateReportSummary(u, md, earn, year = S.cy) {
   const msgs = [];
   if (!md || md.th <= 0) return msgs;
 
@@ -8445,9 +8684,10 @@ function generateReportSummary(u, md, earn) {
 
   // ⚠️ Yıllık 270 saat FM sınırı (İş Kanunu Madde 41 + Fazla Çalışma Yönetmeliği Md.5)
   const _now41 = new Date();
-  const _curY41 = _now41.getFullYear();
+  const _curY41 = year;
+  const _maxMonth41 = year === _now41.getFullYear() ? _now41.getMonth() : 11;
   let _yearlyOT = 0;
-  for (let _mi = 0; _mi <= _now41.getMonth(); _mi++) {
+  for (let _mi = 0; _mi <= _maxMonth41; _mi++) {
     _yearlyOT += getMD(_curY41, _mi).oh;
   }
   if (_yearlyOT >= 270) {
@@ -8467,10 +8707,11 @@ function generateReportSummary(u, md, earn) {
 function renderDashAISummary() {
   const el = $('dashAISummary'); if (!el) return;
   const u = cu(); if (!u) { el.innerHTML = ''; return; }
-  const md = getMD(S.cy, S.cm);
+  const now = new Date();
+  const md = getMD(S.cy, S.cm, (S.cy === now.getFullYear() && S.cm === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   if (md.th <= 0 && md.wd <= 0) { el.innerHTML = ''; return; }
   const earn = u.netSalary ? calcEarningForMonth(S.cy, S.cm, u.netSalary) : null;
-  const msgs = generateReportSummary(u, md, earn);
+  const msgs = generateReportSummary(u, md, earn, S.cy);
   if (!msgs.length) { el.innerHTML = ''; return; }
   const items = msgs.map(msg => `<div class="ais-item">${msg.icon} <span>${escHtml(msg.text)}</span></div>`).join('');
   el.innerHTML = `<div class="ai-sum-card">
@@ -8550,6 +8791,8 @@ function renderDashLast7Days() {
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now); d.setDate(now.getDate() - i);
     const ds = dStr(d);
+    const parts = getShiftPartsForDate(u, ds);
+    const dayHours = parts.reduce((sum, part) => sum + Math.max(0, safeNum(part.hours, 0)), 0);
     const sh = u.shifts[ds], lv = u.leaves[ds];
     const hol = isH(ds);
     const isToday = i === 0;
@@ -8560,11 +8803,10 @@ function renderDashLast7Days() {
 
     if (isToday) cls += ' l7-today';
 
-    if (sh && sh.start && sh.end) {
-      const hrs = calcHr(sh.start, sh.end, sh.break || 0);
+    if (dayHours > 0) {
       cls += ' l7-worked';
-      content = `<div class="l7-hrs">${hrs.toFixed(1)}s</div>`;
-      totalH += hrs; totalD++;
+      content = `<div class="l7-hrs">${dayHours.toFixed(1)}s</div>`;
+      totalH += dayHours; totalD++;
     } else if (lv && lv.type) {
       cls += ' l7-leave';
       const ic = {annual:'🏖️',weekly:'🛋️',public_holiday:'🏛️',sick:'🏥',unpaid:'⛔'};
@@ -8593,7 +8835,8 @@ function renderGoals() {
   const u = cu(); if (!u) { el.innerHTML = ''; return; }
   if (!u.goalHours && !u.goalEarning) { el.innerHTML = ''; return; }
 
-  const md = getMD(S.cy, S.cm);
+  const now = new Date();
+  const md = getMD(S.cy, S.cm, (S.cy === now.getFullYear() && S.cm === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   const earn = calcEarningForMonth(S.cy, S.cm, u.netSalary);
   const totalHrs = md.th;
   const totalEarning = earn ? earn.totalEarning : 0;
@@ -8703,21 +8946,31 @@ function initDragDrop() {
     const targetDs = cell.dataset.date; if (!targetDs || targetDs === dragData.date) return;
     if (!parseDS(targetDs)) { dragData = null; return; }
     const u = cu(); if (!u) return;
-    pushUndo('Sürükle bırak');
-    u.shifts[targetDs] = JSON.parse(JSON.stringify(dragData.shift));
-    u.shifts[targetDs].updatedAt = Date.now();
-    // Hedef tarihte izin varsa kaldır
-    if (u.leaves[targetDs]) {
+    const sourceDs = dragData.date;
+    const movedShift = normalizeShiftRecord(dragData.shift);
+    if (!movedShift) { toast('Sürüklenen vardiya geçersiz', 'error'); dragData = null; return; }
+    const applyMove = () => {
+      pushUndo('Sürükle bırak');
+      const nowTs = Date.now();
+      if (!u.deletedShifts) u.deletedShifts = {};
       if (!u.deletedLeaves) u.deletedLeaves = {};
-      u.deletedLeaves[targetDs] = Date.now();
-      delete u.leaves[targetDs];
+      if (u.shifts[targetDs]) u.deletedShifts[targetDs] = nowTs;
+      if (u.leaves[targetDs]) {
+        u.deletedLeaves[targetDs] = nowTs;
+        delete u.leaves[targetDs];
+      }
+      u.shifts[targetDs] = Object.assign({}, movedShift, { updatedAt: nowTs });
+      u.deletedShifts[sourceDs] = nowTs;
+      delete u.shifts[sourceDs];
+      invalidateMDCache(); saveLS(); renderCal();
+      toast(`Vardiya ${sourceDs} → ${targetDs}`, 'success');
+      dragData = null;
+    };
+    if (u.shifts[targetDs] || u.leaves[targetDs]) {
+      showConfirm('Hedef gün dolu', 'Bu güne ait mevcut kayıt silinip vardiya taşınsın mı?', applyMove);
+    } else {
+      applyMove();
     }
-    if (!u.deletedShifts) u.deletedShifts = {};
-    u.deletedShifts[dragData.date] = Date.now();
-    delete u.shifts[dragData.date];
-    invalidateMDCache(); saveLS(); renderCal();
-    toast(`Vardiya ${dragData.date} → ${targetDs}`, 'success');
-    dragData = null;
   });
   cg.addEventListener('dragend', function() {
     wasDragging = false; // [FIX JS-ÇAKIŞMA-01] dragend'de sıfırla — sonraki click'in yutulmasını önler
@@ -8837,7 +9090,7 @@ function scheduleNotifications() {
   }
 
   // Goal progress
-  const md = getMD(S.cy, S.cm);
+  const md = getMD(S.cy, S.cm, (S.cy === now.getFullYear() && S.cm === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   if (u.goalHours > 0) {
     const pct = (md.th / u.goalHours) * 100;
     if (pct >= 100) notifications.push({ icon: 'fa-trophy', text: 'Saat hedefine ulaştınız!', type: 'success' });
@@ -8927,13 +9180,15 @@ function renderYearComparison() {
   const cy = S.cy, py = cy - 1;
   const curMonth = S.cm;
   let cyHrs = 0, pyHrs = 0, cyDays = 0, pyDays = 0;
-  Object.entries(u.shifts).forEach(([k, v]) => {
-    if (!v || !v.start || !v.end) return;
-    const p = parseDS(k); if (!p) return;
-    const hrs = calcHr(v.start, v.end, v.break || 0);
-    if (p.y === cy && p.m <= curMonth) { cyHrs += hrs; cyDays++; }
-    else if (p.y === py && p.m <= curMonth) { pyHrs += hrs; pyDays++; }
+  const cyDates = new Set(), pyDates = new Set();
+  getShiftPartRows(u).forEach(part => {
+    const p = parseDS(part.ds); if (!p) return;
+    const hrs = Math.max(0, safeNum(part.hours, 0));
+    if (p.y === cy && p.m <= curMonth) { cyHrs += hrs; cyDates.add(part.ds); }
+    else if (p.y === py && p.m <= curMonth) { pyHrs += hrs; pyDates.add(part.ds); }
   });
+  cyDays = cyDates.size;
+  pyDays = pyDates.size;
   if (pyDays === 0) return '';
 
   const hrsDiff = cyHrs - pyHrs;
@@ -8957,7 +9212,7 @@ function getMonthProjection() {
   const dim = new Date(S.cy, S.cm + 1, 0).getDate();
   if (today < 5) return null;
 
-  const md = getMD(S.cy, S.cm);
+  const md = getMD(S.cy, S.cm, { throughDay: today });
   if (md.th <= 0 || md.wd <= 0) return null;
 
   const avgDaily = md.th / md.wd;
@@ -9472,7 +9727,12 @@ function pushToCloud(callback) {
 // Deep merge — iki kullanıcı verisini birleştirir (shift, leave, note seviyesinde)
 function deepMergeUser(local, cloud) {
   const merged = Object.assign(mkUser(0), local || {});
-  if (!cloud) return merged;
+  if (!cloud) {
+    normalizeUserCalculations(merged);
+    merged.annualLeave = annualLeaveTotal(merged);
+    resolveDayConflicts(merged);
+    return merged;
+  }
 
   // Silme kayıtlarını birleştir (her iki taraftan en yeni silme zamanını al)
   if (!merged.deletedShifts) merged.deletedShifts = {};
@@ -9547,6 +9807,8 @@ function deepMergeUser(local, cloud) {
     if (merged.deletedLeaves[k] < cleanupThreshold) delete merged.deletedLeaves[k];
   });
 
+  normalizeUserCalculations(merged);
+  merged.annualLeave = annualLeaveTotal(merged);
   resolveDayConflicts(merged);
 
   const localNT = merged.notesUpdatedAt || 0;
@@ -9627,6 +9889,9 @@ function deepMergeUser(local, cloud) {
     merged.profileUpdatedAt = cloudPT;
   }
 
+  normalizeUserCalculations(merged);
+  merged.annualLeave = annualLeaveTotal(merged);
+  resolveDayConflicts(merged);
   return merged;
 }
 
@@ -9663,6 +9928,7 @@ function pullFromCloud(callback) {
           // saveLS ama push etme (cloud'dan aldık, geri göndermeye gerek yok)
           skipNextPush = true;
           saveLS();
+          invalidateMDCache();
         }
       }
       clearTimeout(pullTimeout);
@@ -9833,6 +10099,9 @@ function forceSyncNow() {
     pullFromCloud(() => {
       pushToCloud(() => {
         _forceSyncBusy = false;
+        invalidateMDCache();
+        if (cu()) { renderAll(); updTop(); loadSet(); }
+        setSyncState('online');
         toast('Senkronizasyon tamamlandı', 'success');
       });
     });
@@ -10420,8 +10689,9 @@ function runCalc() {
   const fromD = new Date(from), toD = new Date(to);
   if (fromD > toD) { toast('Başlangıç bitiş tarihinden sonra olamaz', 'error'); return; }
 
-  const dailyHrs = calcHr(start, end, brk);
-  if (dailyHrs <= 0) { toast('Geçersiz vardiya', 'error'); return; }
+  const shiftCheck = validateShiftInput(start, end, brk, { allowEqual:false });
+  if (!shiftCheck.ok) { toast(shiftCheck.msg, 'error'); return; }
+  const dailyHrs = shiftCheck.netHours;
 
   let totalDays = 0, totalHrs = 0, otHrs = 0, holWorkedDays = 0, holSkippedDays = 0, holWorkedPayDays = 0, holSkippedPayDays = 0, paidDayEquiv = 0;
   const weekStates = {};
@@ -10439,8 +10709,8 @@ function runCalc() {
     const ws = weekStart(dt);
     const scan = new Date(ws);
     while (scan < fromD && getISOWeek(scan) === wk) {
-      const ds0 = dStr(scan), sh0 = u.shifts[ds0];
-      if (sh0 && sh0.start && sh0.end) used += calcHr(sh0.start, sh0.end, sh0.break || 0);
+      const ds0 = dStr(scan);
+      getShiftPartsForDate(u, ds0).forEach(part => { used += Math.max(0, safeNum(part.hours, 0)); });
       scan.setDate(scan.getDate() + 1);
     }
     weekStates[wk] = { normalLeft: Math.max(0, 45 - used) };
@@ -10463,7 +10733,7 @@ function runCalc() {
     const overtime = Math.max(0, dailyHrs - regular);
     st.normalLeft = Math.max(0, st.normalLeft - regular);
     otHrs += overtime;
-    const _mhCalc = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+    const _mhCalc = getMonthlyHours(u);
     paidDayEquiv += Math.min(1, dailyHrs / Math.max(1, _mhCalc / 26));
     if (isHoliday) {
       holWorkedDays++;
@@ -10473,12 +10743,12 @@ function runCalc() {
     d.setDate(d.getDate() + 1);
   }
   // Earnings calculation
-  const _mh = (u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
+  const _mh = getMonthlyHours(u);
   const hr = u.netSalary > 0 && _mh > 0 ? u.netSalary / _mh : 0;
   const dr = u.netSalary > 0 ? u.netSalary / 30 : 0;
   const basePay = paidDayEquiv * dr;
-  const _otRateCalc = parseFloat(u.otCompRate) || 1.5;
-  const otPay = otHrs * hr * _otRateCalc;
+  const _otRateCalc = getOTRate(u);
+  const otPay = (u.otCompMode || 'pay') === 'leave' ? 0 : otHrs * hr * _otRateCalc;
   const holPay = holWorkedPayDays * dr;  // Md.47: yarım gün tatiller ağırlıklı ilave ücret
   const totalEarn = basePay + otPay + holPay;
 
@@ -10574,14 +10844,16 @@ function renderTeamView() {
     let weekHrs = 0, weekDays = 0, weekLeaves = 0;
 
     weekDates.forEach(ds => {
+      const parts = getShiftPartsForDate(u, ds);
+      const dayHours = parts.reduce((sum, part) => sum + Math.max(0, safeNum(part.hours, 0)), 0);
+      const displayPart = parts[0] || null;
       const sh = u.shifts[ds], lv = u.leaves[ds];
       const hol = isH(ds);
-      if (sh && sh.start && sh.end) {
-        const hrs = calcHr(sh.start, sh.end, sh.break || 0);
-        weekHrs += hrs; weekDays++;
-        gridHtml += `<div class="tg-cell tg-shift" title="${escHtml(sh.start)}–${escHtml(sh.end)}">
-          <span class="tg-hrs">${hrs.toFixed(1)}s</span>
-          <span class="tg-time">${escHtml(sh.start.substring(0,5))}–${escHtml(sh.end.substring(0,5))}</span>
+      if (dayHours > 0 && displayPart) {
+        weekHrs += dayHours; weekDays++;
+        gridHtml += `<div class="tg-cell tg-shift" title="${escHtml(displayPart.startLabel)}–${escHtml(displayPart.endLabel)}${displayPart.sourceDs !== ds ? ' (devam)' : ''}">
+          <span class="tg-hrs">${dayHours.toFixed(1)}s</span>
+          <span class="tg-time">${escHtml(displayPart.startLabel)}–${escHtml(displayPart.endLabel)}</span>
         </div>`;
       } else if (lv && lv.type) {
         weekLeaves++;
@@ -10874,6 +11146,8 @@ function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, mon
 
 // Net → Brüt ters hesaplama (ikili arama, ~120 iterasyon, 0.001 TL hassasiyet)
 function findGrossFromNet(targetNet, maritalStatus, children, priorYTDMatrah, monthIndex) {
+  targetNet = Math.max(0, safeNum(targetNet, 0));
+  if (targetNet <= 0) return 0;
   let lo = targetNet * 0.75, hi = targetNet * 3.5;
   for (let i = 0; i < 120; i++) {
     const mid = (lo + hi) / 2;
@@ -10946,12 +11220,12 @@ function _ebUpdateAmountLabel() {
 // Önizlemeyi hesapla ve göster
 function renderBordroPreview() {
   const calcType     = ($('eb-calcType') || {}).value || 'net2gross';
-  const amount       = parseFloat(($('eb-amount') || {}).value) || 0;
+  const amount       = clampNum(($('eb-amount') || {}).value, 0, 100000000, 0);
   const marital      = ($('eb-marital') || {}).value || 'single';
-  const children     = parseInt(($('eb-children') || {}).value) || 0;
-  const mealDays     = parseInt(($('eb-mealDays') || {}).value) || 0;
-  const transportDays= parseInt(($('eb-transportDays') || {}).value) || 0;
-  const priorYTD     = parseFloat(($('eb-priorYTD') || {}).value) || 0;
+  const children     = clampInt(($('eb-children') || {}).value, 0, 10, 0);
+  const mealDays     = clampInt(($('eb-mealDays') || {}).value, 0, 31, 0);
+  const transportDays= clampInt(($('eb-transportDays') || {}).value, 0, 31, 0);
+  const priorYTD     = clampNum(($('eb-priorYTD') || {}).value, 0, 1000000000, 0);
   const { y, m }     = _eBordroSession;
 
   if (!amount || amount <= 0) { toast('Geçerli bir tutar girin', 'error'); return; }
@@ -10966,9 +11240,10 @@ function renderBordroPreview() {
 
   // 2) O aya ait gerçek çalışma verisi (fazla mesai + tatil çalışması)
   const u = cu();
-  const d = getMD(y, m);
-  const mh = (u && u.monthlyHours && u.monthlyHours > 0) ? u.monthlyHours : 195;
-  const compRate = parseFloat((u && u.otCompRate) || 1.5);
+  const now = new Date();
+  const d = getMD(y, m, (y === now.getFullYear() && m === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
+  const mh = getMonthlyHours(u);
+  const compRate = getOTRate(u);
   const compMode = (u && u.otCompMode) || 'pay';
   const hrGross  = baseGross / mh;   // brüt saatlik ücret
   const drGross  = baseGross / 30;   // brüt günlük ücret
@@ -10993,9 +11268,10 @@ function renderBordroPreview() {
     userId:S.cu,
     baseGross, otGross, holGross, totalGross,
     otHours: d.oh, holDays: d.hdw, holPayDays, hrGross, drGross, compRate,
-    empName:  ($('eb-empName')  || {}).value || '',
-    company:  ($('eb-company')  || {}).value || '',
-    tcNo:     ($('eb-tcNo')     || {}).value || '',
+    empName:  (($('eb-empName')  || {}).value || '').slice(0, 120),
+    company:  (($('eb-company')  || {}).value || '').slice(0, 120),
+    tcNo:     (($('eb-tcNo')     || {}).value || '').replace(/\D/g, '').slice(0, 11),
+    disclaimer: 'Tahmini bordro kontrolüdür; resmi bordro ve güncel mevzuat kontrolü yerine geçmez.',
   };
 
   const fmb = v => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
@@ -11024,6 +11300,7 @@ function renderBordroPreview() {
     ${mealTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yemek Yardımı (${mealDays}g × ${payrollConfig.mealDailyTaxFree}₺)</span><span class="bv">+ ${fmb(mealTotal)}</span></div>` : ''}
     ${transportTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yol Yardımı (${transportDays}g × ${payrollConfig.transportDailyTaxFree}₺)</span><span class="bv">+ ${fmb(transportTotal)}</span></div>` : ''}
     <div class="bordro-row total"><span class="bl">NET MAAŞ</span><span class="bv">${fmb(finalNet)}</span></div>
+    <div style="margin-top:8px;font-size:10px;color:var(--t3);line-height:1.35"><i class="fas fa-info-circle"></i> Tahmini bordro kontrolüdür; resmi bordro ve güncel mevzuat kontrolü yerine geçmez.</div>
   `;
   const activePage = document.querySelector('.page.active');
   if (activePage && activePage.id === 'pg-ai') renderAIAssistantPage();
@@ -11114,7 +11391,7 @@ function downloadBordroPDF() {
   doc.setFontSize(7);
   doc.setTextColor(160, 160, 160);
   doc.text(
-    pdfStr(`Olusturulma: ${new Date().toLocaleString('tr-TR')} | ShiftTrack Pro | payrollConfig ${payrollConfig.year}`),
+    pdfStr(`Tahmini bordro kontroludur; resmi bordro yerine gecmez. Olusturulma: ${new Date().toLocaleString('tr-TR')} | ShiftTrack Pro | payrollConfig ${payrollConfig.year}`),
     105, footY, { align: 'center' }
   );
 
@@ -11166,6 +11443,7 @@ function exportBordroJSON() {
     },
     net:       +r.finalNet.toFixed(2),
     config:    { year: payrollConfig.year, minWageGross: payrollConfig.minWageGross },
+    disclaimer: r.disclaimer || 'Tahmini bordro kontrolüdür; resmi bordro ve güncel mevzuat kontrolü yerine geçmez.',
     timestamp: new Date().toISOString(),
   };
 
@@ -11190,6 +11468,7 @@ function exportBordroXML() {
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Bordro Yil="${r.y}" Ay="${r.m + 1}" OlusturmaTarihi="${new Date().toISOString()}">
+  <Aciklama>${xe(r.disclaimer || 'Tahmini bordro kontroludur; resmi bordro ve guncel mevzuat kontrolu yerine gecmez.')}</Aciklama>
   <Calisan>
     <AdSoyad>${xe(r.empName)}</AdSoyad>
     <TCKimlikNo>${xe(r.tcNo)}</TCKimlikNo>
