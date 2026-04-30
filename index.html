@@ -6599,7 +6599,7 @@ function renderEarn() {
       <div class="esb-item"><div class="esb-val">${fm(e.dailyRate)}</div><div class="esb-lbl">Günlük</div></div>
     </div>
     <div class="esb-detail">
-      <div class="esd-head">💰 MAAŞ (BAZ)</div>
+      <div class="esd-head">💰 NET TAHMİN (BAZ)</div>
       <div class="esd"><span class="ek">Net Maaş</span><span class="ev">${fm(u.netSalary)}</span></div>
       <div class="esd"><span class="ek">Saatlik Ücret</span><span class="ev">${fm(e.hourlyRate)}/s</span></div>
       <div class="esd" style="font-weight:600"><span class="ek">Baz Kazanç (${e.paidDays}g ücretli)</span><span class="ev">${fm(e.basePay)}</span></div>
@@ -6617,7 +6617,7 @@ function renderEarn() {
       <div class="esd"><span class="ek">${(e.holidayPayDays || e.holidayDays).toFixed(1)}g tatil × ${fm(e.dailyRate)} ilave (Md.47)</span><span class="ev pos">+${fm(e.holidayPay)}</span></div>
       ${(e.hhOT||0) > 0 ? `<div class="esd" style="opacity:.65;font-size:11px"><span class="ek" style="padding-left:8px">↳ ${e.hhOT.toFixed(1)}s tatil+FM çakışan saat dahil</span><span class="ev"></span></div>` : ''}
       ` : ''}
-      <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>TOPLAM</b></span><span class="ev">${fm(e.totalEarning)}</span></div>
+      <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>TAHMİNİ NET</b></span><span class="ev">${fm(e.totalEarning)}</span></div>
     </div>
   </div>
   ${dgHtml}
@@ -6647,6 +6647,10 @@ function savePayrollCheckField(field, raw) {
   const val = parseFloat(raw);
   if (raw === '' || raw === null || raw === undefined || !Number.isFinite(val)) delete rec[field];
   else rec[field] = Math.max(0, val);
+  if (field === 'priorYTD') {
+    rec.priorYTDAuto = false;
+    delete rec.priorYTDSource;
+  }
   rec.updatedAt = Date.now();
   saveLS();
   renderEarn();
@@ -6663,17 +6667,16 @@ function estimatePayrollForMonth(u, y, m, d) {
   if (!earning || earning.isFutureMonth) return null;
   const baseNet = Math.max(0, safeNum(earning.basePay, 0));
   if (baseNet <= 0 && d.th <= 0 && d.mau <= 0 && d.msd <= 0 && d.wr <= 0) return null;
-  const fullGross = findGrossFromNet(u.netSalary, marital, children, priorYTD, m);
-  const baseGross = findGrossFromNet(baseNet, marital, children, priorYTD, m);
-  const mh = getMonthlyHours(u);
-  const hrGross = fullGross > 0 && mh > 0 ? fullGross / mh : 0;
-  const drGross = fullGross / 30;
+  const fullGross = _bordroRound2(findGrossFromNet(u.netSalary, marital, children, priorYTD, m));
+  const baseGross = _bordroRound2(findGrossFromNet(baseNet, marital, children, priorYTD, m));
+  const hrGross = fullGross > 0 ? _bordroRound2(fullGross / payrollConfig.monthlyStandardHours) : 0;
+  const drGross = _bordroRound2(fullGross / 30);
   const compMode = u.otCompMode || 'pay';
   const compRate = getOTRate(u);
-  const otGross = compMode === 'pay' ? d.oh * hrGross * compRate : 0;
+  const otGross = compMode === 'pay' ? _bordroRound2(d.oh * hrGross * compRate) : 0;
   const holPayDays = d.hpd !== undefined ? d.hpd : d.hdw;
-  const holGross = holPayDays * drGross;
-  const totalGross = baseGross + otGross + holGross;
+  const holGross = _bordroRound2(holPayDays * drGross);
+  const totalGross = _bordroRound2(baseGross + otGross + holGross);
   const res = computeNetFromGross(totalGross, marital, children, priorYTD, m);
   return { ...res, baseNet, fullGross, baseGross, otGross, holGross, totalGross, holPayDays, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
 }
@@ -7843,28 +7846,26 @@ function renderRaiseSim() {
     const _rsEarn = calcEarningForMonth(_rsY, _rsM, curNet);
     const _paidRatio = curNet > 0 && _rsEarn ? Math.max(0, Math.min(1, safeNum(_rsEarn.basePay, 0) / curNet)) : 1;
     const _projectByNet = monthlyNet => {
-      const fullGross = findGrossFromNet(monthlyNet, 'single', 0, _priorYTD, _rsM);
-      const baseGross = findGrossFromNet(monthlyNet * _paidRatio, 'single', 0, _priorYTD, _rsM);
-      const mh = getMonthlyHours(u);
-      const hrGross = fullGross > 0 && mh > 0 ? fullGross / mh : 0;
-      const drGross = fullGross / 30;
+      const fullGross = _bordroRound2(findGrossFromNet(monthlyNet, 'single', 0, _priorYTD, _rsM));
+      const baseGross = _bordroRound2(findGrossFromNet(monthlyNet * _paidRatio, 'single', 0, _priorYTD, _rsM));
+      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / payrollConfig.monthlyStandardHours) : 0;
+      const drGross = _bordroRound2(fullGross / 30);
       const compRate = getOTRate(u);
-      const otGross = (u.otCompMode || 'pay') === 'pay' ? _rsMD.oh * hrGross * compRate : 0;
-      const holGross = (_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross;
-      const totalGross = baseGross + otGross + holGross;
+      const otGross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2(_rsMD.oh * hrGross * compRate) : 0;
+      const holGross = _bordroRound2((_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross);
+      const totalGross = _bordroRound2(baseGross + otGross + holGross);
       const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM);
       return { monthlyNet, fullGross, baseGross, totalGross, finalNet:calc.net, calc };
     };
     const _projectByGross = monthlyGross => {
-      const fullGross = Math.max(0, safeNum(monthlyGross, 0));
-      const baseGross = fullGross * _paidRatio;
-      const mh = getMonthlyHours(u);
-      const hrGross = fullGross > 0 && mh > 0 ? fullGross / mh : 0;
-      const drGross = fullGross / 30;
+      const fullGross = _bordroRound2(Math.max(0, safeNum(monthlyGross, 0)));
+      const baseGross = _bordroRound2(fullGross * _paidRatio);
+      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / payrollConfig.monthlyStandardHours) : 0;
+      const drGross = _bordroRound2(fullGross / 30);
       const compRate = getOTRate(u);
-      const otGross = (u.otCompMode || 'pay') === 'pay' ? _rsMD.oh * hrGross * compRate : 0;
-      const holGross = (_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross;
-      const totalGross = baseGross + otGross + holGross;
+      const otGross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2(_rsMD.oh * hrGross * compRate) : 0;
+      const holGross = _bordroRound2((_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross);
+      const totalGross = _bordroRound2(baseGross + otGross + holGross);
       const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM);
       return { monthlyNet:calc.net, fullGross, baseGross, totalGross, finalNet:calc.net, calc };
     };
@@ -11127,6 +11128,19 @@ const payrollConfig = {
   transportDailyTaxFree: 158,     // 2026 yol yardımı günlük vergisiz limit (TL)
 };
 
+function _bordroRound2(v) {
+  v = safeNum(v, 0);
+  return Math.round((v + Number.EPSILON) * 100) / 100;
+}
+
+function _bordroClampMoney(id, min, max, fallback) {
+  return clampNum(($(id) || {}).value, min, max, fallback);
+}
+
+function _bordroLegalHourlyFromDaily(dailyGross) {
+  return _bordroRound2(Math.max(0, safeNum(dailyGross, 0)) / payrollConfig.dailyStandardHours);
+}
+
 // Kümülatif gelir vergisi hesabı (yıllık matrah üzerinden)
 function _bordroCalcGV(ytdMatrah) {
   const brackets = payrollConfig.incomeTaxBrackets;
@@ -11145,7 +11159,9 @@ function _bordroMinWageTaxableBase(gross) {
   const cfg = payrollConfig;
   const exemptGross = Math.min(Math.max(0, gross || 0), cfg.minWageGross);
   const sgkBase = Math.min(exemptGross, cfg.sgkCeiling);
-  return Math.max(0, exemptGross - sgkBase * (cfg.sgkEmployee + cfg.unemploymentEmployee));
+  const sgkDeduction = _bordroRound2(sgkBase * cfg.sgkEmployee);
+  const unemployDeduct = _bordroRound2(sgkBase * cfg.unemploymentEmployee);
+  return _bordroRound2(Math.max(0, exemptGross - sgkDeduction - unemployDeduct));
 }
 
 // 7349 sayılı Kanun sonrası: AGİ yok; asgari ücrete isabet eden GV/DV istisnası uygulanır.
@@ -11154,9 +11170,9 @@ function _bordroCalcMinWageTaxExemption(gross, thisMonthRawGV, monthIndex) {
   const safeMonth = Math.max(0, Math.min(11, safeInt(monthIndex, 0)));
   const minTaxable = _bordroMinWageTaxableBase(cfg.minWageGross);
   const priorMinYTD = minTaxable * safeMonth;
-  const minWageGV = _bordroCalcGV(priorMinYTD + minTaxable) - _bordroCalcGV(priorMinYTD);
-  const incomeTaxExemption = Math.min(Math.max(0, thisMonthRawGV || 0), Math.max(0, minWageGV));
-  const stampTaxExemption = Math.min(Math.max(0, gross || 0), cfg.minWageGross) * cfg.stampTaxRate;
+  const minWageGV = _bordroRound2(_bordroCalcGV(priorMinYTD + minTaxable) - _bordroCalcGV(priorMinYTD));
+  const incomeTaxExemption = _bordroRound2(Math.min(Math.max(0, thisMonthRawGV || 0), Math.max(0, minWageGV)));
+  const stampTaxExemption = _bordroRound2(Math.min(Math.max(0, gross || 0), cfg.minWageGross) * cfg.stampTaxRate);
   return { incomeTaxExemption, stampTaxExemption };
 }
 
@@ -11164,33 +11180,33 @@ function _bordroCalcMinWageTaxExemption(gross, thisMonthRawGV, monthIndex) {
 // opts.disabilityDegree: 0/1/2/3 — GVK md.31 matrah indirimi
 function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, monthIndex, opts) {
   const cfg = payrollConfig;
-  gross = Math.max(0, safeNum(gross, 0));
-  priorYTDMatrah = Math.max(0, safeNum(priorYTDMatrah, 0));
-  const sgkBase        = Math.min(gross, cfg.sgkCeiling);
-  const sgkDeduction   = sgkBase * cfg.sgkEmployee;
-  const unemployDeduct = sgkBase * cfg.unemploymentEmployee;
+  gross = _bordroRound2(Math.max(0, safeNum(gross, 0)));
+  priorYTDMatrah = _bordroRound2(Math.max(0, safeNum(priorYTDMatrah, 0)));
+  const sgkBase        = _bordroRound2(Math.min(gross, cfg.sgkCeiling));
+  const sgkDeduction   = _bordroRound2(sgkBase * cfg.sgkEmployee);
+  const unemployDeduct = _bordroRound2(sgkBase * cfg.unemploymentEmployee);
 
   // Engellilik indirimi (GVK md.31) — bu ayın matrahından düşülür
   const disDegree = clampInt(opts && opts.disabilityDegree, 0, 3, 0);
-  const disabilityDeduction = Math.min(
+  const disabilityDeduction = _bordroRound2(Math.min(
     Math.max(0, gross - sgkDeduction - unemployDeduct),
     safeNum(cfg.disabilityDeductions[disDegree], 0)
-  );
+  ));
 
-  const gvMatrah   = Math.max(0, gross - sgkDeduction - unemployDeduct - disabilityDeduction);
+  const gvMatrah   = _bordroRound2(Math.max(0, gross - sgkDeduction - unemployDeduct - disabilityDeduction));
   const priorYTD   = priorYTDMatrah || 0;
-  const ytdMatrah  = priorYTD + gvMatrah;
+  const ytdMatrah  = _bordroRound2(priorYTD + gvMatrah);
 
-  const rawGVTotal  = _bordroCalcGV(ytdMatrah);
-  const rawGVPrior  = _bordroCalcGV(priorYTD);
-  const thisMonthRawGV = rawGVTotal - rawGVPrior;
+  const rawGVTotal  = _bordroRound2(_bordroCalcGV(ytdMatrah));
+  const rawGVPrior  = _bordroRound2(_bordroCalcGV(priorYTD));
+  const thisMonthRawGV = _bordroRound2(rawGVTotal - rawGVPrior);
 
   const { incomeTaxExemption, stampTaxExemption } = _bordroCalcMinWageTaxExemption(gross, thisMonthRawGV, monthIndex);
-  const netGV         = Math.max(0, thisMonthRawGV - incomeTaxExemption);
-  const grossStampTax = gross * cfg.stampTaxRate;
-  const stampTax      = Math.max(0, grossStampTax - stampTaxExemption);
+  const netGV         = _bordroRound2(Math.max(0, thisMonthRawGV - incomeTaxExemption));
+  const grossStampTax = _bordroRound2(gross * cfg.stampTaxRate);
+  const stampTax      = _bordroRound2(Math.max(0, grossStampTax - stampTaxExemption));
 
-  const net = gross - sgkDeduction - unemployDeduct - netGV - stampTax;
+  const net = _bordroRound2(gross - sgkDeduction - unemployDeduct - netGV - stampTax);
   return { gross, sgkDeduction, unemployDeduct, disabilityDeduction, disabilityDegree: disDegree,
     gvMatrah, ytdMatrah, thisMonthRawGV, incomeTaxExemption, stampTaxExemption, grossStampTax, netGV, stampTax, net };
 }
@@ -11236,6 +11252,17 @@ function openEBordroModal(y, m) {
   const amountEl = $('eb-amount');
   if (amountEl && u && u.netSalary) amountEl.value = u.netSalary;
 
+  const priorYTDEl = $('eb-priorYTD');
+  if (priorYTDEl && u) {
+    const rec = getPayrollCheck(u, y, m);
+    const prevM = m > 0 ? m - 1 : 11;
+    const prevY = m > 0 ? y : y - 1;
+    const prevKey = employeeMonthKey(prevY, prevM);
+    const prevRec = (u.payrollChecks && u.payrollChecks[prevKey]) || {};
+    const autoPrior = safeNum(rec.priorYTD, 0) || safeNum(prevRec.calculatedYTD, 0) || 0;
+    priorYTDEl.value = autoPrior > 0 ? autoPrior.toFixed(2) : '0';
+  }
+
   const calcTypeEl = $('eb-calcType');
   if (calcTypeEl) {
     calcTypeEl.value = 'net2gross';
@@ -11277,6 +11304,15 @@ function renderBordroPreview() {
   const mealDays     = clampInt(($('eb-mealDays') || {}).value, 0, 31, 0);
   const transportDays= clampInt(($('eb-transportDays') || {}).value, 0, 31, 0);
   const priorYTD     = clampNum(($('eb-priorYTD') || {}).value, 0, 1000000000, 0);
+  const earningMode  = (($('eb-earningMode') || {}).value || 'auto');
+  const manualDailyGross = _bordroClampMoney('eb-dailyGross', 0, 10000000, 0);
+  const manualNormalHours = _bordroClampMoney('eb-normalHours', 0, 744, 0);
+  const manualWeeklyRestDays = _bordroClampMoney('eb-weeklyRestDays', 0, 31, 0);
+  const manualPublicHolidayDays = _bordroClampMoney('eb-publicHolidayDays', 0, 31, 0);
+  const manualPublicHolidayWorkDays = _bordroClampMoney('eb-publicHolidayWorkDays', 0, 31, 0);
+  const manualOTHours = _bordroClampMoney('eb-manualOTHours', 0, 744, 0);
+  const manualOT125Hours = _bordroClampMoney('eb-manualOT125Hours', 0, 744, 0);
+  const manualNightHours = _bordroClampMoney('eb-manualNightHours', 0, 744, 0);
   const disability   = clampInt(($('eb-disability') || {}).value, 0, 3, 0);
   const nightRate    = clampNum(($('eb-nightRate') || {}).value, 0, 1, 0);
   const besRate      = clampNum(($('eb-besRate') || {}).value, 0, 0.15, 0);
@@ -11285,70 +11321,135 @@ function renderBordroPreview() {
   const otherDeduct  = clampNum(($('eb-otherDeduct') || {}).value, 0, 100000000, 0);
   const { y, m }     = _eBordroSession;
 
-  if (!amount || amount <= 0) { toast('Geçerli bir tutar girin', 'error'); return; }
+  const isManualEarnings = earningMode === 'manual';
+  if (!amount || amount <= 0) {
+    if (!(isManualEarnings && manualDailyGross > 0)) {
+      toast('Geçerli bir tutar veya günlük brüt girin', 'error');
+      return;
+    }
+  }
 
   // 1) Taban brüt maaş (yalnızca sabit maaş, ekler hariç)
   const calcOpts = { disabilityDegree: disability };
-  let baseGross;
-  if (calcType === 'net2gross') {
-    baseGross = findGrossFromNet(amount, marital, children, priorYTD, m, calcOpts);
-  } else {
-    baseGross = amount;
+  let seedGross = 0;
+  if (amount > 0) {
+    seedGross = calcType === 'net2gross'
+      ? findGrossFromNet(amount, marital, children, priorYTD, m, calcOpts)
+      : amount;
   }
 
   // 2) O aya ait gerçek çalışma verisi (fazla mesai + tatil çalışması)
   const u = cu();
   const now = new Date();
   const d = getMD(y, m, (y === now.getFullYear() && m === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
-  const mh = getMonthlyHours(u);
   const compRate = getOTRate(u);
   const partialRate = payrollConfig.otPartialMultiplier; // %25 zam (sözleşme <45 saat)
   const compMode = (u && u.otCompMode) || 'pay';
-  const hrGross  = baseGross / mh;   // brüt saatlik ücret
-  const drGross  = baseGross / 30;   // brüt günlük ücret
-  // FM brüt eki: sadece "pay" modunda ödenir (izin modunda bordro etkisi yok)
-  const otGross    = compMode === 'pay' ? (d.oh    || 0) * hrGross * compRate    : 0;
-  const ot125Gross = compMode === 'pay' ? (d.oh125 || 0) * hrGross * partialRate : 0;
-  // Gece çalışması ek zam (4857/69; yasal değil — toplu sözleşme/işyeri uygulaması)
-  const nightHrs   = d.nh || 0;
-  const nightGross = nightHrs * hrGross * nightRate;
-  // Tatil çalışması ilave ücreti — yarım gün resmi tatiller 0.5 gün sayılır.
-  const holPayDays = d.hpd !== undefined ? d.hpd : d.hdw;
-  const holGross = holPayDays * drGross;
-  const totalGross = baseGross + otGross + ot125Gross + nightGross + holGross;
+  let baseGross = 0, normalGross = 0, weeklyRestGross = 0, publicHolidayGross = 0;
+  let publicHolidayWorkGross = 0, otGross = 0, ot125Gross = 0, nightGross = 0;
+  let hrGross = 0, drGross = 0, nightHrs = 0, holPayDays = 0, holGross = 0, totalGross = 0;
+  let otHours = 0, ot125Hours = 0;
+
+  if (isManualEarnings) {
+    drGross = manualDailyGross > 0 ? _bordroRound2(manualDailyGross) : _bordroRound2(seedGross / 30);
+    hrGross = _bordroLegalHourlyFromDaily(drGross);
+    normalGross = _bordroRound2(manualNormalHours * hrGross);
+    weeklyRestGross = _bordroRound2(manualWeeklyRestDays * drGross);
+    publicHolidayGross = _bordroRound2(manualPublicHolidayDays * drGross);
+    publicHolidayWorkGross = _bordroRound2(manualPublicHolidayWorkDays * drGross);
+    baseGross = _bordroRound2(normalGross + weeklyRestGross + publicHolidayGross);
+    if (baseGross <= 0 && seedGross > 0) baseGross = _bordroRound2(seedGross);
+    otHours = manualOTHours;
+    ot125Hours = manualOT125Hours;
+    nightHrs = manualNightHours;
+    holPayDays = manualPublicHolidayWorkDays;
+    otGross = compMode === 'pay' ? _bordroRound2(otHours * hrGross * compRate) : 0;
+    ot125Gross = compMode === 'pay' ? _bordroRound2(ot125Hours * hrGross * partialRate) : 0;
+    nightGross = _bordroRound2(nightHrs * hrGross * nightRate);
+    holGross = publicHolidayWorkGross;
+    totalGross = _bordroRound2(baseGross + otGross + ot125Gross + nightGross + holGross);
+    if (totalGross <= 0) { toast('Kalem bazlı bordro için en az bir kazanç kalemi girin', 'error'); return; }
+  } else {
+    baseGross = _bordroRound2(seedGross);
+    drGross = _bordroRound2(baseGross / 30);
+    hrGross = _bordroLegalHourlyFromDaily(drGross);
+    otHours = d.oh || 0;
+    ot125Hours = d.oh125 || 0;
+    nightHrs = d.nh || 0;
+    holPayDays = d.hpd !== undefined ? d.hpd : d.hdw;
+    otGross = compMode === 'pay' ? _bordroRound2(otHours * hrGross * compRate) : 0;
+    ot125Gross = compMode === 'pay' ? _bordroRound2(ot125Hours * hrGross * partialRate) : 0;
+    nightGross = _bordroRound2(nightHrs * hrGross * nightRate);
+    holGross = _bordroRound2(holPayDays * drGross);
+    totalGross = _bordroRound2(baseGross + otGross + ot125Gross + nightGross + holGross);
+  }
 
   // 3) Toplam brüt üzerinden vergi/kesinti hesabı (engellilik indirimi dahil)
   const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, calcOpts);
+
+  if (u) {
+    const curRec = getPayrollCheck(u, y, m);
+    curRec.calculatedGross = +res.gross.toFixed(2);
+    curRec.calculatedNet = +res.net.toFixed(2);
+    curRec.calculatedGVMatrah = +res.gvMatrah.toFixed(2);
+    curRec.calculatedYTD = +res.ytdMatrah.toFixed(2);
+    curRec.calculatedSource = {
+      type: 'eBordroPreview',
+      earningMode,
+      calculatedAt: new Date().toISOString()
+    };
+    curRec.updatedAt = Date.now();
+  }
 
   // [FIX] Kümülatif matrah otomatik aktarımı: sonraki ayın priorYTD alanı boşsa, bu ayın ytdMatrah'ını yaz.
   // Kullanıcı manuel girdiği değerlerin üzerine yazmayız.
   if (u && m < 11) {
     const nextRec = getPayrollCheck(u, y, m + 1);
-    if (!nextRec.priorYTD || nextRec.priorYTD <= 0) {
+    if (!nextRec.priorYTD || nextRec.priorYTD <= 0 || nextRec.priorYTDAuto === true) {
       nextRec.priorYTD = +res.ytdMatrah.toFixed(2);
       nextRec.priorYTDAuto = true;
+      nextRec.priorYTDSource = {
+        type: 'eBordroPreview',
+        sourceYear: y,
+        sourceMonth: m + 1,
+        gross: +res.gross.toFixed(2),
+        gvMatrah: +res.gvMatrah.toFixed(2),
+        ytdMatrah: +res.ytdMatrah.toFixed(2),
+        calculatedAt: new Date().toISOString()
+      };
       nextRec.updatedAt = Date.now();
       try { saveLS(); } catch(e) { /* yoksay */ }
     }
   }
+  if (u) { try { saveLS(); } catch(e) { /* yoksay */ } }
 
   // Vergiden muaf yan haklar
-  const mealTotal      = mealDays * payrollConfig.mealDailyTaxFree;
-  const transportTotal = transportDays * payrollConfig.transportDailyTaxFree;
-  const yasalNet       = res.net + mealTotal + transportTotal;
+  const mealTotal      = _bordroRound2(mealDays * payrollConfig.mealDailyTaxFree);
+  const transportTotal = _bordroRound2(transportDays * payrollConfig.transportDailyTaxFree);
+  const yasalNet       = _bordroRound2(res.net + mealTotal + transportTotal);
 
   // Özel kesintiler (yasal net sonrası — "ele geçen net")
-  const besDeduct      = totalGross * besRate;
-  const privateDeducts = besDeduct + icra + avans + otherDeduct;
-  const finalNet       = Math.max(0, yasalNet - privateDeducts);
+  const besDeduct      = _bordroRound2(totalGross * besRate);
+  const privateDeducts = _bordroRound2(besDeduct + icra + avans + otherDeduct);
+  const finalNet       = _bordroRound2(Math.max(0, yasalNet - privateDeducts));
+  if (u) {
+    const curRec = getPayrollCheck(u, y, m);
+    curRec.calculatedYasalNet = +yasalNet.toFixed(2);
+    curRec.calculatedFinalNet = +finalNet.toFixed(2);
+    curRec.calculatedPrivateDeductions = +privateDeducts.toFixed(2);
+    try { saveLS(); } catch(e) { /* yoksay */ }
+  }
 
   // Sonucu oturuma kaydet (PDF/JSON/XML için)
   _eBordroSession.result = {
     ...res, mealTotal, transportTotal, yasalNet, finalNet, marital, children, priorYTD, y, m,
     userId:S.cu,
-    baseGross, otGross, ot125Gross, nightGross, holGross, totalGross,
-    otHours: d.oh, ot125Hours: d.oh125 || 0, nightHours: nightHrs, holDays: d.hdw, holPayDays,
+    earningMode, baseGross, normalGross, weeklyRestGross, publicHolidayGross, publicHolidayWorkGross,
+    normalHours: manualNormalHours, weeklyRestDays: manualWeeklyRestDays, publicHolidayDays: manualPublicHolidayDays,
+    otGross, ot125Gross, nightGross, holGross, totalGross,
+    otHours, ot125Hours, nightHours: nightHrs, holDays: isManualEarnings ? manualPublicHolidayWorkDays : d.hdw, holPayDays,
     hrGross, drGross, compRate, partialRate, nightRate,
+    payrollHourBasis: payrollConfig.monthlyStandardHours,
     disability, besRate, besDeduct, icra, avans, otherDeduct, privateDeducts,
     annualLeaveDays: d.mau || 0, sickLeaveDays: d.msd || 0, unpaidDays: d.ud || 0,
     empName:  (($('eb-empName')  || {}).value || '').slice(0, 120),
@@ -11365,6 +11466,13 @@ function renderBordroPreview() {
   const unpaidDays = d.ud || 0;
   const disabilityLabels = { 1: '1. Derece (≥%80)', 2: '2. Derece (%60–79)', 3: '3. Derece (%40–59)' };
   const hasPrivateDeducts = privateDeducts > 0;
+  const baseRowsHtml = isManualEarnings ? `
+    ${normalGross > 0 ? `<div class="bordro-row add"><span class="bl">Normal Çalışma (${fmr(manualNormalHours)}s × ${fmr(hrGross)}₺)</span><span class="bv">${fmb(normalGross)}</span></div>` : ''}
+    ${weeklyRestGross > 0 ? `<div class="bordro-row add"><span class="bl">Hafta Tatili (${fmr(manualWeeklyRestDays)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(weeklyRestGross)}</span></div>` : ''}
+    ${publicHolidayGross > 0 ? `<div class="bordro-row add"><span class="bl">Genel Tatil (${fmr(manualPublicHolidayDays)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(publicHolidayGross)}</span></div>` : ''}
+    ${baseGross > 0 ? `<div class="bordro-row sub"><span class="bl">TEMEL BRÜT</span><span class="bv">${fmb(baseGross)}</span></div>` : ''}
+  ` : `<div class="bordro-row"><span class="bl">Temel Brüt Maaş</span><span class="bv">${fmb(baseGross)}</span></div>
+    <div class="bordro-row info"><span class="bl">Saatlik Bordro Esası</span><span class="bv">${payrollConfig.monthlyStandardHours}s (${fmr(hrGross)}₺/s)</span></div>`;
 
   const previewEl = $('bordroPreview');
   if (!previewEl) return;
@@ -11372,12 +11480,12 @@ function renderBordroPreview() {
     <div class="bordro-preview-title">
       <i class="fas fa-file-invoice"></i> BORDRO ÖNİZLEME — ${MTR[m].toUpperCase()} ${y}
     </div>
-    <div class="bordro-row"><span class="bl">Temel Brüt Maaş</span><span class="bv">${fmb(baseGross)}</span></div>
+    ${baseRowsHtml}
     ${annualLeaveDays > 0 ? `<div class="bordro-row info"><span class="bl">Yıllık İzin (ücretli, baz içinde)</span><span class="bv">${fmr(annualLeaveDays)} gün</span></div>` : ''}
     ${sickLeaveDays > 0 ? `<div class="bordro-row info"><span class="bl">Raporlu / İstirahat (SGK ödemesi ayrı)</span><span class="bv">${fmr(sickLeaveDays)} gün</span></div>` : ''}
     ${unpaidDays > 0 ? `<div class="bordro-row deduct"><span class="bl">Ücretsiz İzin (baz brütten düşülür)</span><span class="bv">− ${fmb(unpaidDays * drGross)}</span></div>` : ''}
-    ${ot125Gross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Çalışma %25 (${(d.oh125||0).toFixed(1)}s × ${fmr(hrGross)}₺ × ${partialRate})</span><span class="bv">+ ${fmb(ot125Gross)}</span></div>` : ''}
-    ${otGross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Mesai %50 (${d.oh.toFixed(1)}s × ${fmr(hrGross)}₺ × ${compRate})</span><span class="bv">+ ${fmb(otGross)}</span></div>` : ''}
+    ${ot125Gross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Çalışma %25 (${ot125Hours.toFixed(1)}s × ${fmr(hrGross)}₺ × ${partialRate})</span><span class="bv">+ ${fmb(ot125Gross)}</span></div>` : ''}
+    ${otGross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Mesai %50 (${otHours.toFixed(1)}s × ${fmr(hrGross)}₺ × ${compRate})</span><span class="bv">+ ${fmb(otGross)}</span></div>` : ''}
     ${nightGross > 0 ? `<div class="bordro-row add"><span class="bl">Gece Çalışma Zammı (${nightHrs.toFixed(1)}s × ${fmr(hrGross)}₺ × ${nightRate})</span><span class="bv">+ ${fmb(nightGross)}</span></div>` : ''}
     ${holGross > 0 ? `<div class="bordro-row add"><span class="bl">Tatil Çalışması İlavesi — ${fmr(holPayDays)}g × ${fmr(drGross)}₺ (Md.47)</span><span class="bv">+ ${fmb(holGross)}</span></div>` : ''}
     ${hasExtras ? `<div class="bordro-row sub"><span class="bl">TOPLAM BRÜT</span><span class="bv">${fmb(totalGross)}</span></div>` : ''}
@@ -11447,9 +11555,15 @@ function downloadBordroPDF() {
   doc.text('Donem   : ' + pdfMTR[r.m] + ' ' + r.y, 15, yp); yp += 10;
 
   // Bordro tablosu
-  const rows = [
-    ['TEMEL BRUT MAAS', fmb(r.baseGross || r.gross), ''],
-  ];
+  const rows = [];
+  if (r.earningMode === 'manual') {
+    if (r.normalGross > 0) rows.push([`Normal Calisma (${(r.normalHours||0).toFixed(2)}s)`, fmb(r.normalGross), '']);
+    if (r.weeklyRestGross > 0) rows.push([`Hafta Tatili (${(r.weeklyRestDays||0).toFixed(2)}g)`, fmb(r.weeklyRestGross), '']);
+    if (r.publicHolidayGross > 0) rows.push([`Genel Tatil (${(r.publicHolidayDays||0).toFixed(2)}g)`, fmb(r.publicHolidayGross), '']);
+    rows.push(['TEMEL BRUT', fmb(r.baseGross || 0), '']);
+  } else {
+    rows.push(['TEMEL BRUT MAAS', fmb(r.baseGross || r.gross), '']);
+  }
   if (r.ot125Gross > 0) rows.push([`Fazla Calisma %25 (${(r.ot125Hours||0).toFixed(1)}s x ${(r.hrGross||0).toFixed(2)} x ${r.partialRate||1.25})`, fmb(r.ot125Gross), '']);
   if (r.otGross > 0)  rows.push([`Fazla Mesai %50 (${(r.otHours||0).toFixed(1)}s x ${(r.hrGross||0).toFixed(2)} x ${r.compRate||1.5})`, fmb(r.otGross), '']);
   if (r.nightGross > 0) rows.push([`Gece Calisma Zammi (${(r.nightHours||0).toFixed(1)}s x ${(r.hrGross||0).toFixed(2)} x ${r.nightRate||0})`, fmb(r.nightGross), '']);
@@ -11530,7 +11644,14 @@ function exportBordroJSON() {
     },
     period: { year: r.y, month: r.m + 1, monthName: MTR[r.m] },
     earnings: {
+      earningMode:         r.earningMode || 'auto',
       baseGross:          +(r.baseGross || r.gross).toFixed(2),
+      normalHours:        +(r.normalHours || 0).toFixed(2),
+      normalGross:        +(r.normalGross || 0).toFixed(2),
+      weeklyRestDays:     +(r.weeklyRestDays || 0).toFixed(2),
+      weeklyRestGross:    +(r.weeklyRestGross || 0).toFixed(2),
+      publicHolidayDays:  +(r.publicHolidayDays || 0).toFixed(2),
+      publicHolidayGross: +(r.publicHolidayGross || 0).toFixed(2),
       overtimePay:        +(r.otGross   || 0).toFixed(2),
       partialOvertimePay: +(r.ot125Gross || 0).toFixed(2),
       nightShiftBonus:    +(r.nightGross || 0).toFixed(2),
@@ -11546,6 +11667,7 @@ function exportBordroJSON() {
       annualLeaveDays:    r.annualLeaveDays || 0,
       sickLeaveDays:      r.sickLeaveDays || 0,
       unpaidDays:         r.unpaidDays || 0,
+      payrollHourBasis:    r.payrollHourBasis || payrollConfig.monthlyStandardHours,
     },
     deductions: {
       sgkEmployee:   +r.sgkDeduction.toFixed(2),
@@ -11605,12 +11727,16 @@ function exportBordroXML() {
     <CocukSayisi>${r.children}</CocukSayisi>
   </Calisan>
   <Kazanclar>
+    <KazancModu>${xe(r.earningMode || 'auto')}</KazancModu>
+    <NormalCalisma saat="${(r.normalHours||0).toFixed(2)}">${fv(r.normalGross||0)}</NormalCalisma>
+    <HaftaTatili gun="${(r.weeklyRestDays||0).toFixed(2)}">${fv(r.weeklyRestGross||0)}</HaftaTatili>
+    <GenelTatil gun="${(r.publicHolidayDays||0).toFixed(2)}">${fv(r.publicHolidayGross||0)}</GenelTatil>
     <TemelBrutMaas>${fv(r.baseGross || r.gross)}</TemelBrutMaas>
     <FazlaCalismaYuzde25 saat="${(r.ot125Hours||0).toFixed(2)}" oran="${r.partialRate||1.25}" kanun="4857/41/4">${fv(r.ot125Gross||0)}</FazlaCalismaYuzde25>
     <FazlaMesaiUcreti saat="${(r.otHours||0).toFixed(2)}" oran="${r.compRate||1.5}">${fv(r.otGross||0)}</FazlaMesaiUcreti>
     <GeceCalismaZammi saat="${(r.nightHours||0).toFixed(2)}" oran="${r.nightRate||0}" kanun="4857/69">${fv(r.nightGross||0)}</GeceCalismaZammi>
     <TatilCalismasiIlavesi gun="${r.holPayDays||r.holDays||0}" takvimGunu="${r.holDays||0}" kanun="Md.47">${fv(r.holGross||0)}</TatilCalismasiIlavesi>
-    <ToplamBrut>${fv(r.gross)}</ToplamBrut>
+    <ToplamBrut saatlikEsas="${r.payrollHourBasis || payrollConfig.monthlyStandardHours}">${fv(r.gross)}</ToplamBrut>
     <YemekYardimi>${fv(r.mealTotal)}</YemekYardimi>
     <YolYardimi>${fv(r.transportTotal)}</YolYardimi>
   </Kazanclar>
@@ -11727,6 +11853,45 @@ function exportBordroXML() {
           <div class="bordro-form-group" style="grid-column:1/-1">
             <label class="bordro-label">Önceki Ay Kümülatif GV Matrahı (₺) — Ocak için 0 bırakın</label>
             <input id="eb-priorYTD" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group" style="grid-column:1/-1">
+            <label class="bordro-label">Kazanç Kalemi Kaynağı</label>
+            <select id="eb-earningMode" class="bordro-select">
+              <option value="auto">Maaş + takvim ekleri</option>
+              <option value="manual">Kalem bazlı resmi bordro</option>
+            </select>
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Günlük Brüt (₺)</label>
+            <input id="eb-dailyGross" class="bordro-input" type="number" min="0" step="0.01" placeholder="Örn: 1930.31">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Normal Çalışma (saat)</label>
+            <input id="eb-normalHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="187.50" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Hafta Tatili (gün)</label>
+            <input id="eb-weeklyRestDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="5" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Genel Tatil (çalışılmayan gün)</label>
+            <input id="eb-publicHolidayDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="1" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Genel Tatil Çalışması (gün)</label>
+            <input id="eb-publicHolidayWorkDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="1" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Fazla Mesai %50 (saat)</label>
+            <input id="eb-manualOTHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Fazla Çalışma %25 (saat)</label>
+            <input id="eb-manualOT125Hours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label">Gece Zammı Saati</label>
+            <input id="eb-manualNightHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
           </div>
         </div>
       </div>
