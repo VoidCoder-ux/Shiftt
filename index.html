@@ -3342,6 +3342,15 @@ body.theme-light .doc-cat, body.theme-light-ocean .doc-cat {
           </div>
         </div>
         <div class="fg"><label>FM Katsayısı</label><input type="number" id="sOTRate" placeholder="1.5" min="1.5" max="3" step="0.5" onchange="sSet('otCompRate',this.value)"><small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">TR İş Kanunu gereği minimum 1.5×</small></div>
+        <div class="fg" style="margin-top:10px">
+          <label>FM Hesap Modu</label>
+          <div class="radio-row" id="otCalcModeRow">
+            <label class="radio-opt" title="4857/41 — haftalık 45 saat üstü FM. Hafta tamamlanmadan FM hesaplanmaz."><input type="radio" name="otCalcMode" data-otcalc-mode="1" value="weekly45" onchange="sSet('otCalcMode',this.value)"> 📅 Haftalık 45s</label>
+            <label class="radio-opt" title="Günlük 7,5 saat üstü FM (toplu sözleşme/işyeri uygulaması). Hafta beklenmeden günlük olarak işlenir."><input type="radio" name="otCalcMode" data-otcalc-mode="1" value="daily75" onchange="sSet('otCalcMode',this.value)"> ⏰ Günlük 7,5s</label>
+            <label class="radio-opt" title="İkisinden hangisi daha fazla FM üretirse: günlük 7,5 üstü + haftalık 45 üstü (kesişimde çift sayım yok)."><input type="radio" name="otCalcMode" data-otcalc-mode="1" value="hybrid" onchange="sSet('otCalcMode',this.value)"> 🔀 Karma</label>
+          </div>
+          <small style="color:var(--t3);font-size:10px;margin-top:4px;display:block">Varsayılan haftalık 45s (yasal). Sözleşme/işyeri uygulaması günlük çalışma süresini esas alıyorsa "Günlük 7,5s" seçin.</small>
+        </div>
         <div id="otBalanceDisplay"></div>
       </div>
 
@@ -3621,6 +3630,7 @@ function mkUser(i) {
     conflictLog: [],
     /* [FIX] Fazla Mesai → İzin Karşılığı (Comp Time) */
     otCompMode: 'pay',      // 'pay' | 'leave'
+    otCalcMode: 'weekly45', // 'weekly45' (4857/41 default) | 'daily75' (günlük) | 'hybrid'
     otCompRate: 1.5,        // Yasal katsayı (TR İş Kanunu: 1.5)
     otBalance: 0,           // Kullanıcının el ile düzenlediği başlangıç bakiyesi (saat)
     otCompModeChangedAt: 0,
@@ -4031,6 +4041,7 @@ function normalizeUserCalculations(u) {
   u.goalHours = Math.max(0, safeNum(u.goalHours, 0));
   u.goalEarning = Math.max(0, safeNum(u.goalEarning, 0));
   u.otCompMode = u.otCompMode === 'leave' ? 'leave' : 'pay';
+  u.otCalcMode = (u.otCalcMode === 'daily75' || u.otCalcMode === 'hybrid') ? u.otCalcMode : 'weekly45';
   u.otCompRate = getOTRate(u);
   u.otBalance = Math.max(0, safeNum(u.otBalance, 0));
   u.otCompModeChangedAt = safeNum(u.otCompModeChangedAt, 0);
@@ -4140,7 +4151,10 @@ function isAnnualLeaveChargeable(ds) {
 /* [FEAT F3] Yıllık toplam FM (yasal sınır 270s — İş K. Md.41) */
 function getYearlyOT(yr) {
   let sum = 0;
-  for (let mm = 0; mm < 12; mm++) sum += safeNum(getMD(yr, mm).oh, 0);
+  for (let mm = 0; mm < 12; mm++) {
+    const md = getMD(yr, mm);
+    sum += safeNum(md.oh, 0) + safeNum(md.oh125, 0);
+  }
   return sum;
 }
 /* [FEAT F3] Son 3 aylık FM toplamı (Md.41 — 3 ayda 90s önerisi) */
@@ -4294,6 +4308,52 @@ function getMD(y, m, opts = {}) {
     oh125 += weekMonthOT125Hrs[wk] || 0;
     oh += weekMonthOTHrs[wk] || 0;
     hhOT += weekMonthHolOTHrs[wk] || 0;
+  }
+
+  /* [FIX OT-DAILY] Günlük FM hesap modu — kullanıcı sözleşmesi günlük 7,5 üstünü FM
+     sayıyorsa hafta tamamlanmasını beklemeden günlük olarak işlenir.
+     Modlar: 'weekly45' (varsayılan, 4857/41), 'daily75' (sadece günlük), 'hybrid' (max).
+     Hybrid: günlük 7,5 üstü VE haftalık 45 üstü ayrı hesaplanır, hangisi büyükse o ödenir
+     (çift sayım önlenir). */
+  const otCalcMode = (u && (u.otCalcMode === 'daily75' || u.otCalcMode === 'hybrid')) ? u.otCalcMode : 'weekly45';
+  const dailyStdH = Math.min(7.5, standardDailyHours);
+  if (otCalcMode !== 'weekly45') {
+    // Aynı startDs'i tek kez say (cross-midnight parçaları aynı vardiyaya ait)
+    const shiftDailyHrs = {};   // startDs -> toplam çalışılan net saat
+    const shiftDayDs   = {};    // startDs -> hangi takvim günü ay'a yazılacak
+    Object.entries(u.shifts || {}).forEach(([startDs, sh]) => {
+      if (!sh || !sh.start || !sh.end) return;
+      const startP = parseDS(startDs);
+      if (!startP || startP.y !== y || startP.m !== m) return;
+      if (throughDay !== null && startP.d > throughDay) return;
+      const parts = getShiftDayParts(startDs, sh);
+      const total = parts.reduce((s, p2) => s + Math.max(0, p2.hours || 0), 0);
+      shiftDailyHrs[startDs] = total;
+      shiftDayDs[startDs] = startDs;
+    });
+    let dailyOT = 0;
+    Object.entries(shiftDailyHrs).forEach(([startDs, total]) => {
+      const over = Math.max(0, total - dailyStdH);
+      if (over > 0) dailyOT += over;
+    });
+    if (otCalcMode === 'daily75') {
+      // Sadece günlük; haftalık dalları sıfırla
+      oh = dailyOT;
+      oh125 = 0;
+      hhOT = 0;
+      // rh = th - oh (regular saatler tamamlayıcı)
+      rh = Math.max(0, th - oh);
+    } else {
+      // hybrid: max(weekly OT, daily OT) — çakışma yerine yüksek olanı al
+      const weeklyOTSum = oh + oh125;
+      if (dailyOT > weeklyOTSum) {
+        oh = dailyOT;
+        oh125 = 0;
+        // hhOT haftalıktan; daily mode'da tatil OT ayrı izlenmez
+        rh = Math.max(0, th - oh);
+      }
+      // Aksi halde mevcut weekly değerleri kalır
+    }
   }
 
   let yau = 0, ysd = 0, mau = 0, msd = 0, wr = 0, weeklyRestDays = 0, publicHolidayPaidDays = 0, ud = 0, otcm = 0;
@@ -6807,7 +6867,10 @@ function yearlyOvertimeHours(y) {
   const key = `${S.cu}-${y}`;
   if (yearlyOTCache[key] !== undefined) return yearlyOTCache[key];
   let total = 0;
-  for (let i = 0; i < 12; i++) total += getMD(y, i).oh || 0;
+  for (let i = 0; i < 12; i++) {
+    const md = getMD(y, i);
+    total += (md.oh || 0) + (md.oh125 || 0);
+  }
   yearlyOTCache[key] = total;
   return total;
 }
@@ -7201,6 +7264,8 @@ function loadSet() {
   const sGE = $('sGoalEarning'); if (sGE) sGE.value = u.goalEarning || '';
   /* [FIX] FM Yönetimi & Öneriler ayarlarını yükle */
   const sOR = $('sOTRate'); if (sOR) sOR.value = getOTRate(u);
+  const _otCalcMode = (u.otCalcMode === 'daily75' || u.otCalcMode === 'hybrid') ? u.otCalcMode : 'weekly45';
+  document.querySelectorAll('[data-otcalc-mode="1"]').forEach(r => { r.checked = r.value === _otCalcMode; });
   const otGroupName = `otMode_${S.cu}`;
   document.querySelectorAll('[data-ot-mode="1"]').forEach(r => {
     r.name = otGroupName;
@@ -7231,6 +7296,10 @@ function sSet(k, v) {
   if (k === 'goalEarning') { v = parseFloat(v); if (isNaN(v) || v < 0) v = 0; }
   /* [FIX] FM Yönetimi yeni ayarlar */
   if (k === 'otCompRate') { v = parseFloat(v); if (isNaN(v) || v < 1.5) v = 1.5; if (v > 3) v = 3; }
+  if (k === 'otCalcMode') {
+    v = (v === 'daily75' || v === 'hybrid') ? v : 'weekly45';
+    document.querySelectorAll('[data-otcalc-mode="1"]').forEach(r => { r.checked = r.value === v; });
+  }
   if (k === 'otBalance') { v = parseFloat(v); if (isNaN(v) || v < 0) v = 0; }
   if (k === 'otCompMode') {
     v = v === 'leave' ? 'leave' : 'pay';
@@ -7271,7 +7340,7 @@ function sSet(k, v) {
      deepMergeUser bu zaman damgasını kullanarak daha yeni değişikliği (yerel/cloud) korur. */
   const settingsKeys = ['netSalary','annualLeave','pin','weeklyTemplate','customPresets',
     'goalHours','goalEarning','theme','autoTheme','monthlyHours','weeklyContractHours','payMode',
-    'otCompMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
+    'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
   if (settingsKeys.includes(k)) markSettingsUpdated(u);
   if (k === 'name' || k === 'startDate' || k === 'birthDate') u.profileUpdatedAt = Date.now();
   invalidateMDCache();
@@ -7680,7 +7749,7 @@ function normalizeImportedUser(i, raw, opts = {}) {
   const allowed = ['name','netSalary','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
     'customPresets','weeklyTemplate','notes','profileUpdatedAt','notesUpdatedAt','settingsUpdatedAt','lastLogin',
     'theme','monthlyHours','weeklyContractHours','payMode','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks','conflictLog',
-    'otCompMode','otCompRate','otBalance','otCompModeChangedAt','otCompModeHistory','hideSuggestions'];
+    'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','otCompModeHistory','hideSuggestions'];
   const u = mkUser(i);
   allowed.forEach(k => { if (raw[k] !== undefined) u[k] = raw[k]; });
   if (typeof u.shifts !== 'object' || !u.shifts) u.shifts = {};
@@ -9989,6 +10058,7 @@ function deepMergeUser(local, cloud) {
     if (cloud.payMode !== undefined) merged.payMode = cloud.payMode;
     /* [FIX] FM Yönetimi & Öneriler ayarlarını senkronize et */
     if (cloud.otCompMode !== undefined) merged.otCompMode = cloud.otCompMode;
+    if (cloud.otCalcMode !== undefined) merged.otCalcMode = cloud.otCalcMode;
     if (cloud.otCompRate !== undefined) merged.otCompRate = cloud.otCompRate;
     if (cloud.otBalance !== undefined) merged.otBalance = cloud.otBalance;
     if (cloud.otCompModeChangedAt !== undefined) merged.otCompModeChangedAt = cloud.otCompModeChangedAt;
