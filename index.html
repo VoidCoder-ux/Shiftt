@@ -3323,8 +3323,11 @@ body.theme-light .doc-cat, body.theme-light-ocean .doc-cat {
 
       <div class="card s-card">
         <h3><i class="fas fa-bullseye"></i>Aylık Saat Hedefi</h3>
-        <div class="hint"><i class="fas fa-lightbulb"></i><span>Saatlik ücret hesaplaması için aylık toplam çalışma saati. Varsayılan: 195 (45s×52.18hf÷12ay — matematiksel doğru). Yargıtay içtihadına göre 225 de kullanılabilir.</span></div>
-        <div class="fg"><label>Aylık Saat</label><input type="number" id="sMH" placeholder="195" min="100" max="400" step="5" onchange="sSet('monthlyHours',this.value)"></div>
+        <div class="hint"><i class="fas fa-lightbulb"></i><span>Saatlik ücret hesaplaması için aylık toplam çalışma saati. Varsayılan: 225 (Yargıtay 9.HD: 30 gün × 7,5s). Tercihe göre 195 (45×52,18÷12) da kullanılabilir.</span></div>
+        <div class="fg"><label>Aylık Saat</label><input type="number" id="sMH" placeholder="225" min="100" max="400" step="5" onchange="sSet('monthlyHours',this.value)"></div>
+        <div class="fg" style="margin-top:8px"><label>Haftalık Sözleşme Saati</label><input type="number" id="sWCH" placeholder="45" min="15" max="45" step="1" onchange="sSet('weeklyContractHours',this.value)">
+          <small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">Sözleşme 45'ten az ise (örn. 40s), aradaki saatler %25 zamlı (fazla sürelerle çalışma) ödenir.</small>
+        </div>
       </div>
 
       <!-- [FIX] Fazla Mesai → İzin Karşılığı (Comp Time) -->
@@ -3529,7 +3532,7 @@ const MTR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağusto
 const DTR = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
 /* [FIX L-01] DFS, DTR ile aynıydı — kaldırıldı, kullanımlar DTR'ye yönlendirildi */
 const DFL = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'];
-let MH = 195;  // 45s × 52.18hf ÷ 12ay = 195.7 (matematiksel doğru); Yargıtay içtihadı için kullanıcı 225 seçebilir
+let MH = 225;  // Aylık yasal saat (Yargıtay 9.HD: 30 gün × 7,5s); kullanıcı 195 (45×52,18÷12) seçebilir
 const MAX_GROSS_HOURS = 16;
 const PRESETS_BASE = Object.freeze({
   morning:   { start:'08:00', end:'16:00', break:30 },
@@ -3605,7 +3608,9 @@ function mkUser(i) {
     settingsUpdatedAt: 0,
     lastLogin: null,
     theme: 'default',
-    monthlyHours: 195,
+    monthlyHours: 225,
+    weeklyContractHours: 45,
+    payMode: 'monthly',
     goalHours: 0,
     goalEarning: 0,
     pin: null,
@@ -3897,7 +3902,14 @@ function holidayPayWeightForPart(part) {
   const h = getHoliday(part && part.ds);
   if (!h || !part || part.hours <= 0) return 0;
   if (!h.half) return 1;
-  return part.endMin > 13 * 60 ? 0.5 : 0;
+  /* [FIX P8] Yarım tatil 13:00'tan sonra başlar; sadece 13:00 sonrası kısım oransal sayılır.
+     11 saatlik referans pencere (13:00–24:00) üzerinden 0.5 azami ağırlık. */
+  const noonStart = 13 * 60;
+  const dayEnd = 24 * 60;
+  const halfWindow = dayEnd - noonStart;
+  const overlap = Math.max(0, Math.min(part.endMin, dayEnd) - Math.max(part.startMin, noonStart));
+  if (overlap <= 0) return 0;
+  return Math.min(0.5, (overlap / halfWindow) * 0.5);
 }
 /* [FIX N-05] RH veri kapsamı dışındaki yıllar için uyarı — session başına bir kez */
 const _rhWarnedYears = new Set();
@@ -4013,7 +4025,9 @@ function normalizeUserCalculations(u) {
   if (!u || typeof u !== 'object') return u;
   u.netSalary = Math.max(0, safeNum(u.netSalary, 0));
   u.annualLeave = clampInt(u.annualLeave, 0, 40, 0);
-  u.monthlyHours = clampInt(u.monthlyHours || 195, 100, 400, 195);
+  u.monthlyHours = clampInt(u.monthlyHours || 225, 100, 400, 225);
+  u.weeklyContractHours = clampInt(u.weeklyContractHours, 15, 45, 45);
+  u.payMode = (u.payMode === 'hourly') ? 'hourly' : 'monthly';
   u.goalHours = Math.max(0, safeNum(u.goalHours, 0));
   u.goalEarning = Math.max(0, safeNum(u.goalEarning, 0));
   u.otCompMode = u.otCompMode === 'leave' ? 'leave' : 'pay';
@@ -4198,7 +4212,12 @@ function getMD(y, m, opts = {}) {
     const shiftHours = parts.reduce((sum, part) => sum + Math.max(0, part.hours || 0), 0);
     if (startP && startP.y === y && startP.m === m && (throughDay === null || startP.d <= throughDay) && shiftHours > 0) {
       workedStartDates.add(startDs);
-      workStartDayEquiv += Math.min(1, shiftHours / standardDailyHours);
+      /* [FIX P9] Aylıkçı çalışan: çalıştığı her gün tam ücret (4857/49 + içtihat).
+         Saatçi (u.payMode === 'hourly') için oransal hesap. */
+      const isHourly = u && u.payMode === 'hourly';
+      workStartDayEquiv += isHourly
+        ? Math.min(1, shiftHours / standardDailyHours)
+        : 1;
     }
     parts.forEach(part => {
       if (!part || part.hours <= 0 || !part.ds) return;
@@ -4341,12 +4360,13 @@ function calcEarningForMonth(y, m, ns) {
   if (isFut) {
     return {
       dailyRate: dr, hourlyRate: hr,
-      basePay: 0, overtimePay: 0, holidayPay: 0, totalEarning: 0,
+      basePay: 0, overtimePay: 0, overtimePay125: 0, holidayPay: 0, totalEarning: 0,
       paidDays: 0, workedDays: d.wd || 0, workPaidDays: d.workDayEquiv || 0, weeklyDays: d.wr || 0,
       annualDays: d.mau || 0, sickDays: d.msd || 0, unpaidDays: d.ud || 0, otCompDays: d.otcm || 0,
       missingDays: 0, absentDays: 0, freePassDays: 0,
-      dim, totalHours: d.th || 0, overtimeHours: d.oh || 0, holidayHours: d.hh || 0, holidayDays: d.hdw || 0, holidayPayDays: d.hpd !== undefined ? d.hpd : d.hdw,
-      hhOT: d.hhOT || 0, otCompMode: u.otCompMode || 'pay',
+      dim, totalHours: d.th || 0, overtimeHours: d.oh || 0, overtimeHours125: d.oh125 || 0,
+      holidayHours: d.hh || 0, holidayDays: d.hdw || 0, holidayPayDays: d.hpd !== undefined ? d.hpd : d.hdw,
+      hhOT: d.hhOT || 0, otCompMode: u.otCompMode || 'pay', partialRate: payrollCfg(y).otPartialMultiplier,
       isFullMonth: false, isCurrentMonth: false, isFutureMonth: true, forecastOnly: true, evaluableDays: 0
     };
   }
@@ -4368,25 +4388,44 @@ function calcEarningForMonth(y, m, ns) {
   const ab = d.ud + mis;
   const bp = Math.max(0, ns - (ab * dr));
 
-  /* [FIX Md.47] Tatil çalışması ilave ücreti: basePay içinde normal tatil ücreti zaten var;
-     Madde 47 gereği ilave 1 günlük ücret daha ödenir → hdw × dr (saat değil gün bazlı) */
-  const hp = (d.hpd !== undefined ? d.hpd : d.hdw) * dr;
+  /* [FIX Md.47 + P7] Tatil çalışması ilave ücreti: basePay içinde normal tatil ücreti var;
+     Madde 47 gereği ilave 1 günlük BRÜT ücret ödenir. Bu ekran "TAHMİNİ NET" gösterdiği için
+     brüt ek ücretin marjinal vergi/SGK sonrası net karşılığını hesaplıyoruz. */
+  const _hpd = (d.hpd !== undefined ? d.hpd : d.hdw) || 0;
+  let hp;
+  if (_hpd > 0 && Number.isFinite(ns) && ns > 0) {
+    const _cfgHp = payrollCfg(y);
+    const _fullGross = findGrossFromNet(ns, 'single', 0, 0, m, undefined, y);
+    const _dailyGross = _fullGross / 30;
+    const _sgkRate = _cfgHp.sgkEmployee + _cfgHp.unemploymentEmployee; // 0.15
+    const _approxYTD = ns * (m + 1); // yaklaşık net YTD (dilim tahmini)
+    const _gvRate = _bracketRateFor(_approxYTD, y);
+    const _stamp = _cfgHp.stampTaxRate;
+    const _netRatio = (1 - _sgkRate) * (1 - _gvRate) - _stamp;
+    hp = _hpd * _dailyGross * Math.max(0.4, Math.min(1, _netRatio));
+  } else {
+    hp = _hpd * dr; // fallback (eski davranış)
+  }
   /* [FIX] otCompMode: 'leave' modunda FM eki ödenmez, saatler bakiyeye eklenir */
   const compMode = u.otCompMode || 'pay';
   const compRate = getOTRate(u);
-  const op = compMode === 'leave' ? 0 : d.oh * hr * compRate;
+  const partialRate = payrollCfg(y).otPartialMultiplier;
+  const op    = compMode === 'leave' ? 0 : (d.oh    || 0) * hr * compRate;
+  /* [FIX P4] Sözleşme <45s sözleşmeli için fazla sürelerle çalışma %25 zamlı (4857/41/4) */
+  const op125 = compMode === 'leave' ? 0 : (d.oh125 || 0) * hr * partialRate;
   /* [FIX ERR-HANDLE-08] NaN propagation engellendi — bozuk md sonuçları 0'a sabitlenir */
-  const teRaw = bp + op + hp;
+  const teRaw = bp + op + op125 + hp;
   const te = Number.isFinite(teRaw) ? Math.max(0, teRaw) : 0;
 
   return {
     dailyRate: dr, hourlyRate: hr,
-    basePay: bp, overtimePay: op, holidayPay: hp, totalEarning: te,
+    basePay: bp, overtimePay: op, overtimePay125: op125, holidayPay: hp, totalEarning: te,
     paidDays: Math.round(pd * 100) / 100, workedDays: d.wd, workPaidDays: Math.round(workPaidDays * 100) / 100, weeklyDays: d.wr,
     annualDays: d.mau, sickDays: d.msd, unpaidDays: d.ud, otCompDays: d.otcm || 0,
     missingDays: mis, absentDays: ab, freePassDays: fp,
-    dim, totalHours: d.th, overtimeHours: d.oh, holidayHours: d.hh, holidayDays: d.hdw, holidayPayDays: d.hpd !== undefined ? d.hpd : d.hdw,
-    hhOT: d.hhOT || 0, otCompMode: compMode,
+    dim, totalHours: d.th, overtimeHours: d.oh, overtimeHours125: d.oh125 || 0,
+    holidayHours: d.hh, holidayDays: d.hdw, holidayPayDays: d.hpd !== undefined ? d.hpd : d.hdw,
+    hhOT: d.hhOT || 0, otCompMode: compMode, partialRate,
     isFullMonth: ab === 0 && !isCur && !isFut,
     isCurrentMonth: isCur, isFutureMonth: isFut, evaluableDays: ev
   };
@@ -6612,10 +6651,14 @@ function renderEarn() {
       <div class="esd-head" style="color:#f97316">🔥 FAZLA MESAİ (${getOTRate(u)}×)</div>
       <div class="esd"><span class="ek">${e.overtimeHours.toFixed(1)}s × ${fm(e.hourlyRate)} × ${getOTRate(u)}</span><span class="ev pos">+${fm(e.overtimePay)}</span></div>
       ` : ''}
+      ${(e.overtimePay125 || 0) > 0 ? `
+      <div class="esd-head" style="color:#fb923c">⚡ FAZLA SÜRELERLE ÇALIŞMA (${e.partialRate || 1.25}×)</div>
+      <div class="esd"><span class="ek">${(e.overtimeHours125||0).toFixed(1)}s × ${fm(e.hourlyRate)} × ${e.partialRate || 1.25}</span><span class="ev pos">+${fm(e.overtimePay125)}</span></div>
+      ` : ''}
       ${e.holidayPay > 0 ? `
       <div class="esd-head" style="color:var(--g)">🏛️ TATİL PRİMLERİ</div>
-      <div class="esd"><span class="ek">${(e.holidayPayDays || e.holidayDays).toFixed(1)}g tatil × ${fm(e.dailyRate)} ilave (Md.47)</span><span class="ev pos">+${fm(e.holidayPay)}</span></div>
-      ${(e.hhOT||0) > 0 ? `<div class="esd" style="opacity:.65;font-size:11px"><span class="ek" style="padding-left:8px">↳ ${e.hhOT.toFixed(1)}s tatil+FM çakışan saat dahil</span><span class="ev"></span></div>` : ''}
+      <div class="esd"><span class="ek">${(e.holidayPayDays || e.holidayDays).toFixed(1)}g tatil × ${fm(e.dailyRate)} ilave (Md.47, brüt netleştirilmiş)</span><span class="ev pos">+${fm(e.holidayPay)}</span></div>
+      ${(e.hhOT||0) > 0 ? `<div class="esd" style="color:var(--acc);font-size:11px"><span class="ek" style="padding-left:8px">↳ ${e.hhOT.toFixed(1)}s tatil çalışması haftalık 45'i aşıyor; FM zammı ve Md.47 günlük ek ayrı satırlarda uygulanır.</span><span class="ev"></span></div>` : ''}
       ` : ''}
       <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>TAHMİNİ NET</b></span><span class="ev">${fm(e.totalEarning)}</span></div>
     </div>
@@ -6662,23 +6705,29 @@ function estimatePayrollForMonth(u, y, m, d) {
   /* [N-03] Medeni durum/çocuk sayısı 7349 sy. Kanun sonrası GV hesabını etkilemez (AGİ kaldırıldı).
      Bekâr/çocuksuz varsayımı hesap sonucunu değiştirmiyor. */
   const marital = 'single', children = 0;
-  const priorYTD = safeNum(getPayrollCheck(u, y, m).priorYTD, 0);
+  /* [FIX P2] Ocak ayında kümülatif vergi matrahı sıfırlanır */
+  const priorYTD = (m === 0) ? 0 : safeNum(getPayrollCheck(u, y, m).priorYTD, 0);
   const earning = calcEarningForMonth(y, m, u.netSalary);
   if (!earning || earning.isFutureMonth) return null;
   const baseNet = Math.max(0, safeNum(earning.basePay, 0));
   if (baseNet <= 0 && d.th <= 0 && d.mau <= 0 && d.msd <= 0 && d.wr <= 0) return null;
-  const fullGross = _bordroRound2(findGrossFromNet(u.netSalary, marital, children, priorYTD, m));
-  const baseGross = _bordroRound2(findGrossFromNet(baseNet, marital, children, priorYTD, m));
-  const hrGross = fullGross > 0 ? _bordroRound2(fullGross / payrollConfig.monthlyStandardHours) : 0;
+  const cfg = payrollCfg(y);
+  const fullGross = _bordroRound2(findGrossFromNet(u.netSalary, marital, children, priorYTD, m, undefined, y));
+  /* baseGross'u doğru oranla pro-rate et: paid/30 üzerinden ay-bazlı brüt */
+  const paidDays = Math.max(0, safeNum(earning.paidDays, 30));
+  const baseGross = _bordroRound2(fullGross * (paidDays / 30));
+  const hrGross = fullGross > 0 ? _bordroRound2(fullGross / cfg.monthlyStandardHours) : 0;
   const drGross = _bordroRound2(fullGross / 30);
   const compMode = u.otCompMode || 'pay';
   const compRate = getOTRate(u);
-  const otGross = compMode === 'pay' ? _bordroRound2(d.oh * hrGross * compRate) : 0;
+  const partialRate = cfg.otPartialMultiplier;
+  const otGross = compMode === 'pay' ? _bordroRound2((d.oh || 0) * hrGross * compRate) : 0;
+  const ot125Gross = compMode === 'pay' ? _bordroRound2((d.oh125 || 0) * hrGross * partialRate) : 0;
   const holPayDays = d.hpd !== undefined ? d.hpd : d.hdw;
   const holGross = _bordroRound2(holPayDays * drGross);
-  const totalGross = _bordroRound2(baseGross + otGross + holGross);
-  const res = computeNetFromGross(totalGross, marital, children, priorYTD, m);
-  return { ...res, baseNet, fullGross, baseGross, otGross, holGross, totalGross, holPayDays, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
+  const totalGross = _bordroRound2(baseGross + otGross + ot125Gross + holGross);
+  const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, undefined, y);
+  return { ...res, baseNet, fullGross, baseGross, otGross, ot125Gross, holGross, totalGross, holPayDays, cfgYear: cfg.year, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
 }
 function diffBadge(diff) {
   const abs = Math.abs(diff || 0);
@@ -6712,7 +6761,29 @@ function buildWorkLawWarnings(u, y, m, d) {
     const rest = (shifts[i].start - shifts[i-1].end) / 36e5;
     if (rest >= 0 && rest < 11) warnings.push({ level:'danger', text:`${shifts[i-1].ds} sonrası ${shifts[i].ds} vardiyasına kadar ${rest.toFixed(1)} saat dinlenme var.` });
   }
-  if (!warnings.length) warnings.push({ level:'ok', text:'Bu ay haftalık 45 saat, günlük 11 saat ve vardiyalar arası 11 saat dinlenme açısından belirgin uyarı yok.' });
+  /* [FIX P11] 4857/69 — gece çalışması 7,5 saati aşamaz. Vardiyaların gece pencere overlap'ini
+     hesapla; 20:00–06:00 toplam çalışma 7,5s'i aşıyorsa danger uyarı. */
+  shifts.forEach(s => {
+    const startMin = s.start.getHours() * 60 + s.start.getMinutes();
+    const sameDay = (s.end.getDate() === s.start.getDate()
+                  && s.end.getMonth() === s.start.getMonth()
+                  && s.end.getFullYear() === s.start.getFullYear());
+    const endMin = sameDay
+      ? (s.end.getHours() * 60 + s.end.getMinutes())
+      : (s.end.getHours() * 60 + s.end.getMinutes() + 1440);
+    const overlap = (a, b, c, d2) => Math.max(0, Math.min(b, d2) - Math.max(a, c));
+    // Gece pencereleri: 00:00–06:00 (360), 20:00–24:00 (1200–1440), 24:00–30:00 (1440–1800 = ertesi gün 06:00)
+    const nightMin = overlap(startMin, endMin, 0, 360)
+                   + overlap(startMin, endMin, 1200, 1440)
+                   + overlap(startMin, endMin, 1440, 1800);
+    if (nightMin / 60 > 7.5) {
+      warnings.push({
+        level:'danger',
+        text:`${s.ds} vardiyasında gece çalışması ${(nightMin/60).toFixed(1)}s; 4857/69 yedibuçuk saat sınırını aştı.`
+      });
+    }
+  });
+  if (!warnings.length) warnings.push({ level:'ok', text:'Bu ay haftalık 45 saat, günlük 11 saat, vardiyalar arası 11 saat dinlenme ve gece 7,5 saat sınırı açısından belirgin uyarı yok.' });
   return warnings;
 }
 function buildHolidayWorkRows(u, y, m) {
@@ -6974,18 +7045,19 @@ function renderEarnShiftTypes(u, y, m, e) {
 function renderTaxBracketCard(u, y, m) {
   if (!u.netSalary || u.netSalary <= 0) return '';
   try {
-    const brackets = payrollConfig.incomeTaxBrackets;
+    const cfg = payrollCfg(y);
+    const brackets = cfg.incomeTaxBrackets;
     /* Gerçek YTD: kullanıcının girdiği priorYTD değeri varsa onu kullan,
-       yoksa sabit brüt × geçen ay sayısı hesabına dön */
-    const priorYTD = safeNum(getPayrollCheck(u, y, m).priorYTD, -1);
+       yoksa sabit brüt × geçen ay sayısı hesabına dön. Ocak'ta YTD = 0. */
+    const priorYTD = (m === 0) ? 0 : safeNum(getPayrollCheck(u, y, m).priorYTD, -1);
     const md = getMD(y, m);
     const payroll = estimatePayrollForMonth(u, y, m, md);
     let monthMatrah = payroll ? payroll.gvMatrah : 0;
     let ytdMatrah = payroll ? payroll.ytdMatrah : 0;
     if (!payroll) {
-      const fixedGross = findGrossFromNet(u.netSalary, 'single', 0, Math.max(0, priorYTD), m);
-      const sgkBase = Math.min(fixedGross, payrollConfig.sgkCeiling);
-      monthMatrah = fixedGross - sgkBase * (payrollConfig.sgkEmployee + payrollConfig.unemploymentEmployee);
+      const fixedGross = findGrossFromNet(u.netSalary, 'single', 0, Math.max(0, priorYTD), m, undefined, y);
+      const sgkBase = Math.min(fixedGross, cfg.sgkCeiling);
+      monthMatrah = fixedGross - sgkBase * (cfg.sgkEmployee + cfg.unemploymentEmployee);
       ytdMatrah = (priorYTD >= 0) ? (priorYTD + monthMatrah) : monthMatrah * (m + 1);
     }
     let curIdx = 0, prevUp = 0;
@@ -7015,8 +7087,8 @@ function renderTaxBracketCard(u, y, m) {
       ? `<div class="tbc-note">En üst dilimdesin — ek kazançlar %${(cur.rate*100).toFixed(0)} oranında vergilenir.</div>`
       : `<div class="tbc-note"><b>${fm(toNext)}</b> kümülatif matrah sonra <b>%${(next.rate*100).toFixed(0)}</b> dilimine geçeceksin${monthsToNext > 0 ? ` (~${monthsToNext} ay)` : ''}.</div>`;
 
-    const staleYearNote = (payrollConfig.year < new Date().getFullYear())
-      ? `<div class="tbc-note" style="color:var(--r)"><i class="fas fa-exclamation-triangle"></i> Bordro parametreleri ${payrollConfig.year} yılına ait — ${new Date().getFullYear()} için doğrulanmamış.</div>`
+    const staleYearNote = (cfg.year !== y)
+      ? `<div class="tbc-note" style="color:var(--r)"><i class="fas fa-exclamation-triangle"></i> ${y} yılı için bordro parametreleri tanımlı değil — ${cfg.year} değerleri kullanılıyor.</div>`
       : '';
     return `<div class="earn-section tbc-section">
       <h3><i class="fas fa-percentage"></i>Gelir Vergisi Dilimi (${y} Kümülatif)</h3>
@@ -7123,6 +7195,7 @@ function loadSet() {
   if (sB) sB.value = u.birthDate || '';
   if (sL) sL.value = annualLeaveTotal(u);
   const sMH = $('sMH'); if (sMH) sMH.value = getMonthlyHours(u);
+  const sWCH = $('sWCH'); if (sWCH) sWCH.value = clampInt(u.weeklyContractHours, 15, 45, 45);
   const uN = $('userNotes'); if (uN) uN.value = u.notes || '';
   const sGH = $('sGoalHours'); if (sGH) sGH.value = u.goalHours || '';
   const sGE = $('sGoalEarning'); if (sGE) sGE.value = u.goalEarning || '';
@@ -7153,6 +7226,7 @@ function sSet(k, v) {
   if (k === 'netSalary') { v = parseFloat(v); if (isNaN(v) || v < 0) v = 0; }
   if (k === 'annualLeave') { v = parseInt(v); if (isNaN(v) || v < 0) v = 0; if (v > 40) v = 40; }
   if (k === 'monthlyHours') { v = parseInt(v); if (isNaN(v) || v < 100) v = 100; if (v > 400) v = 400; }
+  if (k === 'weeklyContractHours') { v = parseInt(v); if (isNaN(v) || v < 15) v = 15; if (v > 45) v = 45; }
   if (k === 'goalHours') { v = parseFloat(v); if (isNaN(v) || v < 0) v = 0; }
   if (k === 'goalEarning') { v = parseFloat(v); if (isNaN(v) || v < 0) v = 0; }
   /* [FIX] FM Yönetimi yeni ayarlar */
@@ -7196,7 +7270,7 @@ function sSet(k, v) {
   /* [FIX L-04] BUG-R3 ile eklenen settingsUpdatedAt: ayar değişikliklerini zaman damgasıyla işaretle.
      deepMergeUser bu zaman damgasını kullanarak daha yeni değişikliği (yerel/cloud) korur. */
   const settingsKeys = ['netSalary','annualLeave','pin','weeklyTemplate','customPresets',
-    'goalHours','goalEarning','theme','autoTheme','monthlyHours',
+    'goalHours','goalEarning','theme','autoTheme','monthlyHours','weeklyContractHours','payMode',
     'otCompMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
   if (settingsKeys.includes(k)) markSettingsUpdated(u);
   if (k === 'name' || k === 'startDate' || k === 'birthDate') u.profileUpdatedAt = Date.now();
@@ -7605,7 +7679,7 @@ function normalizeImportedUser(i, raw, opts = {}) {
   if (!raw || typeof raw !== 'object') return null;
   const allowed = ['name','netSalary','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
     'customPresets','weeklyTemplate','notes','profileUpdatedAt','notesUpdatedAt','settingsUpdatedAt','lastLogin',
-    'theme','monthlyHours','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks','conflictLog',
+    'theme','monthlyHours','weeklyContractHours','payMode','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks','conflictLog',
     'otCompMode','otCompRate','otBalance','otCompModeChangedAt','otCompModeHistory','hideSuggestions'];
   const u = mkUser(i);
   allowed.forEach(k => { if (raw[k] !== undefined) u[k] = raw[k]; });
@@ -7840,33 +7914,39 @@ function renderRaiseSim() {
     /* Seçili kazanç dönemini ve o dönemin gerçek bordro/puantaj etkisini kullan. */
     const _rsY = Number.isInteger(S.ey) ? S.ey : new Date().getFullYear();
     const _rsM = Number.isInteger(S.em) ? S.em : new Date().getMonth();
-    const _priorYTD = safeNum(getPayrollCheck(u, _rsY, _rsM).priorYTD, 0);
+    /* [FIX P2] Ocak ayında kümülatif vergi matrahı sıfırlanır */
+    const _priorYTD = (_rsM === 0) ? 0 : safeNum(getPayrollCheck(u, _rsY, _rsM).priorYTD, 0);
+    const _rsCfg = payrollCfg(_rsY);
     const _rsNow = new Date();
     const _rsMD = getMD(_rsY, _rsM, (_rsY === _rsNow.getFullYear() && _rsM === _rsNow.getMonth()) ? { throughDay:_rsNow.getDate() } : undefined);
     const _rsEarn = calcEarningForMonth(_rsY, _rsM, curNet);
     const _paidRatio = curNet > 0 && _rsEarn ? Math.max(0, Math.min(1, safeNum(_rsEarn.basePay, 0) / curNet)) : 1;
     const _projectByNet = monthlyNet => {
-      const fullGross = _bordroRound2(findGrossFromNet(monthlyNet, 'single', 0, _priorYTD, _rsM));
-      const baseGross = _bordroRound2(findGrossFromNet(monthlyNet * _paidRatio, 'single', 0, _priorYTD, _rsM));
-      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / payrollConfig.monthlyStandardHours) : 0;
+      const fullGross = _bordroRound2(findGrossFromNet(monthlyNet, 'single', 0, _priorYTD, _rsM, undefined, _rsY));
+      const baseGross = _bordroRound2(fullGross * _paidRatio);
+      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / _rsCfg.monthlyStandardHours) : 0;
       const drGross = _bordroRound2(fullGross / 30);
       const compRate = getOTRate(u);
-      const otGross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2(_rsMD.oh * hrGross * compRate) : 0;
+      const partialRate = _rsCfg.otPartialMultiplier;
+      const otGross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2((_rsMD.oh || 0) * hrGross * compRate) : 0;
+      const ot125Gross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2((_rsMD.oh125 || 0) * hrGross * partialRate) : 0;
       const holGross = _bordroRound2((_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross);
-      const totalGross = _bordroRound2(baseGross + otGross + holGross);
-      const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM);
+      const totalGross = _bordroRound2(baseGross + otGross + ot125Gross + holGross);
+      const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM, undefined, _rsY);
       return { monthlyNet, fullGross, baseGross, totalGross, finalNet:calc.net, calc };
     };
     const _projectByGross = monthlyGross => {
       const fullGross = _bordroRound2(Math.max(0, safeNum(monthlyGross, 0)));
       const baseGross = _bordroRound2(fullGross * _paidRatio);
-      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / payrollConfig.monthlyStandardHours) : 0;
+      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / _rsCfg.monthlyStandardHours) : 0;
       const drGross = _bordroRound2(fullGross / 30);
       const compRate = getOTRate(u);
-      const otGross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2(_rsMD.oh * hrGross * compRate) : 0;
+      const partialRate = _rsCfg.otPartialMultiplier;
+      const otGross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2((_rsMD.oh || 0) * hrGross * compRate) : 0;
+      const ot125Gross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2((_rsMD.oh125 || 0) * hrGross * partialRate) : 0;
       const holGross = _bordroRound2((_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross);
-      const totalGross = _bordroRound2(baseGross + otGross + holGross);
-      const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM);
+      const totalGross = _bordroRound2(baseGross + otGross + ot125Gross + holGross);
+      const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM, undefined, _rsY);
       return { monthlyNet:calc.net, fullGross, baseGross, totalGross, finalNet:calc.net, calc };
     };
     const curProjection = _projectByNet(curNet);
@@ -8559,7 +8639,10 @@ function getOTBalance() {
     if (new Date(y2, m2 + 1, 0) < windowStart) continue;
     if (modeForMonth(y2, m2) !== 'leave') continue;
     const md2 = getMD(y2, m2, (y2 === today.getFullYear() && m2 === today.getMonth()) ? { throughDay:today.getDate() } : undefined);
-    bal += md2.oh * compRate;
+    const partialRate = payrollCfg(y2).otPartialMultiplier;
+    bal += (md2.oh    || 0) * compRate;
+    /* [FIX P5] Sub-45 fazla sürelerle çalışma için 1h15 serbest zaman / 1h (4857/41) */
+    bal += (md2.oh125 || 0) * partialRate;
   }
   /* [FIX Y-05] Yalnızca 24 aylık pencere içindeki ot_comp izinleri düş */
   Object.entries(u.leaves).forEach(([ds, l]) => {
@@ -9902,6 +9985,8 @@ function deepMergeUser(local, cloud) {
     if (cloud.theme) merged.theme = cloud.theme;
     if (cloud.autoTheme !== undefined) merged.autoTheme = !!cloud.autoTheme;
     if (cloud.monthlyHours !== undefined) merged.monthlyHours = cloud.monthlyHours;
+    if (cloud.weeklyContractHours !== undefined) merged.weeklyContractHours = cloud.weeklyContractHours;
+    if (cloud.payMode !== undefined) merged.payMode = cloud.payMode;
     /* [FIX] FM Yönetimi & Öneriler ayarlarını senkronize et */
     if (cloud.otCompMode !== undefined) merged.otCompMode = cloud.otCompMode;
     if (cloud.otCompRate !== undefined) merged.otCompRate = cloud.otCompRate;
@@ -10645,6 +10730,12 @@ function renderBankHolidays() {
     </div>`;
   });
 
+  /* [FIX P15] Dini tatil veri kapsamı (RH) 2032'ye kadar — sonrası için açık uyarı */
+  const _hasReligious = !!RH[y];
+  const coverageWarn = (!_hasReligious)
+    ? `<div class="hint" style="color:var(--r);margin-top:8px"><i class="fas fa-exclamation-triangle"></i>
+        <span>${y} yılı için dini bayram (Ramazan/Kurban) tarihleri tanımlı değil. Bordro hesabı bu tatiller için eksik kalır — RH tablosunu güncelleyin.</span></div>`
+    : '';
   el.innerHTML = `<div class="bh-section">
     <h3><i class="fas fa-flag"></i>${y} Resmi Tatiller (${holidays.reduce((sum,h)=>sum+(h.half?0.5:1),0)} gün)</h3>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
@@ -10652,6 +10743,7 @@ function renderBankHolidays() {
       <button class="btn btn-outline btn-sm" onclick="autoLoadHolidays(${y},'remove')"><i class="fas fa-eraser"></i>Tatil İzinlerini Kaldır</button>
     </div>
     <div class="bh-list">${listHtml}</div>
+    ${coverageWarn}
   </div>`;
 }
 
@@ -10766,8 +10858,11 @@ function runCalc() {
     const overtime = Math.max(0, dailyHrs - regular);
     st.normalLeft = Math.max(0, st.normalLeft - regular);
     otHrs += overtime;
+    /* [FIX P14] denominator /26 → /30; aylıkçı için her gün 1 (saatçi için oransal) */
     const _mhCalc = getMonthlyHours(u);
-    paidDayEquiv += Math.min(1, dailyHrs / Math.max(1, _mhCalc / 26));
+    const _stdDaily = Math.max(1, _mhCalc / 30);
+    const _isHourly = u && u.payMode === 'hourly';
+    paidDayEquiv += _isHourly ? Math.min(1, dailyHrs / _stdDaily) : 1;
     if (isHoliday) {
       holWorkedDays++;
       holWorkedPayDays += holidayPayWeight(ds, { start, end, break: brk });
@@ -11098,35 +11193,109 @@ initDragDrop();
 initFirebase();
 
 // ===== eBORDRO MODULE START =====
-// Türkiye 2026 bordro parametreleri — yıllık güncelleme için sadece bu objeyi düzenleyin
-const payrollConfig = {
-  year: 2026,
-  minWageGross: 33030,            // 2026 asgari ücret brüt (TL)
-  get sgkCeiling() { return this.minWageGross * 9; }, // 2026 SGK prime esas kazanç tavanı
-  sgkEmployee: 0.14,              // İşçi SGK payı: emeklilik %9 + sağlık %5
-  unemploymentEmployee: 0.01,     // İşçi işsizlik sigortası %1
-  incomeTaxBrackets: [            // 2026 yıllık kümülatif GV dilimleri (GİB)
-    { upTo: 190000,  rate: 0.15 },
-    { upTo: 400000,  rate: 0.20 },
-    { upTo: 1500000, rate: 0.27 },
-    { upTo: 5300000, rate: 0.35 },
-    { upTo: Infinity,rate: 0.40 },
-  ],
-  stampTaxRate: 0.00759,          // Damga vergisi %0.759
-  otMultiplier: 1.5,              // Fazla mesai (haftalık 45 saat üstü) zam katsayısı
-  otPartialMultiplier: 1.25,      // Fazla çalışma (haftalık <45 saat sözleşme) zam katsayısı (4857/41/4)
-  monthlyStandardHours: 225,      // Aylık yasal standart saat (30 gün × 7,5 saat) — Yargıtay 9.HD yerleşik içtihat
-  dailyStandardHours: 7.5,        // Yasal günlük çalışma süresi (4857/63)
-  nightStartMin: 20 * 60,         // Gece çalışması başlangıcı (4857/69)
-  nightEndMin:    6 * 60,         // Gece çalışması bitişi
-  nightDefaultMultiplier: 0.0,    // Gece çalışması ek zam katsayısı (yasal değil; toplu sözleşme/işyeri)
-  // 2026 GVK md.31 engellilik indirimi (aylık matrah indirimi, TL):
-  disabilityDeductions: { 0: 0, 1: 9900, 2: 5700, 3: 2400 },
-  // BES otomatik katılım kesintisi (5510 sy. Kanun ek md.); brüt'ün %3'ü vergi öncesi/sonrası net'ten:
-  besDefaultRate: 0.03,
-  mealDailyTaxFree: 300,          // 2026 yemek yardımı günlük vergisiz limit (TL)
-  transportDailyTaxFree: 158,     // 2026 yol yardımı günlük vergisiz limit (TL)
+// Türkiye yıl-bazlı bordro parametreleri — yeni yıl için tabloya yeni anahtar ekleyin.
+// Hesap fonksiyonları payrollCfg(y) üzerinden yıla göre erişir.
+const payrollConfigByYear = {
+  2024: {
+    year: 2024,
+    minWageGross: 20002.50,
+    sgkEmployee: 0.14,
+    unemploymentEmployee: 0.01,
+    incomeTaxBrackets: [
+      { upTo: 110000,  rate: 0.15 },
+      { upTo: 230000,  rate: 0.20 },
+      { upTo: 870000,  rate: 0.27 },
+      { upTo: 3000000, rate: 0.35 },
+      { upTo: Infinity,rate: 0.40 },
+    ],
+    stampTaxRate: 0.00759,
+    otMultiplier: 1.5,
+    otPartialMultiplier: 1.25,
+    monthlyStandardHours: 225,
+    dailyStandardHours: 7.5,
+    nightStartMin: 20 * 60,
+    nightEndMin: 6 * 60,
+    nightDefaultMultiplier: 0.0,
+    disabilityDeductions: { 0: 0, 1: 6900, 2: 4000, 3: 1700 },
+    besDefaultRate: 0.03,
+    mealDailyTaxFree: 170,
+    transportDailyTaxFree: 88,
+  },
+  2025: {
+    year: 2025,
+    minWageGross: 26005.50,
+    sgkEmployee: 0.14,
+    unemploymentEmployee: 0.01,
+    incomeTaxBrackets: [
+      { upTo: 158000,  rate: 0.15 },
+      { upTo: 330000,  rate: 0.20 },
+      { upTo: 1200000, rate: 0.27 },
+      { upTo: 4300000, rate: 0.35 },
+      { upTo: Infinity,rate: 0.40 },
+    ],
+    stampTaxRate: 0.00759,
+    otMultiplier: 1.5,
+    otPartialMultiplier: 1.25,
+    monthlyStandardHours: 225,
+    dailyStandardHours: 7.5,
+    nightStartMin: 20 * 60,
+    nightEndMin: 6 * 60,
+    nightDefaultMultiplier: 0.0,
+    disabilityDeductions: { 0: 0, 1: 9900, 2: 5700, 3: 2400 },
+    besDefaultRate: 0.03,
+    mealDailyTaxFree: 240,
+    transportDailyTaxFree: 126,
+  },
+  2026: {
+    year: 2026,
+    minWageGross: 33030,
+    sgkEmployee: 0.14,
+    unemploymentEmployee: 0.01,
+    incomeTaxBrackets: [
+      { upTo: 190000,  rate: 0.15 },
+      { upTo: 400000,  rate: 0.20 },
+      { upTo: 1500000, rate: 0.27 },
+      { upTo: 5300000, rate: 0.35 },
+      { upTo: Infinity,rate: 0.40 },
+    ],
+    stampTaxRate: 0.00759,
+    otMultiplier: 1.5,
+    otPartialMultiplier: 1.25,
+    monthlyStandardHours: 225,
+    dailyStandardHours: 7.5,
+    nightStartMin: 20 * 60,
+    nightEndMin: 6 * 60,
+    nightDefaultMultiplier: 0.0,
+    disabilityDeductions: { 0: 0, 1: 9900, 2: 5700, 3: 2400 },
+    besDefaultRate: 0.03,
+    mealDailyTaxFree: 300,
+    transportDailyTaxFree: 158,
+  },
 };
+const _payrollWarnedYears = new Set();
+function _withSgkCeiling(cfg) {
+  if (!cfg || cfg._withCeiling) return cfg;
+  Object.defineProperty(cfg, 'sgkCeiling', { get(){ return this.minWageGross * 9; }, configurable:true });
+  cfg._withCeiling = true;
+  return cfg;
+}
+function payrollCfg(y) {
+  const yr = safeInt(y, NaN);
+  if (Number.isFinite(yr) && payrollConfigByYear[yr]) return _withSgkCeiling(payrollConfigByYear[yr]);
+  const fallbackYear = Object.keys(payrollConfigByYear).map(Number).sort((a,b)=>b-a)[0];
+  if (Number.isFinite(yr) && !_payrollWarnedYears.has(yr)) {
+    _payrollWarnedYears.add(yr);
+    setTimeout(() => toast(`⚠️ ${yr} yılı bordro parametreleri tanımlı değil — ${fallbackYear} değerleri kullanılıyor.`, 'warning'), 200);
+  }
+  return _withSgkCeiling(payrollConfigByYear[fallbackYear]);
+}
+function _bracketRateFor(ytd, y) {
+  const cfg = payrollCfg(y);
+  for (const b of cfg.incomeTaxBrackets) if (ytd <= b.upTo) return b.rate;
+  return cfg.incomeTaxBrackets.slice(-1)[0].rate;
+}
+// Geri uyumluluk: mevcut yıl referansı (UI varsayılanı)
+const payrollConfig = payrollCfg(new Date().getFullYear());
 
 function _bordroRound2(v) {
   v = safeNum(v, 0);
@@ -11137,26 +11306,29 @@ function _bordroClampMoney(id, min, max, fallback) {
   return clampNum(($(id) || {}).value, min, max, fallback);
 }
 
-function _bordroLegalHourlyFromDaily(dailyGross) {
-  return _bordroRound2(Math.max(0, safeNum(dailyGross, 0)) / payrollConfig.dailyStandardHours);
+function _bordroLegalHourlyFromDaily(dailyGross, y) {
+  const cfg = payrollCfg(y);
+  return _bordroRound2(Math.max(0, safeNum(dailyGross, 0)) / cfg.dailyStandardHours);
 }
 
 // Kümülatif gelir vergisi hesabı (yıllık matrah üzerinden)
-function _bordroCalcGV(ytdMatrah) {
-  const brackets = payrollConfig.incomeTaxBrackets;
+function _bordroCalcGV(ytdMatrah, y) {
+  if (!Number.isFinite(ytdMatrah) || ytdMatrah <= 0) return 0;
+  const brackets = payrollCfg(y).incomeTaxBrackets;
   let tax = 0, prev = 0;
   for (const b of brackets) {
     if (ytdMatrah <= prev) break;
-    const taxable = Math.min(ytdMatrah, b.upTo) - prev;
-    tax += taxable * b.rate;
+    const upper = (b.upTo === Infinity) ? ytdMatrah : b.upTo;
+    const taxable = Math.min(ytdMatrah, upper) - prev;
+    if (taxable > 0) tax += taxable * b.rate;
     prev = b.upTo;
     if (b.upTo === Infinity) break;
   }
-  return tax;
+  return Number.isFinite(tax) ? tax : 0;
 }
 
-function _bordroMinWageTaxableBase(gross) {
-  const cfg = payrollConfig;
+function _bordroMinWageTaxableBase(gross, y) {
+  const cfg = payrollCfg(y);
   const exemptGross = Math.min(Math.max(0, gross || 0), cfg.minWageGross);
   const sgkBase = Math.min(exemptGross, cfg.sgkCeiling);
   const sgkDeduction = _bordroRound2(sgkBase * cfg.sgkEmployee);
@@ -11165,12 +11337,12 @@ function _bordroMinWageTaxableBase(gross) {
 }
 
 // 7349 sayılı Kanun sonrası: AGİ yok; asgari ücrete isabet eden GV/DV istisnası uygulanır.
-function _bordroCalcMinWageTaxExemption(gross, thisMonthRawGV, monthIndex) {
-  const cfg = payrollConfig;
+function _bordroCalcMinWageTaxExemption(gross, thisMonthRawGV, monthIndex, y) {
+  const cfg = payrollCfg(y);
   const safeMonth = Math.max(0, Math.min(11, safeInt(monthIndex, 0)));
-  const minTaxable = _bordroMinWageTaxableBase(cfg.minWageGross);
+  const minTaxable = _bordroMinWageTaxableBase(cfg.minWageGross, y);
   const priorMinYTD = minTaxable * safeMonth;
-  const minWageGV = _bordroRound2(_bordroCalcGV(priorMinYTD + minTaxable) - _bordroCalcGV(priorMinYTD));
+  const minWageGV = _bordroRound2(_bordroCalcGV(priorMinYTD + minTaxable, y) - _bordroCalcGV(priorMinYTD, y));
   const incomeTaxExemption = _bordroRound2(Math.min(Math.max(0, thisMonthRawGV || 0), Math.max(0, minWageGV)));
   const stampTaxExemption = _bordroRound2(Math.min(Math.max(0, gross || 0), cfg.minWageGross) * cfg.stampTaxRate);
   return { incomeTaxExemption, stampTaxExemption };
@@ -11178,8 +11350,9 @@ function _bordroCalcMinWageTaxExemption(gross, thisMonthRawGV, monthIndex) {
 
 // Brütten net hesaplama (belirli bir ay için kümülatif yöntem)
 // opts.disabilityDegree: 0/1/2/3 — GVK md.31 matrah indirimi
-function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, monthIndex, opts) {
-  const cfg = payrollConfig;
+// y: bordro yılı (yıl-bazlı parametreler için)
+function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, monthIndex, opts, y) {
+  const cfg = payrollCfg(y);
   gross = _bordroRound2(Math.max(0, safeNum(gross, 0)));
   priorYTDMatrah = _bordroRound2(Math.max(0, safeNum(priorYTDMatrah, 0)));
   const sgkBase        = _bordroRound2(Math.min(gross, cfg.sgkCeiling));
@@ -11197,28 +11370,32 @@ function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, mon
   const priorYTD   = priorYTDMatrah || 0;
   const ytdMatrah  = _bordroRound2(priorYTD + gvMatrah);
 
-  const rawGVTotal  = _bordroRound2(_bordroCalcGV(ytdMatrah));
-  const rawGVPrior  = _bordroRound2(_bordroCalcGV(priorYTD));
+  const rawGVTotal  = _bordroRound2(_bordroCalcGV(ytdMatrah, y));
+  const rawGVPrior  = _bordroRound2(_bordroCalcGV(priorYTD, y));
   const thisMonthRawGV = _bordroRound2(rawGVTotal - rawGVPrior);
 
-  const { incomeTaxExemption, stampTaxExemption } = _bordroCalcMinWageTaxExemption(gross, thisMonthRawGV, monthIndex);
+  const { incomeTaxExemption, stampTaxExemption } = _bordroCalcMinWageTaxExemption(gross, thisMonthRawGV, monthIndex, y);
   const netGV         = _bordroRound2(Math.max(0, thisMonthRawGV - incomeTaxExemption));
   const grossStampTax = _bordroRound2(gross * cfg.stampTaxRate);
   const stampTax      = _bordroRound2(Math.max(0, grossStampTax - stampTaxExemption));
 
   const net = _bordroRound2(gross - sgkDeduction - unemployDeduct - netGV - stampTax);
   return { gross, sgkDeduction, unemployDeduct, disabilityDeduction, disabilityDegree: disDegree,
-    gvMatrah, ytdMatrah, thisMonthRawGV, incomeTaxExemption, stampTaxExemption, grossStampTax, netGV, stampTax, net };
+    gvMatrah, ytdMatrah, thisMonthRawGV, incomeTaxExemption, stampTaxExemption, grossStampTax, netGV, stampTax, net,
+    cfgYear: cfg.year };
 }
 
-// Net → Brüt ters hesaplama (ikili arama, ~120 iterasyon, 0.001 TL hassasiyet)
-function findGrossFromNet(targetNet, maritalStatus, children, priorYTDMatrah, monthIndex, opts) {
+// Net → Brüt ters hesaplama (ikili arama)
+// y: bordro yılı (yıl-bazlı parametreler için)
+function findGrossFromNet(targetNet, maritalStatus, children, priorYTDMatrah, monthIndex, opts, y) {
   targetNet = Math.max(0, safeNum(targetNet, 0));
   if (targetNet <= 0) return 0;
-  let lo = targetNet * 0.75, hi = targetNet * 3.5;
-  for (let i = 0; i < 120; i++) {
+  // Üst sınır yüksek dilim için genişletildi (max %40 sonrası ve büyük rakamlar için)
+  let lo = targetNet * 0.75, hi = Math.max(targetNet * 5, 1000000);
+  for (let i = 0; i < 200; i++) {
     const mid = (lo + hi) / 2;
-    const { net } = computeNetFromGross(mid, maritalStatus, children, priorYTDMatrah, monthIndex, opts);
+    const { net } = computeNetFromGross(mid, maritalStatus, children, priorYTDMatrah, monthIndex, opts, y);
+    if (!Number.isFinite(net)) { hi = mid; continue; }
     if (net < targetNet) lo = mid; else hi = mid;
     if (hi - lo < 0.001) break;
   }
@@ -11232,10 +11409,12 @@ let _eBordroSession = {};
 function openEBordroModal(y, m) {
   const u = cu();
   _eBordroSession = { y, m, userId:S.cu };
-  /* [FIX O-06] Bordro parametreleri güncel yıldan eskiyse uyar */
+  /* Yıl-bazlı parametre tablosunda yıl yoksa payrollCfg() içinde uyarı atılır.
+     Tablo dışı yıl seçilirse en yakın yıla fallback. */
+  const _yrCfg = payrollCfg(y);
   const _curYear = new Date().getFullYear();
-  if (payrollConfig.year < _curYear) {
-    setTimeout(() => toast(`⚠️ Bordro parametreleri ${payrollConfig.year} yılına ait! ${_curYear} için doğrulanmamış olabilir.`, 'warning'), 300);
+  if (_yrCfg.year !== y) {
+    setTimeout(() => toast(`⚠️ Bordro parametreleri ${y} için tanımlı değil — ${_yrCfg.year} değerleri kullanılacak.`, 'warning'), 300);
   }
   const modal = $('eBordroModal');
   if (!modal) return;
@@ -11255,11 +11434,15 @@ function openEBordroModal(y, m) {
   const priorYTDEl = $('eb-priorYTD');
   if (priorYTDEl && u) {
     const rec = getPayrollCheck(u, y, m);
-    const prevM = m > 0 ? m - 1 : 11;
-    const prevY = m > 0 ? y : y - 1;
-    const prevKey = employeeMonthKey(prevY, prevM);
-    const prevRec = (u.payrollChecks && u.payrollChecks[prevKey]) || {};
-    const autoPrior = safeNum(rec.priorYTD, 0) || safeNum(prevRec.calculatedYTD, 0) || 0;
+    /* [FIX P2] Ocak ayında kümülatif vergi matrahı sıfırlanır (GVK md.107).
+       Aralık YTD'yi yeni yıla taşıma yapmıyoruz. */
+    const isJan = (m === 0);
+    const prevM = isJan ? null : (m - 1);
+    const prevY = isJan ? null : y;
+    const prevRec = (prevM === null) ? {} :
+      ((u.payrollChecks && u.payrollChecks[employeeMonthKey(prevY, prevM)]) || {});
+    const autoPrior = isJan ? 0 :
+      (safeNum(rec.priorYTD, 0) || safeNum(prevRec.calculatedYTD, 0) || 0);
     priorYTDEl.value = autoPrior > 0 ? autoPrior.toFixed(2) : '0';
   }
 
@@ -11331,10 +11514,11 @@ function renderBordroPreview() {
 
   // 1) Taban brüt maaş (yalnızca sabit maaş, ekler hariç)
   const calcOpts = { disabilityDegree: disability };
+  const cfg = payrollCfg(y);
   let seedGross = 0;
   if (amount > 0) {
     seedGross = calcType === 'net2gross'
-      ? findGrossFromNet(amount, marital, children, priorYTD, m, calcOpts)
+      ? findGrossFromNet(amount, marital, children, priorYTD, m, calcOpts, y)
       : amount;
   }
 
@@ -11343,7 +11527,7 @@ function renderBordroPreview() {
   const now = new Date();
   const d = getMD(y, m, (y === now.getFullYear() && m === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   const compRate = getOTRate(u);
-  const partialRate = payrollConfig.otPartialMultiplier; // %25 zam (sözleşme <45 saat)
+  const partialRate = cfg.otPartialMultiplier; // %25 zam (sözleşme <45 saat)
   const compMode = (u && u.otCompMode) || 'pay';
   let baseGross = 0, normalGross = 0, weeklyRestGross = 0, publicHolidayGross = 0;
   let publicHolidayWorkGross = 0, otGross = 0, ot125Gross = 0, nightGross = 0;
@@ -11352,7 +11536,7 @@ function renderBordroPreview() {
 
   if (isManualEarnings) {
     drGross = manualDailyGross > 0 ? _bordroRound2(manualDailyGross) : _bordroRound2(seedGross / 30);
-    hrGross = _bordroLegalHourlyFromDaily(drGross);
+    hrGross = _bordroLegalHourlyFromDaily(drGross, y);
     normalGross = _bordroRound2(manualNormalHours * hrGross);
     weeklyRestGross = _bordroRound2(manualWeeklyRestDays * drGross);
     publicHolidayGross = _bordroRound2(manualPublicHolidayDays * drGross);
@@ -11372,7 +11556,7 @@ function renderBordroPreview() {
   } else {
     baseGross = _bordroRound2(seedGross);
     drGross = _bordroRound2(baseGross / 30);
-    hrGross = _bordroLegalHourlyFromDaily(drGross);
+    hrGross = _bordroLegalHourlyFromDaily(drGross, y);
     otHours = d.oh || 0;
     ot125Hours = d.oh125 || 0;
     nightHrs = d.nh || 0;
@@ -11385,7 +11569,7 @@ function renderBordroPreview() {
   }
 
   // 3) Toplam brüt üzerinden vergi/kesinti hesabı (engellilik indirimi dahil)
-  const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, calcOpts);
+  const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, calcOpts, y);
 
   if (u) {
     const curRec = getPayrollCheck(u, y, m);
@@ -11424,12 +11608,14 @@ function renderBordroPreview() {
   if (u) { try { saveLS(); } catch(e) { /* yoksay */ } }
 
   // Vergiden muaf yan haklar
-  const mealTotal      = _bordroRound2(mealDays * payrollConfig.mealDailyTaxFree);
-  const transportTotal = _bordroRound2(transportDays * payrollConfig.transportDailyTaxFree);
+  const mealTotal      = _bordroRound2(mealDays * cfg.mealDailyTaxFree);
+  const transportTotal = _bordroRound2(transportDays * cfg.transportDailyTaxFree);
   const yasalNet       = _bordroRound2(res.net + mealTotal + transportTotal);
 
   // Özel kesintiler (yasal net sonrası — "ele geçen net")
-  const besDeduct      = _bordroRound2(totalGross * besRate);
+  // BES otomatik katılım: tabanı SGK prime esas kazanç (gross min SGK tavanı), brüt değil.
+  const besBase        = _bordroRound2(Math.min(totalGross, cfg.sgkCeiling));
+  const besDeduct      = _bordroRound2(besBase * besRate);
   const privateDeducts = _bordroRound2(besDeduct + icra + avans + otherDeduct);
   const finalNet       = _bordroRound2(Math.max(0, yasalNet - privateDeducts));
   if (u) {
@@ -11449,8 +11635,9 @@ function renderBordroPreview() {
     otGross, ot125Gross, nightGross, holGross, totalGross,
     otHours, ot125Hours, nightHours: nightHrs, holDays: isManualEarnings ? manualPublicHolidayWorkDays : d.hdw, holPayDays,
     hrGross, drGross, compRate, partialRate, nightRate,
-    payrollHourBasis: payrollConfig.monthlyStandardHours,
-    disability, besRate, besDeduct, icra, avans, otherDeduct, privateDeducts,
+    payrollHourBasis: cfg.monthlyStandardHours,
+    cfgYear: cfg.year,
+    disability, besRate, besBase, besDeduct, icra, avans, otherDeduct, privateDeducts,
     annualLeaveDays: d.mau || 0, sickLeaveDays: d.msd || 0, unpaidDays: d.ud || 0,
     empName:  (($('eb-empName')  || {}).value || '').slice(0, 120),
     company:  (($('eb-company')  || {}).value || '').slice(0, 120),
@@ -11472,7 +11659,7 @@ function renderBordroPreview() {
     ${publicHolidayGross > 0 ? `<div class="bordro-row add"><span class="bl">Genel Tatil (${fmr(manualPublicHolidayDays)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(publicHolidayGross)}</span></div>` : ''}
     ${baseGross > 0 ? `<div class="bordro-row sub"><span class="bl">TEMEL BRÜT</span><span class="bv">${fmb(baseGross)}</span></div>` : ''}
   ` : `<div class="bordro-row"><span class="bl">Temel Brüt Maaş</span><span class="bv">${fmb(baseGross)}</span></div>
-    <div class="bordro-row info"><span class="bl">Saatlik Bordro Esası</span><span class="bv">${payrollConfig.monthlyStandardHours}s (${fmr(hrGross)}₺/s)</span></div>`;
+    <div class="bordro-row info"><span class="bl">Saatlik Bordro Esası</span><span class="bv">${cfg.monthlyStandardHours}s (${fmr(hrGross)}₺/s)</span></div>`;
 
   const previewEl = $('bordroPreview');
   if (!previewEl) return;
@@ -11499,8 +11686,8 @@ function renderBordroPreview() {
     <div class="bordro-row deduct"><span class="bl">Damga Vergisi (%0.759)</span><span class="bv">− ${fmb(res.grossStampTax)}</span></div>
     <div class="bordro-row add"><span class="bl">Asgari Ücret DV İstisnası</span><span class="bv">+ ${fmb(res.stampTaxExemption)}</span></div>
     <div class="bordro-row deduct"><span class="bl">Net Damga Vergisi</span><span class="bv">− ${fmb(res.stampTax)}</span></div>
-    ${mealTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yemek Yardımı (${mealDays}g × ${payrollConfig.mealDailyTaxFree}₺)</span><span class="bv">+ ${fmb(mealTotal)}</span></div>` : ''}
-    ${transportTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yol Yardımı (${transportDays}g × ${payrollConfig.transportDailyTaxFree}₺)</span><span class="bv">+ ${fmb(transportTotal)}</span></div>` : ''}
+    ${mealTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yemek Yardımı (${mealDays}g × ${cfg.mealDailyTaxFree}₺)</span><span class="bv">+ ${fmb(mealTotal)}</span></div>` : ''}
+    ${transportTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yol Yardımı (${transportDays}g × ${cfg.transportDailyTaxFree}₺)</span><span class="bv">+ ${fmb(transportTotal)}</span></div>` : ''}
     ${hasPrivateDeducts ? `<div class="bordro-row sub"><span class="bl">YASAL NET</span><span class="bv">${fmb(yasalNet)}</span></div>` : ''}
     ${besDeduct > 0 ? `<div class="bordro-row deduct"><span class="bl">BES Otomatik Katılım (%${(besRate*100).toFixed(2)})</span><span class="bv">− ${fmb(besDeduct)}</span></div>` : ''}
     ${icra > 0 ? `<div class="bordro-row deduct"><span class="bl">İcra Kesintisi</span><span class="bv">− ${fmb(icra)}</span></div>` : ''}
@@ -11615,7 +11802,7 @@ function downloadBordroPDF() {
   doc.setFontSize(7);
   doc.setTextColor(160, 160, 160);
   doc.text(
-    pdfStr(`Tahmini bordro kontroludur; resmi bordro yerine gecmez. Olusturulma: ${new Date().toLocaleString('tr-TR')} | ShiftTrack Pro | payrollConfig ${payrollConfig.year}`),
+    pdfStr(`Tahmini bordro kontroludur; resmi bordro yerine gecmez. Olusturulma: ${new Date().toLocaleString('tr-TR')} | ShiftTrack Pro | payrollConfig ${r.cfgYear || payrollConfig.year}`),
     105, footY, { align: 'center' }
   );
 
@@ -11667,7 +11854,7 @@ function exportBordroJSON() {
       annualLeaveDays:    r.annualLeaveDays || 0,
       sickLeaveDays:      r.sickLeaveDays || 0,
       unpaidDays:         r.unpaidDays || 0,
-      payrollHourBasis:    r.payrollHourBasis || payrollConfig.monthlyStandardHours,
+      payrollHourBasis:    r.payrollHourBasis || payrollCfg(r.y).monthlyStandardHours,
     },
     deductions: {
       sgkEmployee:   +r.sgkDeduction.toFixed(2),
@@ -11684,6 +11871,7 @@ function exportBordroJSON() {
     },
     privateDeductions: {
       besRate:    +(r.besRate || 0).toFixed(4),
+      besBase:    +(r.besBase || 0).toFixed(2),
       bes:        +(r.besDeduct || 0).toFixed(2),
       icra:       +(r.icra || 0).toFixed(2),
       avans:      +(r.avans || 0).toFixed(2),
@@ -11692,7 +11880,7 @@ function exportBordroJSON() {
     },
     yasalNet:  +(r.yasalNet || r.net).toFixed(2),
     net:       +r.finalNet.toFixed(2),
-    config:    { year: payrollConfig.year, minWageGross: payrollConfig.minWageGross },
+    config:    { year: r.cfgYear || payrollCfg(r.y).year, minWageGross: payrollCfg(r.y).minWageGross },
     disclaimer: r.disclaimer || 'Tahmini bordro kontrolüdür; resmi bordro ve güncel mevzuat kontrolü yerine geçmez.',
     timestamp: new Date().toISOString(),
   };
@@ -11736,7 +11924,7 @@ function exportBordroXML() {
     <FazlaMesaiUcreti saat="${(r.otHours||0).toFixed(2)}" oran="${r.compRate||1.5}">${fv(r.otGross||0)}</FazlaMesaiUcreti>
     <GeceCalismaZammi saat="${(r.nightHours||0).toFixed(2)}" oran="${r.nightRate||0}" kanun="4857/69">${fv(r.nightGross||0)}</GeceCalismaZammi>
     <TatilCalismasiIlavesi gun="${r.holPayDays||r.holDays||0}" takvimGunu="${r.holDays||0}" kanun="Md.47">${fv(r.holGross||0)}</TatilCalismasiIlavesi>
-    <ToplamBrut saatlikEsas="${r.payrollHourBasis || payrollConfig.monthlyStandardHours}">${fv(r.gross)}</ToplamBrut>
+    <ToplamBrut saatlikEsas="${r.payrollHourBasis || payrollCfg(r.y).monthlyStandardHours}">${fv(r.gross)}</ToplamBrut>
     <YemekYardimi>${fv(r.mealTotal)}</YemekYardimi>
     <YolYardimi>${fv(r.transportTotal)}</YolYardimi>
   </Kazanclar>
@@ -11761,7 +11949,7 @@ function exportBordroXML() {
     <Toplam>${fv(r.privateDeducts||0)}</Toplam>
   </OzelKesintiler>
   <NetMaas etiket="${(r.privateDeducts||0)>0?'EleGecenNet':'YasalNet'}">${fv(r.finalNet)}</NetMaas>
-  <PayrollConfig Yil="${payrollConfig.year}" AsgariBrut="${payrollConfig.minWageGross}"/>
+  <PayrollConfig Yil="${r.cfgYear || payrollCfg(r.y).year}" AsgariBrut="${payrollCfg(r.y).minWageGross}"/>
 </Bordro>`;
 
   const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
