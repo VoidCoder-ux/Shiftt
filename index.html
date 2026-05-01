@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
 <title>ShiftTrack Pro</title>
 <script>
 // Cache buster — eski service worker'ı temizle
@@ -2749,6 +2749,333 @@ body.theme-light .doc-cat, body.theme-light-ocean .doc-cat {
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ================================================================
+   iPhone / iOS Safari compatibility
+   Layout-only overrides. Calculation, storage, validation and app
+   behavior remain untouched.
+   ================================================================ */
+:root{
+  --st-safe-top: env(safe-area-inset-top, 0px);
+  --st-safe-right: env(safe-area-inset-right, 0px);
+  --st-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --st-safe-left: env(safe-area-inset-left, 0px);
+  --st-topbar-h: 56px;
+  --st-tabs-h: 54px;
+}
+html{
+  min-height:100%;
+  overflow-x:hidden;
+  -webkit-text-size-adjust:100%;
+}
+body,#mainApp,#loginScreen{
+  min-height:100vh;
+  min-height:100dvh;
+}
+img,canvas,svg,video,iframe{
+  max-width:100%;
+}
+@media (max-width:768px), (pointer:coarse){
+  html,body{
+    width:100%;
+    max-width:100%;
+    overflow-x:hidden;
+  }
+  body{
+    min-height:100dvh;
+    touch-action:manipulation;
+  }
+  #mainApp,#loginScreen,#authScreen{
+    min-height:100vh;
+    min-height:100dvh;
+  }
+  .topbar{
+    height:calc(var(--st-topbar-h) + var(--st-safe-top)) !important;
+    padding:var(--st-safe-top) max(10px,var(--st-safe-right)) 0 max(10px,var(--st-safe-left)) !important;
+  }
+  .nav-tabs{
+    top:calc(var(--st-topbar-h) + var(--st-safe-top)) !important;
+    height:var(--st-tabs-h) !important;
+    justify-content:flex-start !important;
+    gap:4px !important;
+    padding:0 max(8px,var(--st-safe-right)) 0 max(8px,var(--st-safe-left)) !important;
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    overscroll-behavior-x:contain;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .nav-tabs::-webkit-scrollbar{
+    display:none;
+  }
+  .nav-tab{
+    flex:0 0 44px !important;
+    min-width:44px !important;
+    min-height:44px !important;
+    max-width:none !important;
+    padding:6px 10px !important;
+  }
+  .content{
+    padding-top:calc(var(--st-safe-top) + var(--st-topbar-h) + var(--st-tabs-h) + 14px) !important;
+    padding-right:max(10px,var(--st-safe-right)) !important;
+    padding-left:max(10px,var(--st-safe-left)) !important;
+    padding-bottom:calc(32px + var(--st-safe-bottom)) !important;
+    max-width:100% !important;
+    overflow-x:hidden !important;
+  }
+  .content,.page,.card,.card-head,.stats,.stat,.grid-2,.grid-3,
+  .dash-mid-grid,.dash-bottom-grid,.dash-reports,.dash-report,
+  .ai-page-grid,.ai-card,.ai-api-grid,.ai-chat-form,.cal-controls,
+  .cal-nav,.cal-grid,.cal-month-summary,.cal-earn-bar,.result-box,
+  .data-btns,.modal,.modal-body,.modal-foot,.bordro-box,.bordro-body,
+  .bordro-section,.bordro-form-grid,.docs-grid,.doc-card,.s-card,
+  .earn-section,.esb,.info-row,.week-chart,.wk-row,.leave-cards,
+  .team-summary,.auth-box{
+    min-width:0;
+    max-width:100%;
+  }
+  .card,#leaveTable,#statsContent,#earnContent,#earnCompare,
+  .bordro-preview,.trend-chart-wrap,.team-grid,.table-scroll{
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  #leaveTable table,#statsContent table,#earnContent table,#earnCompare table,
+  .card > table{
+    min-width:520px;
+  }
+  .team-grid{
+    min-width:560px;
+  }
+  .topbar-btn,.topbar-user,.sync-status,.cal-nav-btn,.modal-x,
+  .btn,.btn-sm,.btn-xs,.mode-tab,.preset,.lt-opt,.radio-opt,.ss-tab,
+  .rst-tab,.doc-cat,.doc-actions button,.bordro-btn,.bordro-close,
+  .auth-tab,.auth-btn,.auth-skip,.pin-key,.emoji-btn,.theme-dot,
+  .year-nav button,.leave-year-nav button,.quick-add-btn,
+  .install-banner button,.ios-install-box button,.ai-quick button,
+  .ai-chat-form button,.ai-api-actions button{
+    min-width:44px;
+    min-height:44px;
+  }
+  .btn,.btn-sm,.btn-xs,.bordro-btn,.doc-actions button{
+    justify-content:center;
+  }
+  input[type="time"],input[type="text"],input[type="number"],
+  input[type="date"],input[type="email"],input[type="password"],
+  select,textarea,.bordro-input,.bordro-select,.ai-chat-form input,
+  .ai-api-grid input,.search-bar input,.auth-fg input{
+    font-size:16px !important;
+    min-height:44px;
+    line-height:1.2;
+  }
+  input[type="checkbox"],input[type="radio"]{
+    min-width:18px;
+    min-height:18px;
+  }
+  .overlay,.calc-overlay,.employer-overlay,.wt-modal-overlay,
+  .cp-modal-overlay,.qr-modal-overlay,.confirm-overlay,.pin-overlay,
+  .bordro-overlay{
+    height:100vh;
+    height:100dvh;
+    align-items:flex-start !important;
+    padding:calc(10px + var(--st-safe-top)) max(10px,var(--st-safe-right)) calc(10px + var(--st-safe-bottom)) max(10px,var(--st-safe-left)) !important;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+  }
+  .modal,.calc-box,.employer-box,.wt-modal,.cp-modal,.qr-modal,
+  .confirm-box,.pin-box,.bordro-box,.auth-box{
+    width:100% !important;
+    max-width:min(100%, 580px) !important;
+    max-height:calc(100vh - var(--st-safe-top) - var(--st-safe-bottom) - 20px) !important;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .modal{max-width:min(100%, 420px) !important}
+  .calc-box{max-width:min(100%, 480px) !important}
+  .employer-box{
+    max-width:min(100%, 900px) !important;
+    overflow:auto;
+  }
+  .wt-modal,.cp-modal{max-width:min(100%, 360px) !important}
+  .qr-modal{max-width:min(100%, 380px) !important}
+  .confirm-box{max-width:min(100%, 360px) !important}
+  .pin-box{max-width:min(100%, 320px) !important}
+  .auth-box{max-width:min(100%, 400px) !important}
+  @supports (height:100dvh){
+    .modal,.calc-box,.employer-box,.wt-modal,.cp-modal,.qr-modal,
+    .confirm-box,.pin-box,.bordro-box,.auth-box{
+      max-height:calc(100dvh - var(--st-safe-top) - var(--st-safe-bottom) - 20px) !important;
+    }
+  }
+  #docUploadModal{
+    height:100vh;
+    height:100dvh;
+    padding:calc(10px + var(--st-safe-top)) max(10px,var(--st-safe-right)) var(--st-safe-bottom) max(10px,var(--st-safe-left)) !important;
+  }
+  .doc-upload-box,.ios-install-box{
+    max-height:calc(100dvh - var(--st-safe-top) - 10px);
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:calc(20px + var(--st-safe-bottom)) !important;
+  }
+  .doc-upload-box{
+    animation:iosDocSheetUp .3s cubic-bezier(.16,1,.3,1) !important;
+  }
+  @keyframes iosDocSheetUp{
+    from{transform:translateY(100%)}
+    to{transform:translateY(0)}
+  }
+  .ios-install-overlay{
+    height:100vh;
+    height:100dvh;
+    padding:0 max(10px,var(--st-safe-right)) var(--st-safe-bottom) max(10px,var(--st-safe-left));
+  }
+  #docViewer{
+    height:100vh;
+    height:100dvh;
+    padding:calc(52px + var(--st-safe-top)) max(10px,var(--st-safe-right)) calc(10px + var(--st-safe-bottom)) max(10px,var(--st-safe-left));
+  }
+  .dv-bar{
+    padding-top:calc(12px + var(--st-safe-top)) !important;
+  }
+  .cal-controls{
+    align-items:stretch !important;
+  }
+  .cal-nav{
+    width:100%;
+    justify-content:space-between;
+  }
+  .cal-month-title{
+    flex:1;
+    min-width:0 !important;
+    text-align:center;
+    font-size:16px !important;
+  }
+  .cal-grid{
+    gap:2px !important;
+  }
+  .cal-cell{
+    min-width:0;
+    min-height:54px !important;
+    touch-action:manipulation;
+  }
+  .cal-month-summary{
+    justify-content:flex-start;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .cms-item{
+    min-width:64px;
+  }
+  .ai-api-grid{
+    grid-template-columns:1fr !important;
+  }
+  .ai-api-actions,.modal-foot,.wt-modal-foot,.cp-modal-foot,
+  .confirm-btns,.bordro-actions,.data-btns{
+    flex-wrap:wrap;
+  }
+  .bordro-overlay{
+    justify-content:center;
+  }
+  .bordro-box{
+    max-width:min(100%, 580px) !important;
+  }
+  .bordro-body{
+    flex:1 1 auto;
+  }
+  .bordro-actions{
+    padding-bottom:calc(14px + var(--st-safe-bottom)) !important;
+  }
+  .bordro-row{
+    gap:10px;
+  }
+  .bl,.bv,.info-row .k,.info-row .v,.dr-row .drk,.dr-row .drv,
+  .esb .esd .ek,.esb .esd .ev,.earn-type-card .etc-detail,
+  .earn-type-card .etc-val,.ai-msg,.hint,.toast{
+    overflow-wrap:anywhere;
+  }
+  .install-banner{
+    right:max(10px,var(--st-safe-right));
+    bottom:calc(16px + var(--st-safe-bottom)) !important;
+    left:max(10px,var(--st-safe-left));
+    max-width:none !important;
+    transform:none !important;
+    flex-wrap:wrap;
+  }
+  .docs-add-btn{
+    right:max(16px,var(--st-safe-right));
+    bottom:calc(76px + var(--st-safe-bottom)) !important;
+  }
+  .toast-container{
+    top:calc(var(--st-safe-top) + 64px);
+    right:max(10px,var(--st-safe-right));
+    left:max(10px,var(--st-safe-left));
+  }
+  .toast{
+    max-width:100% !important;
+  }
+}
+@media (max-width:480px){
+  .stats,.dash-reports,.leave-cards,.raise-sim-result .rs-grid,
+  .tbc-section .tbc-head{
+    grid-template-columns:1fr !important;
+  }
+  .modal-foot .btn,.bordro-actions .bordro-btn{
+    flex:1 1 calc(50% - 8px);
+  }
+  #mPaste{
+    margin-right:0 !important;
+  }
+  .result-box{
+    display:grid !important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    align-items:stretch;
+  }
+  .result-box .rb-div{
+    display:none;
+  }
+  .result-box .rb-item{
+    padding:8px 4px;
+    border-radius:8px;
+    background:rgba(255,255,255,.03);
+  }
+  .fm-tracker .fmt-grid,.ai-metric-grid{
+    grid-template-columns:1fr !important;
+  }
+  .earn-wk-row,.wk-row{
+    gap:6px;
+  }
+  .earn-wk-row .ewk-label,.wk-row .label{
+    min-width:46px;
+  }
+  .earn-wk-row .ewk-val,.wk-row .hrs{
+    min-width:48px;
+  }
+}
+@media (max-width:380px){
+  .topbar-brand{
+    flex:0 0 44px;
+    max-width:44px;
+    gap:0;
+    font-size:0 !important;
+  }
+  .topbar-brand .ico{
+    width:34px;
+    height:34px;
+    font-size:14px;
+  }
+  .time-inputs{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .modal-foot .btn,.bordro-actions .bordro-btn{
+    flex-basis:100%;
+  }
+  .docs-grid{
+    grid-template-columns:1fr !important;
   }
 }
 
