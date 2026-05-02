@@ -9721,7 +9721,8 @@ function pushToCloud(callback) {
 
   const docRef = fbDb.collection('userData').doc(fbUser.uid);
   let mergedDeletedUsers = null;
-  fbDb.runTransaction(tx => tx.get(docRef).then(snap => {
+  fbDb.runTransaction(async tx => {
+    const snap = await tx.get(docRef);
     const cloud = snap.exists ? (snap.data() || {}) : {};
     const deletedUsers = mergeDeletedUsers(S.deletedUsers || {}, cloud.deletedUsers || {});
     mergedDeletedUsers = deletedUsers;
@@ -9734,8 +9735,8 @@ function pushToCloud(callback) {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       deviceId: getDeviceId()
     };
-    tx.set(docRef, data, { merge: true });
-  }))
+    await tx.set(docRef, data, { merge: true });
+  })
     .then(() => {
       clearTimeout(timeoutId);
       if (mergedDeletedUsers) {
@@ -9747,11 +9748,23 @@ function pushToCloud(callback) {
       syncInProgress = false;
       if (callback) callback();
     })
-    .catch(err => {
+    .catch(async err => {
       clearTimeout(timeoutId);
       console.error('Push hatası:', err);
-      setSyncState('error');
       syncInProgress = false;
+      if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
+        try {
+          if (fbAuth && fbAuth.currentUser) {
+            await fbAuth.currentUser.getIdToken(true);
+            setSyncState('error');
+          } else {
+            setSyncState('offline');
+            toast('Oturum süresi doldu, lütfen tekrar giriş yapın', 'warning');
+          }
+        } catch(e2) { setSyncState('offline'); toast('Yeniden giriş gerekiyor', 'warning'); }
+      } else {
+        setSyncState('error');
+      }
       if (callback) callback();
     });
 }
@@ -9969,11 +9982,23 @@ function pullFromCloud(callback) {
       setSyncState('online');
       if (callback) callback();
     })
-    .catch(err => {
+    .catch(async err => {
       clearTimeout(pullTimeout);
       console.error('Pull hatası:', err);
       syncInProgress = false;
-      setSyncState('error');
+      if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
+        try {
+          if (fbAuth && fbAuth.currentUser) {
+            await fbAuth.currentUser.getIdToken(true);
+            setSyncState('error');
+          } else {
+            setSyncState('offline');
+            toast('Oturum süresi doldu, lütfen tekrar giriş yapın', 'warning');
+          }
+        } catch(e2) { setSyncState('offline'); toast('Yeniden giriş gerekiyor', 'warning'); }
+      } else {
+        setSyncState('error');
+      }
       if (callback) callback();
     });
 }
@@ -10025,8 +10050,17 @@ function startRealtimeSync() {
         setSyncState('online');
         toast('Diğer cihazdan güncelleme alındı', 'info');
       }
-    }, err => {
+    }, async err => {
       console.error('Realtime sync hatası:', err);
+      if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
+        stopRealtimeSync();
+        try {
+          if (fbAuth && fbAuth.currentUser) await fbAuth.currentUser.getIdToken(true);
+          else toast('Oturum süresi doldu, lütfen tekrar giriş yapın', 'warning');
+        } catch(e2) { toast('Yeniden giriş gerekiyor', 'warning'); }
+      } else {
+        setSyncState('error');
+      }
     });
 }
 
@@ -10268,19 +10302,23 @@ function renderDocs() {
   h += '</div>';
   el.innerHTML += h;
 
-  // Kart butonlarına event listener
-  el.querySelectorAll('[data-doc-view]').forEach(btn => {
-    btn.addEventListener('click', () => viewDocument(btn.dataset.docView));
-  });
-  el.querySelectorAll('[data-doc-wa]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const doc = (cu().documents||[]).find(d => d.id === btn.dataset.docWa);
-      if (doc) shareDocWA(doc);
+  // Event delegation — tek listener, her render'da tekrar eklenmez
+  if (!el._docsHooked) {
+    el._docsHooked = true;
+    el.addEventListener('click', e => {
+      const vBtn = e.target.closest('[data-doc-view]');
+      if (vBtn) { viewDocument(vBtn.dataset.docView); return; }
+      const wBtn = e.target.closest('[data-doc-wa]');
+      if (wBtn) {
+        const u2 = cu(); if (!u2) return;
+        const doc = (u2.documents || []).find(d => d.id === wBtn.dataset.docWa);
+        if (doc) shareDocWA(doc);
+        return;
+      }
+      const dBtn = e.target.closest('[data-doc-del]');
+      if (dBtn) deleteDocument(dBtn.dataset.docDel);
     });
-  });
-  el.querySelectorAll('[data-doc-del]').forEach(btn => {
-    btn.addEventListener('click', () => deleteDocument(btn.dataset.docDel));
-  });
+  }
 }
 
 function buildDocCard(doc) {
@@ -10370,7 +10408,7 @@ function handleDocFile(file) {
     pw.style.display = 'block';
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
-      reader.onload = e2 => { pc.innerHTML = `<img src="${e2.target.result}" alt="Önizleme">`; };
+      reader.onload = e2 => { pc.textContent = ''; const img = document.createElement('img'); img.src = e2.target.result; img.alt = 'Önizleme'; pc.appendChild(img); };
       reader.readAsDataURL(file);
     } else {
       pc.innerHTML = `<div class="pdf-prev">📄<br><small style="font-size:11px;color:var(--t3)">${escHtml(file.name)}</small></div>`;
@@ -10454,17 +10492,24 @@ function deleteDocument(docId) {
     // Silme kaydını tut (yeniden yüklemede geri gelmesini engeller)
     if (!u.deletedDocs) u.deletedDocs = {};
     u.deletedDocs[docId] = Date.now();
+    // Firestore sub-collection'dan sil — önce bulut, sonra yerel (tutarlılık)
+    if (fbDb && fbUser) {
+      try {
+        await fbDb.collection('userData').doc(fbUser.uid)
+          .collection('users').doc(String(S.cu)).collection('docs').doc(docId).delete();
+      } catch(e) {
+        notifyCloudFail('Firestore belge silinemedi:', e);
+        // Bulut silme başarısız: yerel kaydı koru, kullanıcıya bildir
+        delete u.deletedDocs[docId];
+        saveLS();
+        return;
+      }
+    }
     // Yerel listeden kaldır
     u.documents = u.documents.filter(d => d.id !== docId);
     saveLS();
     renderDocs();
     toast('Belge silindi', 'info');
-    // Firestore sub-collection'dan da sil (arka planda)
-    if (fbDb && fbUser) {
-      fbDb.collection('userData').doc(fbUser.uid)
-        .collection('users').doc(String(S.cu)).collection('docs').doc(docId).delete()
-        .catch(e => notifyCloudFail('Firestore belge silinemedi:', e));
-    }
   });
 }
 
@@ -10512,7 +10557,11 @@ function viewDocument(docId) {
       /* [FIX ERR-HANDLE-16] dataUrlToBlob bozuk data-URL'de null döner; boş iframe yerine indir fallback */
       if (!blob) throw new Error('invalid dataUrl');
       const blobUrl = URL.createObjectURL(blob);
-      dvc.innerHTML = `<iframe src="${blobUrl}" style="width:100%;height:100%;border:none;border-radius:8px"></iframe>`;
+      dvc.textContent = '';
+      const iframe = document.createElement('iframe');
+      iframe.src = blobUrl;
+      iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:8px';
+      dvc.appendChild(iframe);
     } catch(e) {
       dvc.innerHTML = `<div style="color:#fff;text-align:center;padding:20px">
         <div style="font-size:60px;margin-bottom:12px">📄</div>
@@ -11298,6 +11347,7 @@ function renderBordroPreview() {
 
   // 2) O aya ait gerçek çalışma verisi (fazla mesai + tatil çalışması)
   const u = cu();
+  if (!u) { toast('Çalışan seçili değil', 'error'); return; }
   const now = new Date();
   const d = getMD(y, m, (y === now.getFullYear() && m === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   const mh = getMonthlyHours(u);
