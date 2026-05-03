@@ -4053,6 +4053,9 @@ function getMonthlyHours(u) {
   const mh = safeNum(u && u.monthlyHours, 0);
   return mh > 0 ? mh : 225;
 }
+function getWeeklyContractHours(u) {
+  return clampNum(u && u.weeklyContractHours, 15, 45, 45);
+}
 function getStandardDailyHours(u) {
   return Math.max(1, getMonthlyHours(u) / 30);
 }
@@ -4519,7 +4522,7 @@ function getMD(y, m, opts = {}) {
   const u = cu();
   const dim = new Date(y, m + 1, 0).getDate();
   const throughDay = opts && opts.throughDay !== undefined ? clampInt(opts.throughDay, 0, dim, dim) : null;
-  const empty = { th:0, rh:0, oh:0, oh125:0, nh:0, hh:0, hhOT:0, hpd:0, wd:0, workDayEquiv:0, hdw:0, wh:{}, wr:0, weeklyRestDays:0, publicHolidayPaidDays:0, ud:0, yau:0, ysd:0, mau:0, msd:0, hr:0, dim, weekTotalHrs:{}, weekMonthOTHrs:{} };
+  const empty = { th:0, rh:0, oh:0, oh125:0, nh:0, hh:0, hhOT:0, hpd:0, wd:0, workDayEquiv:0, hdw:0, wh:{}, wr:0, weeklyRestDays:0, publicHolidayPaidDays:0, ud:0, yau:0, ysd:0, mau:0, msd:0, hr:0, dim, weekendHours:0, weekendWorkedDays:0, weekTotalHrs:{}, weekMonthOTHrs:{} };
   if (!u) return empty;
 
   const ck = `${S.cu}-${y}-${m}-${throughDay === null ? 'all' : throughDay}`;
@@ -4529,7 +4532,7 @@ function getMD(y, m, opts = {}) {
   const _mh = getMonthlyHours(u);
   const standardDailyHours = Math.max(1, _mh / 30);
   // [FIX] Sözleşmesel haftalık saat (<45) — fazla çalışma %25 zam, fazla mesai %50 zam ayrımı (4857/41/4)
-  const weeklyContractHours = clampNum(u && u.weeklyContractHours, 1, 45, 45);
+  const weeklyContractHours = getWeeklyContractHours(u);
 
   // Bu aydaki her gün için: hangi ISO haftasında, kaç saat, tatil mi?
   // dayData[isoWeek] = { monthHrs, monthHolHrs }
@@ -4542,24 +4545,13 @@ function getMD(y, m, opts = {}) {
   const weekMonthOT125Hrs = {};     // %25 zamlı (sözleşme saati .. 45 arası, fazla çalışma)
   const weekMonthHolOTHrs = {};
   const allParts = [];
-  const workedStartDates = new Set();
-  let workStartDayEquiv = 0;
+  const workDateHours = {};
   const holidayWorkedDates = new Set();
+  const weekendWorkedDates = new Set();
 
   Object.entries(u.shifts || {}).forEach(([startDs, sh]) => {
     if (!sh || !sh.start || !sh.end) return;
     const parts = getShiftDayParts(startDs, sh);
-    const startP = parseDS(startDs);
-    const shiftHours = parts.reduce((sum, part) => sum + Math.max(0, part.hours || 0), 0);
-    if (startP && startP.y === y && startP.m === m && (throughDay === null || startP.d <= throughDay) && shiftHours > 0) {
-      workedStartDates.add(startDs);
-      /* [FIX P9] Aylıkçı çalışan: çalıştığı her gün tam ücret (4857/49 + içtihat).
-         Saatçi (u.payMode === 'hourly') için oransal hesap. */
-      const isHourly = u && u.payMode === 'hourly';
-      workStartDayEquiv += isHourly
-        ? Math.min(1, shiftHours / standardDailyHours)
-        : 1;
-    }
     parts.forEach(part => {
       if (!part || part.hours <= 0 || !part.ds) return;
       const pp = parseDS(part.ds);
@@ -4583,6 +4575,7 @@ function getMD(y, m, opts = {}) {
     if (!p || p.y !== y || p.m !== m) return;
     const hrs = part.hours;
     th += hrs;
+    workDateHours[part.ds] = (workDateHours[part.ds] || 0) + hrs;
     nh += nightHoursForPart(part);
     const wk = part.wk;
     if (!weekMonthHrs[wk]) weekMonthHrs[wk] = 0;
@@ -4593,6 +4586,10 @@ function getMD(y, m, opts = {}) {
       holidayWorkedDates.add(part.ds);
       if (!weekMonthHolHrs[wk]) weekMonthHolHrs[wk] = 0;
       weekMonthHolHrs[wk] += hrs;
+    }
+    const dow = part.dt.getDay();
+    if (dow === 0 || dow === 6) {
+      weekendWorkedDates.add(part.ds);
     }
     if (holidayPayDays > 0) hpd += holidayPayDays;
   });
@@ -4636,6 +4633,8 @@ function getMD(y, m, opts = {}) {
     oh += weekMonthOTHrs[wk] || 0;
     hhOT += weekMonthHolOTHrs[wk] || 0;
   }
+  const weeklyOh = oh;
+  const weeklyOh125 = oh125;
 
   /* [FIX OT-DAILY] Günlük FM hesap modu — kullanıcı sözleşmesi günlük 7,5 üstünü FM
      sayıyorsa hafta tamamlanmasını beklemeden günlük olarak işlenir.
@@ -4645,39 +4644,42 @@ function getMD(y, m, opts = {}) {
   const otCalcMode = (u && (u.otCalcMode === 'daily75' || u.otCalcMode === 'hybrid')) ? u.otCalcMode : 'weekly45';
   const dailyStdH = Math.min(7.5, standardDailyHours);
   if (otCalcMode !== 'weekly45') {
-    // Aynı startDs'i tek kez say (cross-midnight parçaları aynı vardiyaya ait)
-    const shiftDailyHrs = {};   // startDs -> toplam çalışılan net saat
-    const shiftDayDs   = {};    // startDs -> hangi takvim günü ay'a yazılacak
+    // Günlük eşik takvim günü bazında uygulanır; gece/ay geçişlerinde parça kendi ayına yazılır.
+    const shiftDailyHrs = {};   // ds -> o takvim günündeki toplam çalışılan net saat
     Object.entries(u.shifts || {}).forEach(([startDs, sh]) => {
       if (!sh || !sh.start || !sh.end) return;
-      const startP = parseDS(startDs);
-      if (!startP || startP.y !== y || startP.m !== m) return;
-      if (throughDay !== null && startP.d > throughDay) return;
       const parts = getShiftDayParts(startDs, sh);
-      const total = parts.reduce((s, p2) => s + Math.max(0, p2.hours || 0), 0);
-      shiftDailyHrs[startDs] = total;
-      shiftDayDs[startDs] = startDs;
+      parts.forEach(p2 => {
+        const pp = parseDS(p2 && p2.ds);
+        if (!pp || pp.y !== y || pp.m !== m) return;
+        if (throughDay !== null && pp.d > throughDay) return;
+        shiftDailyHrs[p2.ds] = (shiftDailyHrs[p2.ds] || 0) + Math.max(0, p2.hours || 0);
+      });
     });
     let dailyOT = 0;
     Object.entries(shiftDailyHrs).forEach(([startDs, total]) => {
       const over = Math.max(0, total - dailyStdH);
       if (over > 0) dailyOT += over;
     });
+    const dailyOT125 = Math.min(dailyOT, weeklyOh125);
+    const dailyOT50 = Math.max(0, dailyOT - dailyOT125);
     if (otCalcMode === 'daily75') {
-      // Sadece günlük; haftalık dalları sıfırla
-      oh = dailyOT;
-      oh125 = 0;
+      // Günlük eşik uygulanırken sözleşme-45 arası %25 ayrımı korunur.
+      oh = dailyOT50;
+      oh125 = dailyOT125;
       hhOT = 0;
-      // rh = th - oh (regular saatler tamamlayıcı)
-      rh = Math.max(0, th - oh);
+      rh = Math.max(0, th - oh - oh125);
     } else {
-      // hybrid: max(weekly OT, daily OT) — çakışma yerine yüksek olanı al
-      const weeklyOTSum = oh + oh125;
-      if (dailyOT > weeklyOTSum) {
-        oh = dailyOT;
-        oh125 = 0;
+      // hybrid: haftalık ve günlük sonucu prim katsayılı değerle karşılaştır.
+      const partialRate = payrollCfg(y).otPartialMultiplier || 1.25;
+      const weeklyWeighted = (weeklyOh * 1.5) + (weeklyOh125 * partialRate);
+      const dailyWeighted = (dailyOT50 * 1.5) + (dailyOT125 * partialRate);
+      if (dailyWeighted > weeklyWeighted) {
+        oh = dailyOT50;
+        oh125 = dailyOT125;
         // hhOT haftalıktan; daily mode'da tatil OT ayrı izlenmez
-        rh = Math.max(0, th - oh);
+        hhOT = 0;
+        rh = Math.max(0, th - oh - oh125);
       }
       // Aksi halde mevcut weekly değerleri kalır
     }
@@ -4705,13 +4707,24 @@ function getMD(y, m, opts = {}) {
   });
 
   const hr = (u.netSalary > 0 && _mh > 0) ? u.netSalary / _mh : 0;
-  const wd = workedStartDates.size;
+  const isHourly = u && u.payMode === 'hourly';
+  const workDayEquiv = Object.values(workDateHours).reduce((sum, hrs) => {
+    const h = Math.max(0, safeNum(hrs, 0));
+    return sum + (isHourly ? Math.min(1, h / standardDailyHours) : (h > 0 ? 1 : 0));
+  }, 0);
+  const wd = Object.keys(workDateHours).length;
   const hdw = holidayWorkedDates.size;
-  const workDayEquiv = workStartDayEquiv;
+  const weekendHours = allParts.reduce((sum, part) => {
+    const p = parseDS(part.ds);
+    if (!p || p.y !== y || p.m !== m) return sum;
+    const dow = part.dt.getDay();
+    return (dow === 0 || dow === 6) ? sum + Math.max(0, part.hours || 0) : sum;
+  }, 0);
+  const weekendWorkedDays = weekendWorkedDates.size;
   // wh: dashboard haftalık chart için — bu aydaki saatler (görüntüleme amaçlı)
   const wh = weekMonthHrs;
   const r = { th, rh, oh, oh125, nh, hh, hhOT, hpd, wd, workDayEquiv, hdw, wh, wr, weeklyRestDays, publicHolidayPaidDays, ud, otcm, yau, ysd, mau, msd, hr, dim,
-    weekTotalHrs, weekMonthOTHrs }; // chart'ta gerçek haftalık toplamı göstermek için
+    weekendHours, weekendWorkedDays, weekTotalHrs, weekMonthOTHrs }; // chart'ta gerçek haftalık toplamı göstermek için
   mdCache[ck] = r;
   return r;
 }
@@ -6357,7 +6370,7 @@ function applyPreset(key, el) {
 
 /* [FIX] Haftalık FM hesabı: seçili gün dahil, o haftadaki tüm saatleri toplar */
 function getWeekOTForDay(ds, currentNet, currentShift) {
-  const u = cu(); if (!u || !ds) return { ot: 0, weekTotal: 0 };
+  const u = cu(); if (!u || !ds) return { ot: 0, ot125: 0, weekTotal: 0 };
   const wk = getISOWeek(dsToDate(ds));
   let weekTotal = 0;
   getShiftPartRows(u, part => part.wk === wk && part.sourceDs !== ds)
@@ -6369,8 +6382,10 @@ function getWeekOTForDay(ds, currentNet, currentShift) {
   } else {
     weekTotal += Math.max(0, safeNum(currentNet, 0));
   }
+  const weeklyContractHours = getWeeklyContractHours(u);
+  const ot125 = Math.min(Math.max(0, weekTotal - weeklyContractHours), Math.max(0, 45 - weeklyContractHours));
   const ot = Math.max(0, weekTotal - 45);
-  return { ot, weekTotal };
+  return { ot, ot125, weekTotal, weeklyContractHours };
 }
 
 function updResult() {
@@ -6396,9 +6411,12 @@ function updResult() {
   const rbOT = $('rbOT');
   if (rbOT) {
     const weekOT = getWeekOTForDay(S.sd, net, { start:s, end:e, break:b });
-    rbOT.textContent = weekOT.ot > 0 ? '+' + weekOT.ot.toFixed(1) + 's' : '—';
-    rbOT.style.color = weekOT.ot > 0 ? 'var(--acc)' : 'var(--t3)';
-    rbOT.title = weekOT.ot > 0 ? `Hafta toplamı: ${weekOT.weekTotal.toFixed(1)}s (45s limit)` : 'Haftalık 45s aşılmadı';
+    const premiumHours = (weekOT.ot || 0) + (weekOT.ot125 || 0);
+    rbOT.textContent = premiumHours > 0 ? '+' + premiumHours.toFixed(1) + 's' : '—';
+    rbOT.style.color = premiumHours > 0 ? 'var(--acc)' : 'var(--t3)';
+    rbOT.title = premiumHours > 0
+      ? `Hafta toplamı: ${weekOT.weekTotal.toFixed(1)}s (${weekOT.weeklyContractHours}s sözleşme, 45s yasal limit)`
+      : `Haftalık ${weekOT.weeklyContractHours}s sözleşme eşiği aşılmadı`;
   }
 
   /* [FIX] Gece vardiyası bilgi notu */
@@ -6435,9 +6453,12 @@ function updResult() {
     const prevWeek = getWeekOTForDay(S.sd, 0);
     const weekWithShift = getWeekOTForDay(S.sd, net, { start:s, end:e, break:b });
     const shiftOT = Math.max(0, weekWithShift.ot - prevWeek.ot);
+    const shiftOT125 = Math.max(0, (weekWithShift.ot125 || 0) - (prevWeek.ot125 || 0));
     let earn = 0;
     if (holPay2 > 0) earn += (u.netSalary / 30) * holPay2;  // Md.47: ilave tatil ücreti
     if (shiftOT > 0 && (u.otCompMode || 'pay') !== 'leave') earn += shiftOT * hr * getOTRate(u);
+    const shiftP = parseDS(S.sd);
+    if (shiftOT125 > 0 && (u.otCompMode || 'pay') !== 'leave') earn += shiftOT125 * hr * payrollCfg(shiftP ? shiftP.y : new Date().getFullYear()).otPartialMultiplier;
     ep.textContent = (Number.isFinite(earn) && earn > 0) ? `💰 Tahmini ek: ~${fm(earn)}` : '';
   } else { ep.textContent = ''; }
 }
@@ -11264,8 +11285,9 @@ function runCalc() {
   if (!shiftCheck.ok) { toast(shiftCheck.msg, 'error'); return; }
   const dailyHrs = shiftCheck.netHours;
 
-  let totalDays = 0, totalHrs = 0, otHrs = 0, holWorkedDays = 0, holSkippedDays = 0, holWorkedPayDays = 0, holSkippedPayDays = 0, paidDayEquiv = 0;
+  let totalDays = 0, totalHrs = 0, otHrs = 0, ot125Hrs = 0, holWorkedDays = 0, holSkippedDays = 0, holWorkedPayDays = 0, holSkippedPayDays = 0, paidDayEquiv = 0;
   const weekStates = {};
+  const weeklyContractHours = getWeeklyContractHours(u);
   const weekStart = dt => {
     const x = new Date(dt);
     const dow = x.getDay() || 7;
@@ -11284,7 +11306,12 @@ function runCalc() {
       getShiftPartsForDate(u, ds0).forEach(part => { used += Math.max(0, safeNum(part.hours, 0)); });
       scan.setDate(scan.getDate() + 1);
     }
-    weekStates[wk] = { normalLeft: Math.max(0, 45 - used) };
+    const usedRegular = Math.min(used, weeklyContractHours);
+    const usedPartial = Math.min(Math.max(0, used - weeklyContractHours), Math.max(0, 45 - weeklyContractHours));
+    weekStates[wk] = {
+      normalLeft: Math.max(0, weeklyContractHours - usedRegular),
+      partialLeft: Math.max(0, (45 - weeklyContractHours) - usedPartial)
+    };
     return weekStates[wk];
   };
 
@@ -11301,8 +11328,13 @@ function runCalc() {
     totalHrs += dailyHrs;
     const st = getWeekState(d);
     const regular = Math.min(dailyHrs, Math.max(0, st.normalLeft));
-    const overtime = Math.max(0, dailyHrs - regular);
+    let premiumLeft = Math.max(0, dailyHrs - regular);
+    const partial = Math.min(premiumLeft, Math.max(0, st.partialLeft));
+    premiumLeft = Math.max(0, premiumLeft - partial);
+    const overtime = premiumLeft;
     st.normalLeft = Math.max(0, st.normalLeft - regular);
+    st.partialLeft = Math.max(0, st.partialLeft - partial);
+    ot125Hrs += partial;
     otHrs += overtime;
     /* [FIX P14] denominator /26 → /30; aylıkçı için her gün 1 (saatçi için oransal) */
     const _mhCalc = getMonthlyHours(u);
@@ -11322,7 +11354,8 @@ function runCalc() {
   const dr = u.netSalary > 0 ? u.netSalary / 30 : 0;
   const basePay = paidDayEquiv * dr;
   const _otRateCalc = getOTRate(u);
-  const otPay = (u.otCompMode || 'pay') === 'leave' ? 0 : otHrs * hr * _otRateCalc;
+  const _partialRateCalc = payrollCfg(fromD.getFullYear()).otPartialMultiplier || 1.25;
+  const otPay = (u.otCompMode || 'pay') === 'leave' ? 0 : (otHrs * hr * _otRateCalc) + (ot125Hrs * hr * _partialRateCalc);
   const holPay = holWorkedPayDays * dr;  // Md.47: yarım gün tatiller ağırlıklı ilave ücret
   const totalEarn = basePay + otPay + holPay;
 
@@ -11336,7 +11369,7 @@ function runCalc() {
     <div class="calc-detail">
       <div class="cd-item"><div class="cd-val" style="color:var(--p)">${totalDays}</div><div class="cd-lbl">İş Günü</div></div>
       <div class="cd-item"><div class="cd-val" style="color:var(--g)">${totalHrs.toFixed(1)}s</div><div class="cd-lbl">Toplam Saat</div></div>
-      <div class="cd-item"><div class="cd-val" style="color:var(--acc)">${otHrs.toFixed(1)}s</div><div class="cd-lbl">Fazla Mesai</div></div>
+      <div class="cd-item"><div class="cd-val" style="color:var(--acc)">${otHrs.toFixed(1)}s / ${ot125Hrs.toFixed(1)}s</div><div class="cd-lbl">FM %50 / %25</div></div>
       <div class="cd-item"><div class="cd-val" style="color:var(--r)">${(skipHol ? holSkippedPayDays : holWorkedPayDays).toFixed(1)}</div><div class="cd-lbl">${skipHol ? 'Atlanan Tatil' : 'Tatil Çalışma'}</div></div>
       ${u.netSalary > 0 ? `
         <div class="cd-item"><div class="cd-val" style="color:var(--g)">${fm(basePay)}</div><div class="cd-lbl">Baz Maaş</div></div>
@@ -11957,6 +11990,10 @@ function renderBordroPreview() {
       return;
     }
   }
+  const hasManualHolidayOTOverlap = isManualEarnings && manualPublicHolidayWorkDays > 0 && (manualOTHours > 0 || manualOT125Hours > 0);
+  if (hasManualHolidayOTOverlap) {
+    toast('Genel tatil çalışması ve FM birlikte girildi; aynı saatleri iki kez yazmadığınızdan emin olun.', 'warning');
+  }
 
   // 1) Taban brüt maaş (yalnızca sabit maaş, ekler hariç)
   const calcOpts = { disabilityDegree: disability };
@@ -11980,6 +12017,7 @@ function renderBordroPreview() {
   let publicHolidayWorkGross = 0, otGross = 0, ot125Gross = 0, nightGross = 0;
   let hrGross = 0, drGross = 0, nightHrs = 0, holPayDays = 0, holGross = 0, totalGross = 0;
   let otHours = 0, ot125Hours = 0;
+  let unpaidGross = 0;
 
   if (isManualEarnings) {
     drGross = manualDailyGross > 0 ? _bordroRound2(manualDailyGross) : _bordroRound2(seedGross / 30);
@@ -12004,6 +12042,7 @@ function renderBordroPreview() {
     baseGross = _bordroRound2(seedGross);
     drGross = _bordroRound2(baseGross / 30);
     hrGross = _bordroLegalHourlyFromDaily(drGross, y);
+    unpaidGross = _bordroRound2(Math.max(0, d.ud || 0) * drGross);
     otHours = d.oh || 0;
     ot125Hours = d.oh125 || 0;
     nightHrs = d.nh || 0;
@@ -12012,11 +12051,15 @@ function renderBordroPreview() {
     ot125Gross = compMode === 'pay' ? _bordroRound2(ot125Hours * hrGross * partialRate) : 0;
     nightGross = _bordroRound2(nightHrs * hrGross * nightRate);
     holGross = _bordroRound2(holPayDays * drGross);
-    totalGross = _bordroRound2(baseGross + otGross + ot125Gross + nightGross + holGross);
+    totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross) + otGross + ot125Gross + nightGross + holGross);
   }
 
   // 3) Toplam brüt üzerinden vergi/kesinti hesabı (engellilik indirimi dahil)
   const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, calcOpts, y);
+  const belowMinWage = totalGross > 0 && totalGross < cfg.minWageGross;
+  if (belowMinWage) {
+    toast('Hesaplanan brüt asgari ücretin altında; kısmi çalışma/eksik gün politikasını kontrol edin.', 'warning');
+  }
 
   if (u) {
     const curRec = getPayrollCheck(u, y, m);
@@ -12078,14 +12121,18 @@ function renderBordroPreview() {
     ...res, mealTotal, transportTotal, yasalNet, finalNet, marital, children, priorYTD, y, m,
     userId:S.cu,
     earningMode, baseGross, normalGross, weeklyRestGross, publicHolidayGross, publicHolidayWorkGross,
-    normalHours: manualNormalHours, weeklyRestDays: manualWeeklyRestDays, publicHolidayDays: manualPublicHolidayDays,
+    normalHours: isManualEarnings ? manualNormalHours : (d.rh || 0), weeklyRestDays: manualWeeklyRestDays, publicHolidayDays: isManualEarnings ? manualPublicHolidayDays : (d.publicHolidayPaidDays || 0),
     otGross, ot125Gross, nightGross, holGross, totalGross,
     otHours, ot125Hours, nightHours: nightHrs, holDays: isManualEarnings ? manualPublicHolidayWorkDays : d.hdw, holPayDays,
     hrGross, drGross, compRate, partialRate, nightRate,
     payrollHourBasis: cfg.monthlyStandardHours,
     cfgYear: cfg.year,
     disability, besRate, besBase, besDeduct, icra, avans, otherDeduct, privateDeducts,
-    annualLeaveDays: d.mau || 0, sickLeaveDays: d.msd || 0, unpaidDays: d.ud || 0,
+    annualLeaveDays: d.mau || 0, sickLeaveDays: d.msd || 0, unpaidDays: d.ud || 0, unpaidGross,
+    weekendHours: d.weekendHours || 0, weekendWorkedDays: d.weekendWorkedDays || 0,
+    holidayOvertimePolicy: 'Genel tatil çalışması ilavesi Md.47 olarak ayrı kalemdir; haftalık/günlük FM eşiğini aşan saatler ayrıca FM satırına girer.',
+    manualHolidayOTOverlap: hasManualHolidayOTOverlap,
+    belowMinWage,
     empName:  (($('eb-empName')  || {}).value || '').slice(0, 120),
     company:  (($('eb-company')  || {}).value || '').slice(0, 120),
     tcNo:     (($('eb-tcNo')     || {}).value || '').replace(/\D/g, '').slice(0, 11),
@@ -12094,7 +12141,7 @@ function renderBordroPreview() {
 
   const fmb = v => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
   const fmr = v => v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const hasExtras = otGross > 0 || ot125Gross > 0 || nightGross > 0 || holGross > 0;
+  const hasExtras = unpaidGross > 0 || otGross > 0 || ot125Gross > 0 || nightGross > 0 || holGross > 0;
   const annualLeaveDays = d.mau || 0;
   const sickLeaveDays = d.msd || 0;
   const unpaidDays = d.ud || 0;
@@ -12117,7 +12164,10 @@ function renderBordroPreview() {
     ${baseRowsHtml}
     ${annualLeaveDays > 0 ? `<div class="bordro-row info"><span class="bl">Yıllık İzin (ücretli, baz içinde)</span><span class="bv">${fmr(annualLeaveDays)} gün</span></div>` : ''}
     ${sickLeaveDays > 0 ? `<div class="bordro-row info"><span class="bl">Raporlu / İstirahat (SGK ödemesi ayrı)</span><span class="bv">${fmr(sickLeaveDays)} gün</span></div>` : ''}
-    ${unpaidDays > 0 ? `<div class="bordro-row deduct"><span class="bl">Ücretsiz İzin (baz brütten düşülür)</span><span class="bv">− ${fmb(unpaidDays * drGross)}</span></div>` : ''}
+    ${(d.weekendWorkedDays || 0) > 0 ? `<div class="bordro-row info"><span class="bl">Hafta Sonu Çalışması (ayrı katsayı tanımlı değil)</span><span class="bv">${fmr(d.weekendHours || 0)} saat</span></div>` : ''}
+    ${belowMinWage ? `<div class="bordro-row info"><span class="bl">Asgari Ücret Kontrolü</span><span class="bv">Altında</span></div>` : ''}
+    ${unpaidDays > 0 ? `<div class="bordro-row deduct"><span class="bl">Ücretsiz İzin (baz brütten düşülür)</span><span class="bv">− ${fmb(unpaidGross)}</span></div>` : ''}
+    ${(holGross > 0 && (otGross > 0 || ot125Gross > 0)) ? `<div class="bordro-row info"><span class="bl">Tatil + FM Kuralı</span><span class="bv">Ayrı kalem</span></div>` : ''}
     ${ot125Gross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Çalışma %25 (${ot125Hours.toFixed(1)}s × ${fmr(hrGross)}₺ × ${partialRate})</span><span class="bv">+ ${fmb(ot125Gross)}</span></div>` : ''}
     ${otGross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Mesai %50 (${otHours.toFixed(1)}s × ${fmr(hrGross)}₺ × ${compRate})</span><span class="bv">+ ${fmb(otGross)}</span></div>` : ''}
     ${nightGross > 0 ? `<div class="bordro-row add"><span class="bl">Gece Çalışma Zammı (${nightHrs.toFixed(1)}s × ${fmr(hrGross)}₺ × ${nightRate})</span><span class="bv">+ ${fmb(nightGross)}</span></div>` : ''}
@@ -12202,7 +12252,8 @@ function downloadBordroPDF() {
   if (r.otGross > 0)  rows.push([`Fazla Mesai %50 (${(r.otHours||0).toFixed(1)}s x ${(r.hrGross||0).toFixed(2)} x ${r.compRate||1.5})`, fmb(r.otGross), '']);
   if (r.nightGross > 0) rows.push([`Gece Calisma Zammi (${(r.nightHours||0).toFixed(1)}s x ${(r.hrGross||0).toFixed(2)} x ${r.nightRate||0})`, fmb(r.nightGross), '']);
   if (r.holGross > 0) rows.push([`Tatil Cal. Ilavesi (${(r.holPayDays||r.holDays||0).toFixed(2)}g x ${(r.drGross||0).toFixed(2)}) Md.47`, fmb(r.holGross), '']);
-  if (r.otGross > 0 || r.ot125Gross > 0 || r.nightGross > 0 || r.holGross > 0) rows.push(['TOPLAM BRUT', fmb(r.gross), '']);
+  if ((r.unpaidGross || 0) > 0) rows.push([`Ucretsiz Izin (${(r.unpaidDays||0).toFixed(2)}g x ${(r.drGross||0).toFixed(2)})`, '', fmb(r.unpaidGross)]);
+  if (r.otGross > 0 || r.ot125Gross > 0 || r.nightGross > 0 || r.holGross > 0 || (r.unpaidGross || 0) > 0) rows.push(['TOPLAM BRUT', fmb(r.gross), '']);
   rows.push(
     ['SGK Isci Payi (%14)',    '',                     fmb(r.sgkDeduction)],
     ['Issizlik Sigortasi (%1)','',                     fmb(r.unemployDeduct)],
@@ -12301,6 +12352,9 @@ function exportBordroJSON() {
       annualLeaveDays:    r.annualLeaveDays || 0,
       sickLeaveDays:      r.sickLeaveDays || 0,
       unpaidDays:         r.unpaidDays || 0,
+      unpaidGrossDeduction:+(r.unpaidGross || 0).toFixed(2),
+      weekendHours:       +(r.weekendHours || 0).toFixed(2),
+      weekendWorkedDays:  r.weekendWorkedDays || 0,
       payrollHourBasis:    r.payrollHourBasis || payrollCfg(r.y).monthlyStandardHours,
     },
     deductions: {
@@ -12328,6 +12382,11 @@ function exportBordroJSON() {
     yasalNet:  +(r.yasalNet || r.net).toFixed(2),
     net:       +r.finalNet.toFixed(2),
     config:    { year: r.cfgYear || payrollCfg(r.y).year, minWageGross: payrollCfg(r.y).minWageGross },
+    policies: {
+      holidayOvertime: r.holidayOvertimePolicy || null,
+      manualHolidayOTOverlap: !!r.manualHolidayOTOverlap,
+      belowMinWage: !!r.belowMinWage,
+    },
     disclaimer: r.disclaimer || 'Tahmini bordro kontrolüdür; resmi bordro ve güncel mevzuat kontrolü yerine geçmez.',
     timestamp: new Date().toISOString(),
   };
@@ -12371,6 +12430,10 @@ function exportBordroXML() {
     <FazlaMesaiUcreti saat="${(r.otHours||0).toFixed(2)}" oran="${r.compRate||1.5}">${fv(r.otGross||0)}</FazlaMesaiUcreti>
     <GeceCalismaZammi saat="${(r.nightHours||0).toFixed(2)}" oran="${r.nightRate||0}" kanun="4857/69">${fv(r.nightGross||0)}</GeceCalismaZammi>
     <TatilCalismasiIlavesi gun="${r.holPayDays||r.holDays||0}" takvimGunu="${r.holDays||0}" kanun="Md.47">${fv(r.holGross||0)}</TatilCalismasiIlavesi>
+    <UcretsizIzinKesintisi gun="${(r.unpaidDays||0).toFixed(2)}">${fv(r.unpaidGross||0)}</UcretsizIzinKesintisi>
+    <HaftaSonuCalismasi gun="${r.weekendWorkedDays||0}" saat="${(r.weekendHours||0).toFixed(2)}">${fv(0)}</HaftaSonuCalismasi>
+    <TatilFazlaMesaiPolitikasi>${xe(r.holidayOvertimePolicy || '')}</TatilFazlaMesaiPolitikasi>
+    <AsgariUcretAltiUyari>${r.belowMinWage ? 'true' : 'false'}</AsgariUcretAltiUyari>
     <ToplamBrut saatlikEsas="${r.payrollHourBasis || payrollCfg(r.y).monthlyStandardHours}">${fv(r.gross)}</ToplamBrut>
     <YemekYardimi>${fv(r.mealTotal)}</YemekYardimi>
     <YolYardimi>${fv(r.transportTotal)}</YolYardimi>
