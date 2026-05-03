@@ -4738,6 +4738,9 @@ function getMD(y, m, opts = {}) {
   Object.entries(u.leaves).forEach(([k, v]) => {
     const p = parseDS(k); if (!p || !v || !v.type) return;
     const withinCutoff = throughDay === null || p.y !== y || p.m !== m || p.d <= throughDay;
+    /* [FIX BLOKE-01] Import/merge çakışması: aynı gün hem shift hem leave olursa
+       shift öncelikli — yıllık (yau/ysd) ve aylık sayaçların tümünü atla. */
+    if (u.shifts && u.shifts[k]) return;
     if (p.y === y && withinCutoff) { if (v.type === 'annual') yau++; if (v.type === 'sick') ysd++; }
     if (p.y === y && p.m === m) {
       if (!withinCutoff) return;
