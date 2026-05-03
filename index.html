@@ -4706,17 +4706,21 @@ function getMD(y, m, opts = {}) {
       });
     });
     let dailyOT = 0;
+    let dailyHolOT = 0;
     Object.entries(shiftDailyHrs).forEach(([startDs, total]) => {
       const over = Math.max(0, total - dailyStdH);
-      if (over > 0) dailyOT += over;
+      if (over > 0) {
+        dailyOT += over;
+        if (isH(startDs)) dailyHolOT += over;
+      }
     });
     const dailyOT125 = Math.min(dailyOT, weeklyOh125);
     const dailyOT50 = Math.max(0, dailyOT - dailyOT125);
     if (otCalcMode === 'daily75') {
-      // Günlük eşik uygulanırken sözleşme-45 arası %25 ayrımı korunur.
+      // Günlük eşik uygulanırken sözleşme-45 arası %25 ayrımı korunur; tatil OT ayrı izlenir.
       oh = dailyOT50;
       oh125 = dailyOT125;
-      hhOT = 0;
+      hhOT = dailyHolOT;
       rh = Math.max(0, th - oh - oh125);
     } else {
       // hybrid: haftalık ve günlük sonucu prim katsayılı değerle karşılaştır.
@@ -4726,8 +4730,7 @@ function getMD(y, m, opts = {}) {
       if (dailyWeighted > weeklyWeighted) {
         oh = dailyOT50;
         oh125 = dailyOT125;
-        // hhOT haftalıktan; daily mode'da tatil OT ayrı izlenmez
-        hhOT = 0;
+        hhOT = dailyHolOT;
         rh = Math.max(0, th - oh - oh125);
       }
       // Aksi halde mevcut weekly değerleri kalır
@@ -4744,6 +4747,9 @@ function getMD(y, m, opts = {}) {
     if (p.y === y && withinCutoff) { if (v.type === 'annual') yau++; if (v.type === 'sick') ysd++; }
     if (p.y === y && p.m === m) {
       if (!withinCutoff) return;
+      /* [FIX BLOKE-01] Import/merge çakışması: aynı gün hem shift hem leave olursa
+         shift öncelikli — leave döngüsündeki aylık ücretli gün sayımını atla. */
+      if (u.shifts && u.shifts[k]) return;
       if (v.type === 'annual') mau++;
       if (v.type === 'sick') msd++;
       if (v.type === 'weekly') { wr++; weeklyRestDays++; }
@@ -7184,7 +7190,7 @@ function estimatePayrollForMonth(u, y, m, d) {
   /* baseGross'u doğru oranla pro-rate et: paid/30 üzerinden ay-bazlı brüt */
   const paidDays = Math.max(0, safeNum(earning.paidDays, 30));
   const baseGross = _bordroRound2(fullGross * (paidDays / 30));
-  const hrGross = fullGross > 0 ? _bordroRound2(fullGross / payrollHourBasis) : 0;
+  const hrGross = fullGross > 0 ? _bordroRound2(fullGross / getMonthlyHours(u)) : 0;
   const drGross = _bordroRound2(fullGross / 30);
   const compMode = u.otCompMode || 'pay';
   const compRate = getOTRate(u);
@@ -7371,7 +7377,7 @@ function employeeMonthRows(u, y, m) {
     ['Çalışan', u.name || ''],
     ['Toplam saat', `${d.th.toFixed(1)} saat`],
     ['Fazla çalışma / fazla mesai', `${(d.oh125 || 0).toFixed(1)} / ${(d.oh || 0).toFixed(1)} saat`],
-    ['Resmi tatil çalışması', `${(d.hpd || d.hdw || 0).toFixed(1)} gün`],
+    ['Resmi tatil çalışması', `${((d.hpd !== undefined ? d.hpd : d.hdw) || 0).toFixed(1)} gün`],
     ['Beklenen net kazanç', e ? fm(e.totalEarning) : 'Maaş girilmemiş'],
   ];
   if (safeNum(rec.actualPaid, 0) > 0 && e) rows.push(['Gerçek yatan / fark', `${fm(rec.actualPaid)} / ${(rec.actualPaid - e.totalEarning).toFixed(2)} TL`]);
@@ -8409,7 +8415,7 @@ function renderRaiseSim() {
     const _projectByNet = monthlyNet => {
       const fullGross = _bordroRound2(findGrossFromNet(monthlyNet, 'single', 0, _priorYTD, _rsM, undefined, _rsY));
       const baseGross = _bordroRound2(fullGross * _paidRatio);
-      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / _rsHourBasis) : 0;
+      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / getMonthlyHours(u)) : 0;
       const drGross = _bordroRound2(fullGross / 30);
       const compRate = getOTRate(u);
       const partialRate = _rsCfg.otPartialMultiplier;
@@ -8425,7 +8431,7 @@ function renderRaiseSim() {
     const _projectByGross = monthlyGross => {
       const fullGross = _bordroRound2(Math.max(0, safeNum(monthlyGross, 0)));
       const baseGross = _bordroRound2(fullGross * _paidRatio);
-      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / _rsHourBasis) : 0;
+      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / getMonthlyHours(u)) : 0;
       const drGross = _bordroRound2(fullGross / 30);
       const compRate = getOTRate(u);
       const partialRate = _rsCfg.otPartialMultiplier;
