@@ -5600,7 +5600,7 @@ function renderDash() {
   setHtml('statsEl', `
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-clock"></i></div><div class="val">${d.th.toFixed(1)}</div><div class="lbl">Toplam Saat</div>${cmp(d.th, prev.th)}</div>
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-fire"></i></div><div class="val">${(d.oh + d.oh125).toFixed(1)}</div><div class="lbl">FÇ/FM</div>${cmp(d.oh + d.oh125, prev.oh + prev.oh125)}</div>
-    <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-wallet"></i></div><div class="val">${e ? fm(e.totalEarning) : '—'}</div><div class="lbl">Kazanç${e && e.isCurrentMonth ? ' (tahmini)' : ''}</div></div>
+    <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-wallet"></i></div><div class="val">${e ? fm((e.workedDays||0)*e.dailyRate+(e.overtimePay||0)+(e.overtimePay125||0)+(e.holidayPay||0)) : '—'}</div><div class="lbl">Kazanç</div></div>
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-calendar-check"></i></div><div class="val">${d.wd}/${d.dim}</div><div class="lbl">Çalışma Günü</div></div>
   `);
 
@@ -7190,15 +7190,16 @@ function renderEarn() {
   dgHtml += '</div></div>';
 
   const _earnCfg = payrollCfg(y);
-  // Net vs net karşılaştırma: minWageGross → net dönüştür (computeNetFromGross saf fonksiyon)
   const _minNetWage = computeNetFromGross(_earnCfg.minWageGross, 'single', 0, 0, m, undefined, y).net;
-  const _belowMinWage = !e.isFutureMonth && e.totalEarning > 0 && e.totalEarning < _minNetWage;
+  const trackerBase  = (e.workedDays || 0) * e.dailyRate;
+  const trackerTotal = trackerBase + (e.overtimePay || 0) + (e.overtimePay125 || 0) + (e.holidayPay || 0);
+  const _belowMinWage = !e.isFutureMonth && trackerTotal > 0 && trackerTotal < _minNetWage;
   ec.innerHTML = `
-  ${_belowMinWage ? `<div class="hint" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35);margin-bottom:8px"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i><span style="color:#fbbf24">Tahmini kazanç (${fm(e.totalEarning)}) ${y} asgari ücret netinin (${fm(_minNetWage)}) altında. Eksik gün veya kısmi çalışma kontrolü yapın.</span></div>` : ''}
+  ${_belowMinWage ? `<div class="hint" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35);margin-bottom:8px"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i><span style="color:#fbbf24">Gerçek kazanç (${fm(trackerTotal)}) ${y} asgari ücret netinin (${fm(_minNetWage)}) altında. Eksik gün veya kısmi çalışma kontrolü yapın.</span></div>` : ''}
   <div class="earn-hero">
     <div class="sub">KAZANÇ — ${MTR[m].toUpperCase()} ${y}${e.isCurrentMonth ? ' — DEVAM EDİYOR' : ''}</div>
-    <div class="amt">${fm(e.totalEarning)}${e.isCurrentMonth ? ' <small style="font-size:14px;opacity:.6">tahmini</small>' : ''}</div>
-    <div class="info">${e.isFullMonth ? 'Tam ay' : e.isCurrentMonth ? 'Devam ediyor' : e.absentDays > 0 ? e.absentDays + 'g eksik' : 'Tam'} • ${e.totalHours.toFixed(1)}s</div>
+    <div class="amt">${fm(trackerTotal)}</div>
+    <div class="info">${e.isFullMonth ? 'Tam ay' : e.isCurrentMonth ? (e.workedDays || 0) + 'g girildi' : e.absentDays > 0 ? e.absentDays + 'g eksik' : 'Tam'} • ${e.totalHours.toFixed(1)}s</div>
     ${prevE && prevE.totalEarning > 0 && !prevE.isFutureMonth ? `<div style="margin-top:8px"><span style="font-size:11px;opacity:.7">${diff>=0?'↑':'↓'} Önceki aya göre ${fm(Math.abs(diff))}</span></div>` : ''}
     <div style="margin-top:14px">
       <button onclick="openEBordroModal(${y},${m})" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.45);color:#fff;padding:7px 16px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:600;backdrop-filter:blur(4px);transition:.2s" onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">
@@ -7215,10 +7216,10 @@ function renderEarn() {
       <div class="esb-item"><div class="esb-val">${fm(e.dailyRate)}</div><div class="esb-lbl">Günlük</div></div>
     </div>
     <div class="esb-detail">
-      <div class="esd-head">💰 NET TAHMİN (BAZ)</div>
+      <div class="esd-head">💰 NET KAZANÇ</div>
       <div class="esd"><span class="ek">Net Maaş</span><span class="ev">${fm(u.netSalary)}</span></div>
       <div class="esd"><span class="ek">Saatlik Ücret</span><span class="ev">${fm(e.hourlyRate)}/s</span></div>
-      <div class="esd" style="font-weight:600"><span class="ek">Baz Kazanç (${e.paidDays}g ücretli)</span><span class="ev">${fm(e.basePay)}</span></div>
+      <div class="esd" style="font-weight:600"><span class="ek">Baz Kazanç (${e.workedDays || 0}g çalışılan)</span><span class="ev">${fm(trackerBase)}</span></div>
       ${e.absentDays > 0 ? `
       <div class="esd-head" style="color:var(--r)">⛔ KESİNTİLER</div>
       ${e.unpaidDays > 0 ? `<div class="esd"><span class="ek">Ücretsiz İzin (${e.unpaidDays}g × ${fm(e.dailyRate)})</span><span class="ev neg">−${fm(e.unpaidDays*e.dailyRate)}</span></div>` : ''}
@@ -7237,7 +7238,7 @@ function renderEarn() {
       <div class="esd"><span class="ek">${(e.holidayPayDays || e.holidayDays).toFixed(1)}g tatil × ${fm(e.dailyRate)} ilave (Md.47)</span><span class="ev pos">+${fm(e.holidayPay)}</span></div>
       ${(e.hhOT||0) > 0 ? `<div class="esd" style="color:var(--acc);font-size:11px"><span class="ek" style="padding-left:8px">↳ ${e.hhOT.toFixed(1)}s tatil çalışması haftalık 45'i aşıyor; FM zammı ve Md.47 günlük ek ayrı satırlarda uygulanır.</span><span class="ev"></span></div>` : ''}
       ` : ''}
-      <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>TAHMİNİ NET</b></span><span class="ev">${fm(e.totalEarning)}</span></div>
+      <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>NET KAZANÇ</b></span><span class="ev">${fm(trackerTotal)}</span></div>
     </div>
   </div>
   ${renderDailyEarningsTracker(u, y, m, e)}
@@ -7568,10 +7569,11 @@ function renderEarnWeekly(u, y, m, d, e) {
 
   /* [FIX BUG-R1] totalWkEarn forEach dışında tanımsız kalıyordu → ReferenceError.
      Şimdi forEach içinde biriktirilip diffNote karşılaştırmasında kullanılıyor. */
+  const _wkTotal = (e.workedDays||0)*e.dailyRate + (e.overtimePay||0) + (e.overtimePay125||0) + (e.holidayPay||0);
   let rows = '', totalWkEarn = 0;
   weekData.forEach(({ h, totalW, isOT, weighted, idx }) => {
     const pct = maxH > 0 ? (h / maxH * 100).toFixed(1) : 0;
-    const wkEarn = totalWeighted > 0 ? (weighted / totalWeighted) * e.totalEarning : 0;
+    const wkEarn = totalWeighted > 0 ? (weighted / totalWeighted) * _wkTotal : 0;
     totalWkEarn += wkEarn;
     rows += `<div class="earn-wk-row">
       <span class="ewk-label">${idx+1}. Hafta</span>
@@ -7580,7 +7582,7 @@ function renderEarnWeekly(u, y, m, d, e) {
       <span class="ewk-val" style="color:var(--g)">${fm(wkEarn)}</span>
     </div>`;
   });
-  const diffNote = Math.abs(totalWkEarn - e.totalEarning) > 1 ? `<div style="font-size:10px;color:var(--t3);margin-top:6px;font-style:italic"><i class="fas fa-info-circle" style="margin-right:3px"></i>Haftalık kırılım tahminidir; kesin toplam yukarıdaki hesaplamadır.</div>` : '';
+  const diffNote = Math.abs(totalWkEarn - _wkTotal) > 1 ? `<div style="font-size:10px;color:var(--t3);margin-top:6px;font-style:italic"><i class="fas fa-info-circle" style="margin-right:3px"></i>Haftalık kırılım, girilmiş günlere dağıtılmıştır.</div>` : '';
   return `<div class="earn-section">
     <h3><i class="fas fa-calendar-week"></i>Haftalık Kazanç Dağılımı</h3>
     ${rows}${diffNote}
@@ -7602,10 +7604,11 @@ function renderEarnShiftTypes(u, y, m, e) {
      Toplam, e.totalEarning'e normalize edilir — aylık toplamla tutarlıdır. */
   const totalH = Object.values(types).reduce((a, v) => a + v.hours, 0);
   if (totalH > 0 && e && e.hourlyRate > 0) {
+    const _stTotal = (e.workedDays||0)*e.dailyRate + (e.overtimePay||0) + (e.overtimePay125||0) + (e.holidayPay||0);
     const rawTotal = Object.values(types).reduce((a, v) => a + v.hours * e.hourlyRate, 0);
     if (rawTotal > 0) {
       Object.values(types).forEach(v => {
-        v.earn = (v.hours * e.hourlyRate / rawTotal) * e.totalEarning;
+        v.earn = (v.hours * e.hourlyRate / rawTotal) * _stTotal;
       });
     }
   }
