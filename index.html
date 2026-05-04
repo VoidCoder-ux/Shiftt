@@ -7060,7 +7060,7 @@ function calcCumulativeEarnings(u, upToY, upToM) {
     const [ys, ms] = ym.split('-');
     const y2 = +ys, m2 = +ms - 1;
     if (y2 > upToY || (y2 === upToY && m2 > upToM)) continue;
-    const e2 = calcEarning(u, y2, m2);
+    const e2 = calcEarningForMonth(y2, m2, u.netSalary);
     if (e2 && !e2.isFutureMonth && e2.totalEarning > 0) {
       total += e2.totalEarning;
       months++;
