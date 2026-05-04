@@ -7118,9 +7118,11 @@ function renderEarn() {
   dgHtml += '</div></div>';
 
   const _earnCfg = payrollCfg(y);
-  const _belowMinWage = e.totalEarning > 0 && e.totalEarning < _earnCfg.minWageGross;
+  // Net vs net karşılaştırma: minWageGross → net dönüştür (computeNetFromGross saf fonksiyon)
+  const _minNetWage = computeNetFromGross(_earnCfg.minWageGross, 'single', 0, 0, m, undefined, y).net;
+  const _belowMinWage = !e.isFutureMonth && e.totalEarning > 0 && e.totalEarning < _minNetWage;
   ec.innerHTML = `
-  ${_belowMinWage ? `<div class="hint" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35);margin-bottom:8px"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i><span style="color:#fbbf24">Tahmini kazanç (${fm(e.totalEarning)}) ${y} asgari ücretinin (${fm(_earnCfg.minWageGross)}) altında. Eksik gün veya kısmi çalışma kontrolü yapın.</span></div>` : ''}
+  ${_belowMinWage ? `<div class="hint" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35);margin-bottom:8px"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i><span style="color:#fbbf24">Tahmini kazanç (${fm(e.totalEarning)}) ${y} asgari ücret netinin (${fm(_minNetWage)}) altında. Eksik gün veya kısmi çalışma kontrolü yapın.</span></div>` : ''}
   <div class="earn-hero">
     <div class="sub">KAZANÇ — ${MTR[m].toUpperCase()} ${y}${e.isCurrentMonth ? ' — DEVAM EDİYOR' : ''}</div>
     <div class="amt">${fm(e.totalEarning)}${e.isCurrentMonth ? ' <small style="font-size:14px;opacity:.6">tahmini</small>' : ''}</div>
