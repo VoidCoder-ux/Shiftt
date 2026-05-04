@@ -4276,8 +4276,11 @@ function nightHoursForPart(part) {
   const e = safeNum(part.endMin, 0);
   const span = Math.max(0, e - s);
   if (span <= 0) return 0;
-  const nightStart = (payrollConfig && payrollConfig.nightStartMin) || 1200;
-  const nightEnd   = (payrollConfig && payrollConfig.nightEndMin)   || 360;
+  // Part'ın ait olduğu yılın config'ini kullan; bulunamazsa mevcut yıla fallback
+  const _partYear = (parseDS(part.ds) || {}).y || new Date().getFullYear();
+  const _cfg = payrollCfg(_partYear);
+  const nightStart = _cfg.nightStartMin || 1200;
+  const nightEnd   = _cfg.nightEndMin   || 360;
   const overlap = (a, b, c, d) => Math.max(0, Math.min(b, d) - Math.max(a, c));
   // Gece pencereleri: [00:00, 06:00) ve [20:00, 24:00)
   const nightMin = overlap(s, e, 0, nightEnd) + overlap(s, e, nightStart, 1440);
@@ -6547,6 +6550,24 @@ function saveEntry() {
     const _minBrk = hrs > 7.5 ? 60 : hrs > 4 ? 30 : hrs > 0 ? 15 : 0;
     if (_minBrk > 0 && br < _minBrk) {
       toast(`Uyarı (Md.68): ${hrs.toFixed(1)}s çalışma için en az ${_minBrk} dk mola girilmeli.`, 'warning');
+    }
+
+    /* Gece vardiyası taşma bildirimi: önceki günün vardiyasının bu güne taşan parçası varsa bildir */
+    const _sdParsed = parseDS(S.sd);
+    if (_sdParsed) {
+      const _prevDate = new Date(_sdParsed.y, _sdParsed.m, _sdParsed.d - 1);
+      const _prevDs = dStr(_prevDate);
+      const _prevShift = u.shifts[_prevDs];
+      if (_prevShift) {
+        const _prevParts = getShiftDayParts(_prevDs, _prevShift);
+        const _spillPart = _prevParts.find(p2 => p2.ds === S.sd);
+        if (_spillPart) {
+          setTimeout(() => toast(
+            `Bilgi: ${_prevDs} gece vardiyasının ${_spillPart.hours.toFixed(2)}s'i bu güne taşıyor — saatler birlikte hesaplanacak.`,
+            'info'
+          ), 300);
+        }
+      }
     }
 
     const doSave = () => {
@@ -11782,7 +11803,6 @@ const payrollConfigByYear = {
       { upTo: Infinity,rate: 0.40 },
     ],
     stampTaxRate: 0.00759,
-    otMultiplier: 1.5,
     otPartialMultiplier: 1.25,
     weekendMultiplier: 1.0,
     monthlyStandardHours: 225,
@@ -11808,7 +11828,6 @@ const payrollConfigByYear = {
       { upTo: Infinity,rate: 0.40 },
     ],
     stampTaxRate: 0.00759,
-    otMultiplier: 1.5,
     otPartialMultiplier: 1.25,
     weekendMultiplier: 1.0,
     monthlyStandardHours: 225,
@@ -11834,7 +11853,6 @@ const payrollConfigByYear = {
       { upTo: Infinity,rate: 0.40 },
     ],
     stampTaxRate: 0.00759,
-    otMultiplier: 1.5,
     otPartialMultiplier: 1.25,
     weekendMultiplier: 1.0,
     monthlyStandardHours: 225,
