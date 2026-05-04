@@ -4891,6 +4891,16 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
   };
 }
 
+/* Gerçek (canlı) kazanç — yalnızca takvime girilmiş ücretli günleri sayar.
+   Haftalık izin (Md.46), yıllık/hastalık izni de ücretli gün olarak dahil edilir. */
+function calcLiveEarning(e) {
+  if (!e) return { days: 0, base: 0, total: 0 };
+  const days = (e.workedDays || 0) + (e.weeklyDays || 0) + (e.annualDays || 0) + (e.sickDays || 0) + (e.otCompDays || 0);
+  const base  = days * (e.dailyRate || 0);
+  const total = base + (e.overtimePay || 0) + (e.overtimePay125 || 0) + (e.holidayPay || 0);
+  return { days, base, total };
+}
+
 /* ============================================================
    LOCAL AI ASSISTANT MVP
 ============================================================ */
@@ -5601,7 +5611,7 @@ function renderDash() {
   setHtml('statsEl', `
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-clock"></i></div><div class="val">${d.th.toFixed(1)}</div><div class="lbl">Toplam Saat</div>${cmp(d.th, prev.th)}</div>
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-fire"></i></div><div class="val">${(d.oh + d.oh125).toFixed(1)}</div><div class="lbl">FÇ/FM</div>${cmp(d.oh + d.oh125, prev.oh + prev.oh125)}</div>
-    <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-wallet"></i></div><div class="val">${e ? fm((e.workedDays||0)*e.dailyRate+(e.overtimePay||0)+(e.overtimePay125||0)+(e.holidayPay||0)) : '—'}</div><div class="lbl">Kazanç</div></div>
+    <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-wallet"></i></div><div class="val">${e ? fm(calcLiveEarning(e).total) : '—'}</div><div class="lbl">Kazanç</div></div>
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-calendar-check"></i></div><div class="val">${d.wd}/${d.dim}</div><div class="lbl">Çalışma Günü</div></div>
   `);
 
@@ -5664,15 +5674,16 @@ function renderDash() {
   const deb = $('dashEarnSummary');
   if (deb) {
     if (e && (d.wd > 0 || d.wr > 0)) {
-      const sl = e.isCurrentMonth ? 'Devam' : e.isFullMonth ? 'Tam' : '−' + e.absentDays + 'g';
+      const _le = calcLiveEarning(e);
+      const sl = e.isCurrentMonth ? _le.days + 'g' : e.isFullMonth ? 'Tam' : '−' + e.absentDays + 'g';
       const sc = e.isCurrentMonth ? 'var(--s)' : e.isFullMonth ? 'var(--g)' : 'var(--acc)';
       deb.innerHTML = `<div class="esb" style="margin-top:16px">
         <div class="esb-title"><i class="fas fa-calculator"></i>${MTR[S.cm]} Kazanç</div>
         <div class="esb-grid">
-          <div class="esb-item"><div class="esb-val" style="color:var(--p)">${e.paidDays}<small style="font-size:11px;color:var(--t3)">g</small></div><div class="esb-lbl">Ücretli</div></div>
+          <div class="esb-item"><div class="esb-val" style="color:var(--p)">${_le.days}<small style="font-size:11px;color:var(--t3)">g</small></div><div class="esb-lbl">Ücretli</div></div>
           <div class="esb-item"><div class="esb-val" style="color:${sc}"><small style="font-size:11px">${sl}</small></div><div class="esb-lbl">Durum</div></div>
-          <div class="esb-item"><div class="esb-val" style="color:var(--g)">${fm(e.basePay)}</div><div class="esb-lbl">Maaş</div></div>
-          <div class="esb-item"><div class="esb-val" style="color:var(--acc)">${fm(e.totalEarning)}</div><div class="esb-lbl">Toplam</div></div>
+          <div class="esb-item"><div class="esb-val" style="color:var(--g)">${fm(_le.base)}</div><div class="esb-lbl">Maaş</div></div>
+          <div class="esb-item"><div class="esb-val" style="color:var(--acc)">${fm(_le.total)}</div><div class="esb-lbl">Toplam</div></div>
         </div>
       </div>`;
     } else { deb.innerHTML = ''; }
@@ -5721,10 +5732,11 @@ function renderDashReports(u, d, e) {
   /* 3. Kazanç Detay Mini */
   let earnMini = '';
   if (e) {
-    const otPct = e.totalEarning > 0 ? (e.overtimePay / e.totalEarning * 100).toFixed(1) : 0;
-    const holPct = e.totalEarning > 0 ? (e.holidayPay / e.totalEarning * 100).toFixed(1) : 0;
+    const _le2 = calcLiveEarning(e);
+    const otPct  = _le2.total > 0 ? (e.overtimePay  / _le2.total * 100).toFixed(1) : 0;
+    const holPct = _le2.total > 0 ? (e.holidayPay   / _le2.total * 100).toFixed(1) : 0;
     earnMini = `
-      <div class="dr-row"><span class="drk"><i class="fas fa-money-bill" style="color:var(--g)"></i>Maaş (baz)</span><span class="drv pos">${fm(e.basePay)}</span></div>
+      <div class="dr-row"><span class="drk"><i class="fas fa-money-bill" style="color:var(--g)"></i>Maaş (baz)</span><span class="drv pos">${fm(_le2.base)}</span></div>
       <div class="dr-row"><span class="drk"><i class="fas fa-fire" style="color:var(--acc)"></i>FM Eki</span><span class="drv accent">${fm(e.overtimePay)} <small style="color:var(--t3)">(${otPct}%)</small></span></div>
       <div class="dr-row"><span class="drk"><i class="fas fa-flag" style="color:var(--r)"></i>Tatil Eki</span><span class="drv accent">${fm(e.holidayPay)} <small style="color:var(--t3)">(${holPct}%)</small></span></div>
       <div class="dr-row"><span class="drk"><i class="fas fa-coins" style="color:var(--p)"></i>Günlük</span><span class="drv">${fm(e.dailyRate)}</span></div>
@@ -6183,7 +6195,7 @@ function renderCalMonthSummary() {
     <div class="cms-div"></div>
     <div class="cms-item"><span class="cms-val">${avgDaily}</span><span class="cms-lbl">Gün Ort.</span></div>
     <div class="cms-div"></div>
-    <div class="cms-item"><span class="cms-val">${e ? fm(e.totalEarning) : '—'}</span><span class="cms-lbl">Kazanç</span></div>
+    <div class="cms-item"><span class="cms-val">${e ? fm(calcLiveEarning(e).total) : '—'}</span><span class="cms-lbl">Kazanç</span></div>
   </div>`;
 }
 
@@ -6577,8 +6589,8 @@ function saveEntry() {
       invalidateMDCache();
       /* Canlı Kazanç Bildirimi — kayıt sonrası kazanç farkı */
       const _eAfter = (_p && u.netSalary) ? calcEarningForMonth(_p.y, _p.m, u.netSalary) : null;
-      if (_eBefore && _eAfter && (_eAfter.totalEarning - _eBefore.totalEarning) > 0.5) {
-        toast(`✅ ${hrs.toFixed(1)}s eklendi — Kazancına ~${fm(_eAfter.totalEarning - _eBefore.totalEarning)} eklendi`, 'success');
+      if (_eBefore && _eAfter && (calcLiveEarning(_eAfter).total - calcLiveEarning(_eBefore).total) > 0.5) {
+        toast(`✅ ${hrs.toFixed(1)}s eklendi — Kazancına ~${fm(calcLiveEarning(_eAfter).total - calcLiveEarning(_eBefore).total)} eklendi`, 'success');
       } else {
         toast(`${hrs.toFixed(1)}s kaydedildi`, 'success');
       }
@@ -7119,13 +7131,13 @@ function renderDailyEarningsTracker(u, y, m, e) {
   const evDays = e.evaluableDays || dim;
   const pct    = Math.min(100, Math.round((evDays / dim) * 100));
 
-  const wd = e.workedDays || 0;
-  const wdPct = Math.min(100, dim > 0 ? Math.round((wd / dim) * 100) : 0);
+  const le = calcLiveEarning(e);
+  const wdPct = Math.min(100, dim > 0 ? Math.round((le.days / dim) * 100) : 0);
 
   const progressBar = isCur ? `
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t2);margin-bottom:5px">
-        <span>${wd} / ${dim} gün girildi</span>
+        <span>${le.days} / ${dim} gün ücretli</span>
         <span style="font-weight:700;color:var(--p)">${wdPct}%</span>
       </div>
       <div style="background:var(--b2);border-radius:6px;height:7px;overflow:hidden">
@@ -9616,7 +9628,7 @@ function renderGoals() {
   const md = getMD(S.cy, S.cm, (S.cy === now.getFullYear() && S.cm === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   const earn = calcEarningForMonth(S.cy, S.cm, u.netSalary);
   const totalHrs = md.th;
-  const totalEarning = earn ? earn.totalEarning : 0;
+  const totalEarning = earn ? calcLiveEarning(earn).total : 0;
   let h = '<div class="card" style="margin-bottom:12px"><div class="card-head"><h3><i class="fas fa-bullseye"></i>Hedefler</h3><span style="font-size:10px;color:var(--t3)">' + MTR[S.cm] + '</span></div>';
 
   if (u.goalHours > 0) {
