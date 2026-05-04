@@ -7048,21 +7048,45 @@ function delLv(k) {
 /* ============================================================
    EARNINGS
 ============================================================ */
+function calcCumulativeEarnings(u, upToY, upToM) {
+  if (!u || !u.netSalary) return { total: 0, months: 0 };
+  const seen = new Set();
+  [...Object.keys(u.shifts || {}), ...Object.keys(u.leaves || {})].forEach(d => {
+    const parts = d.split('-');
+    seen.add(parts[0] + '-' + parts[1]);
+  });
+  let total = 0, months = 0;
+  for (const ym of seen) {
+    const [ys, ms] = ym.split('-');
+    const y2 = +ys, m2 = +ms - 1;
+    if (y2 > upToY || (y2 === upToY && m2 > upToM)) continue;
+    const e2 = calcEarning(u, y2, m2);
+    if (e2 && !e2.isFutureMonth && e2.totalEarning > 0) {
+      total += e2.totalEarning;
+      months++;
+    }
+  }
+  return { total, months };
+}
+
 function renderDailyEarningsTracker(u, y, m, e) {
   if (!u || !u.netSalary || e.isFutureMonth) return '';
-  const isCur = e.isCurrentMonth;
+  const isCur  = e.isCurrentMonth;
   const dim    = e.dim;
   const evDays = e.evaluableDays || dim;
   const pct    = Math.min(100, Math.round((evDays / dim) * 100));
 
+  const wd = e.workedDays || 0;
+  const wdPct = Math.min(100, dim > 0 ? Math.round((wd / dim) * 100) : 0);
+
   const progressBar = isCur ? `
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t2);margin-bottom:5px">
-        <span>${evDays} / ${dim} gün işlendi</span>
-        <span style="font-weight:700;color:var(--p)">${pct}%</span>
+        <span>${wd} / ${dim} gün girildi</span>
+        <span style="font-weight:700;color:var(--p)">${wdPct}%</span>
       </div>
       <div style="background:var(--b2);border-radius:6px;height:7px;overflow:hidden">
-        <div style="background:linear-gradient(90deg,var(--p),var(--acc));width:${pct}%;height:100%;border-radius:6px;transition:.4s ease"></div>
+        <div style="background:linear-gradient(90deg,var(--p),var(--acc));width:${wdPct}%;height:100%;border-radius:6px;transition:.4s ease"></div>
       </div>
     </div>` : '';
 
@@ -7072,13 +7096,25 @@ function renderDailyEarningsTracker(u, y, m, e) {
       <span style="font-size:13px;font-weight:700;color:${col}">${val}</span>
     </div>`;
 
-  let rows = row('📅', `${e.paidDays}g ücretli × ${fm(e.dailyRate)}`, fm(e.basePay), 'var(--t1)');
+  const trackerBase = wd * e.dailyRate;
+  const trackerTotal = trackerBase + (e.overtimePay || 0) + (e.overtimePay125 || 0) + (e.holidayPay || 0);
+
+  let rows = row('📅', `${wd}g çalışılan × ${fm(e.dailyRate)}`, fm(trackerBase), 'var(--t1)');
   if (e.overtimePay > 0)
     rows += row('🔥', `${e.overtimeHours.toFixed(1)}s FM × ${getOTRate(u)}`, '+' + fm(e.overtimePay), '#f97316');
   if ((e.overtimePay125||0) > 0)
     rows += row('⚡', `${(e.overtimeHours125||0).toFixed(1)}s FÇ × ${e.partialRate||1.25}`, '+' + fm(e.overtimePay125), '#fb923c');
   if (e.holidayPay > 0)
     rows += row('🏛️', `${(e.holidayPayDays||e.holidayDays).toFixed(1)}g tatil ilave`, '+' + fm(e.holidayPay), 'var(--g)');
+
+  const cumul = calcCumulativeEarnings(u, y, m);
+  const cumulLine = cumul.months > 1 ? `
+    <div style="margin-top:10px;padding:10px 12px;background:linear-gradient(135deg,rgba(var(--p-rgb),.12),rgba(var(--acc-rgb),.08));border-radius:10px;border:1px solid rgba(var(--p-rgb),.2)">
+      <div style="font-size:10px;color:var(--t2);margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">
+        <i class="fas fa-layer-group"></i>&nbsp;Son takvim girişine kadar toplam (${cumul.months} ay)
+      </div>
+      <div style="font-weight:900;font-size:22px;color:var(--p)">${fm(cumul.total)}</div>
+    </div>` : '';
 
   return `
   <div class="earn-section">
@@ -7088,9 +7124,10 @@ function renderDailyEarningsTracker(u, y, m, e) {
     ${progressBar}
     ${rows}
     <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;margin-top:4px">
-      <span style="font-weight:800;font-size:13px;color:var(--t1)"><i class="fas fa-wallet" style="color:var(--p)"></i>&nbsp;TOPLAM NET</span>
-      <span style="font-weight:900;font-size:20px;color:var(--p)">${fm(e.totalEarning)}</span>
+      <span style="font-weight:800;font-size:13px;color:var(--t1)"><i class="fas fa-wallet" style="color:var(--p)"></i>&nbsp;BU AY TOPLAM</span>
+      <span style="font-weight:900;font-size:20px;color:var(--p)">${fm(trackerTotal)}</span>
     </div>
+    ${cumulLine}
   </div>`;
 }
 
