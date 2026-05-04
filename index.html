@@ -7076,14 +7076,17 @@ function renderDailyEarningsTracker(u, y, m, e) {
   const evDays = e.evaluableDays || dim;
   const pct    = Math.min(100, Math.round((evDays / dim) * 100));
 
+  const wd = e.workedDays || 0;
+  const wdPct = Math.min(100, dim > 0 ? Math.round((wd / dim) * 100) : 0);
+
   const progressBar = isCur ? `
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t2);margin-bottom:5px">
-        <span>${evDays} / ${dim} gün işlendi</span>
-        <span style="font-weight:700;color:var(--p)">${pct}%</span>
+        <span>${wd} / ${dim} gün girildi</span>
+        <span style="font-weight:700;color:var(--p)">${wdPct}%</span>
       </div>
       <div style="background:var(--b2);border-radius:6px;height:7px;overflow:hidden">
-        <div style="background:linear-gradient(90deg,var(--p),var(--acc));width:${pct}%;height:100%;border-radius:6px;transition:.4s ease"></div>
+        <div style="background:linear-gradient(90deg,var(--p),var(--acc));width:${wdPct}%;height:100%;border-radius:6px;transition:.4s ease"></div>
       </div>
     </div>` : '';
 
@@ -7093,7 +7096,10 @@ function renderDailyEarningsTracker(u, y, m, e) {
       <span style="font-size:13px;font-weight:700;color:${col}">${val}</span>
     </div>`;
 
-  let rows = row('📅', `${e.paidDays}g ücretli × ${fm(e.dailyRate)}`, fm(e.basePay), 'var(--t1)');
+  const trackerBase = wd * e.dailyRate;
+  const trackerTotal = trackerBase + (e.overtimePay || 0) + (e.overtimePay125 || 0) + (e.holidayPay || 0);
+
+  let rows = row('📅', `${wd}g çalışılan × ${fm(e.dailyRate)}`, fm(trackerBase), 'var(--t1)');
   if (e.overtimePay > 0)
     rows += row('🔥', `${e.overtimeHours.toFixed(1)}s FM × ${getOTRate(u)}`, '+' + fm(e.overtimePay), '#f97316');
   if ((e.overtimePay125||0) > 0)
@@ -7119,7 +7125,7 @@ function renderDailyEarningsTracker(u, y, m, e) {
     ${rows}
     <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;margin-top:4px">
       <span style="font-weight:800;font-size:13px;color:var(--t1)"><i class="fas fa-wallet" style="color:var(--p)"></i>&nbsp;BU AY TOPLAM</span>
-      <span style="font-weight:900;font-size:20px;color:var(--p)">${fm(e.totalEarning)}</span>
+      <span style="font-weight:900;font-size:20px;color:var(--p)">${fm(trackerTotal)}</span>
     </div>
     ${cumulLine}
   </div>`;
