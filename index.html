@@ -4808,7 +4808,15 @@ function calcEarningForMonth(y, m, ns) {
   const d = getMD(y, m, isCur ? { throughDay:tD } : undefined);
   /* [FIX BUG-02] Saatlik ücret hesabında kullanıcının monthlyHours'unu kullan */
   const _mh = getMonthlyHours(u);
-  const dim = d.dim, dr = ns / 30, hr = _mh > 0 ? ns / _mh : 0;
+  const dim = d.dim, dr = ns / 30;
+  /* [FIX OT-GROSS] FM ve fazla çalışma ücreti 4857/41 gereği BRÜT saatlik ücret bazında
+     hesaplanmalı. findGrossFromNet ikili arama ile net → brüt dönüşümü yapar.
+     Taban maaş ve eksik gün hesabı net (dr) üzerinden kalmaya devam eder. */
+  const _fullGrossForOT = (Number.isFinite(ns) && ns > 0)
+    ? findGrossFromNet(ns, 'single', 0, 0, m, undefined, y)
+    : 0;
+  const hrGross = (_mh > 0 && _fullGrossForOT > 0) ? _fullGrossForOT / _mh : 0;
+  const hr = _mh > 0 ? ns / _mh : 0;  // net saatlik oran (geriye dönük uyumluluk / display)
 
   let ev;
   if (isFut) ev = 0;
@@ -4868,9 +4876,10 @@ function calcEarningForMonth(y, m, ns) {
   const compMode = u.otCompMode || 'pay';
   const compRate = getOTRate(u);
   const partialRate = payrollCfg(y).otPartialMultiplier;
-  const op    = compMode === 'leave' ? 0 : (d.oh    || 0) * hr * compRate;
+  /* [FIX OT-GROSS] hrGross = brüt saatlik ücret; 4857/41 FM yasal baz brüt olmalı */
+  const op    = compMode === 'leave' ? 0 : (d.oh    || 0) * hrGross * compRate;
   /* [FIX P4] Sözleşme <45s sözleşmeli için fazla sürelerle çalışma %25 zamlı (4857/41/4) */
-  const op125 = compMode === 'leave' ? 0 : (d.oh125 || 0) * hr * partialRate;
+  const op125 = compMode === 'leave' ? 0 : (d.oh125 || 0) * hrGross * partialRate;
   /* [FIX ERR-HANDLE-08] NaN propagation engellendi — bozuk md sonuçları 0'a sabitlenir */
   const teRaw = bp + op + op125 + hp;
   const te = Number.isFinite(teRaw) ? Math.max(0, teRaw) : 0;
@@ -7087,7 +7096,10 @@ function renderEarn() {
   });
   dgHtml += '</div></div>';
 
+  const _earnCfg = payrollCfg(y);
+  const _belowMinWage = e.totalEarning > 0 && e.totalEarning < _earnCfg.minWageGross;
   ec.innerHTML = `
+  ${_belowMinWage ? `<div class="hint" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35);margin-bottom:8px"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i><span style="color:#fbbf24">Tahmini kazanç (${fm(e.totalEarning)}) ${y} asgari ücretinin (${fm(_earnCfg.minWageGross)}) altında. Eksik gün veya kısmi çalışma kontrolü yapın.</span></div>` : ''}
   <div class="earn-hero">
     <div class="sub">KAZANÇ — ${MTR[m].toUpperCase()} ${y}${e.isCurrentMonth ? ' — DEVAM EDİYOR' : ''}</div>
     <div class="amt">${fm(e.totalEarning)}${e.isCurrentMonth ? ' <small style="font-size:14px;opacity:.6">tahmini</small>' : ''}</div>
