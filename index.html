@@ -7048,6 +7048,52 @@ function delLv(k) {
 /* ============================================================
    EARNINGS
 ============================================================ */
+function renderDailyEarningsTracker(u, y, m, e) {
+  if (!u || !u.netSalary || e.isFutureMonth) return '';
+  const isCur = e.isCurrentMonth;
+  const dim    = e.dim;
+  const evDays = e.evaluableDays || dim;
+  const pct    = Math.min(100, Math.round((evDays / dim) * 100));
+
+  const progressBar = isCur ? `
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t2);margin-bottom:5px">
+        <span>${evDays} / ${dim} gün işlendi</span>
+        <span style="font-weight:700;color:var(--p)">${pct}%</span>
+      </div>
+      <div style="background:var(--b2);border-radius:6px;height:7px;overflow:hidden">
+        <div style="background:linear-gradient(90deg,var(--p),var(--acc));width:${pct}%;height:100%;border-radius:6px;transition:.4s ease"></div>
+      </div>
+    </div>` : '';
+
+  const row = (icon, label, val, col) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--b2)">
+      <span style="font-size:13px;color:var(--t2)">${icon}&nbsp;${label}</span>
+      <span style="font-size:13px;font-weight:700;color:${col}">${val}</span>
+    </div>`;
+
+  let rows = row('📅', `${e.paidDays}g ücretli × ${fm(e.dailyRate)}`, fm(e.basePay), 'var(--t1)');
+  if (e.overtimePay > 0)
+    rows += row('🔥', `${e.overtimeHours.toFixed(1)}s FM × ${getOTRate(u)}`, '+' + fm(e.overtimePay), '#f97316');
+  if ((e.overtimePay125||0) > 0)
+    rows += row('⚡', `${(e.overtimeHours125||0).toFixed(1)}s FÇ × ${e.partialRate||1.25}`, '+' + fm(e.overtimePay125), '#fb923c');
+  if (e.holidayPay > 0)
+    rows += row('🏛️', `${(e.holidayPayDays||e.holidayDays).toFixed(1)}g tatil ilave`, '+' + fm(e.holidayPay), 'var(--g)');
+
+  return `
+  <div class="earn-section">
+    <h3><i class="fas fa-chart-line"></i>GÜNLÜK KAZANÇ TAKİBİ
+      ${isCur ? '<span style="font-size:10px;background:var(--p);color:#fff;padding:2px 8px;border-radius:20px;margin-left:6px;font-weight:700">CANLI</span>' : ''}
+    </h3>
+    ${progressBar}
+    ${rows}
+    <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;margin-top:4px">
+      <span style="font-weight:800;font-size:13px;color:var(--t1)"><i class="fas fa-wallet" style="color:var(--p)"></i>&nbsp;TOPLAM NET</span>
+      <span style="font-weight:900;font-size:20px;color:var(--p)">${fm(e.totalEarning)}</span>
+    </div>
+  </div>`;
+}
+
 function renderEarn() {
   const u = cu(); if (!u) return;
   const y = S.ey, m = S.em;
@@ -7157,6 +7203,7 @@ function renderEarn() {
       <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>TAHMİNİ NET</b></span><span class="ev">${fm(e.totalEarning)}</span></div>
     </div>
   </div>
+  ${renderDailyEarningsTracker(u, y, m, e)}
   ${dgHtml}
   ${renderEarnWeekly(u, y, m, d, e)}
   ${renderEarnShiftTypes(u, y, m, e)}
