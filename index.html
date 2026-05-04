@@ -4879,10 +4879,11 @@ function calcEarningForMonth(y, m, ns) {
   const compMode = u.otCompMode || 'pay';
   const compRate = getOTRate(u);
   const partialRate = payrollCfg(y).otPartialMultiplier;
-  /* [FIX OT-GROSS] hrGross = brüt saatlik ücret; 4857/41 FM yasal baz brüt olmalı */
-  const op    = compMode === 'leave' ? 0 : (d.oh    || 0) * hrGross * compRate;
+  /* Ekran TAHMİNİ NET gösterdiği için FM net saatlik ücret (hr) üzerinden hesaplanır.
+     hrGross referans/bilgi amaçlı return objesinde tutulmaya devam eder. */
+  const op    = compMode === 'leave' ? 0 : (d.oh    || 0) * hr * compRate;
   /* [FIX P4] Sözleşme <45s sözleşmeli için fazla sürelerle çalışma %25 zamlı (4857/41/4) */
-  const op125 = compMode === 'leave' ? 0 : (d.oh125 || 0) * hrGross * partialRate;
+  const op125 = compMode === 'leave' ? 0 : (d.oh125 || 0) * hr * partialRate;
   /* [FIX ERR-HANDLE-08] NaN propagation engellendi — bozuk md sonuçları 0'a sabitlenir */
   const teRaw = bp + op + op125 + hp;
   const te = Number.isFinite(teRaw) ? Math.max(0, teRaw) : 0;
@@ -7154,11 +7155,11 @@ function renderEarn() {
       ` : ''}
       ${e.overtimePay > 0 ? `
       <div class="esd-head" style="color:#f97316">🔥 FAZLA MESAİ (${getOTRate(u)}×)</div>
-      <div class="esd"><span class="ek">${e.overtimeHours.toFixed(1)}s × ${fm(e.hourlyRateGross || e.hourlyRate)} (brüt) × ${getOTRate(u)}</span><span class="ev pos">+${fm(e.overtimePay)}</span></div>
+      <div class="esd"><span class="ek">${e.overtimeHours.toFixed(1)}s × ${fm(e.hourlyRate)} × ${getOTRate(u)}</span><span class="ev pos">+${fm(e.overtimePay)}</span></div>
       ` : ''}
       ${(e.overtimePay125 || 0) > 0 ? `
       <div class="esd-head" style="color:#fb923c">⚡ FAZLA SÜRELERLE ÇALIŞMA (${e.partialRate || 1.25}×)</div>
-      <div class="esd"><span class="ek">${(e.overtimeHours125||0).toFixed(1)}s × ${fm(e.hourlyRateGross || e.hourlyRate)} (brüt) × ${e.partialRate || 1.25}</span><span class="ev pos">+${fm(e.overtimePay125)}</span></div>
+      <div class="esd"><span class="ek">${(e.overtimeHours125||0).toFixed(1)}s × ${fm(e.hourlyRate)} × ${e.partialRate || 1.25}</span><span class="ev pos">+${fm(e.overtimePay125)}</span></div>
       ` : ''}
       ${e.holidayPay > 0 ? `
       <div class="esd-head" style="color:var(--g)">🏛️ TATİL PRİMLERİ</div>
