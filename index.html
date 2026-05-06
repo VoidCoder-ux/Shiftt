@@ -10980,12 +10980,35 @@ function updCloudAccountUI() {
 /* ============================================================
    START
 ============================================================ */
-// Register service worker
-// [FIX SERVICE-WORKER-01] Hata sessizce yutuluyordu; artık loglanıyor
+// Register service worker + güncelleme bildirimi
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js')
-    .then(reg => { if (reg) console.log('[SW] Kayıt başarılı:', reg.scope); })
+    .then(reg => {
+      if (reg) console.log('[SW] Kayıt başarılı:', reg.scope);
+
+      // Yeni bir SW yüklendi ve beklemede (waiting) duruma geçti
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          // Yeni SW kuruldu, eski hâlâ aktif — kullanıcıya bildir
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            toast('Yeni sürüm hazır! Güncelleniyor...', 'info');
+          }
+        });
+      });
+    })
     .catch(err => { console.warn('[SW] Kayıt başarısız (offline desteği yok):', err.message || err); });
+
+  // skipWaiting() sayesinde yeni SW anında devreye girer;
+  // controllerchange tetiklendiğinde sayfayı yenileyerek kullanıcı güncel versiyonu alır
+  let swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    toast('Uygulama güncellendi, yenileniyor...', 'success');
+    setTimeout(() => location.reload(), 1200);
+  });
 }
 
 // Sistem teması değişince otomatik geçiş
