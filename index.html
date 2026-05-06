@@ -4,10 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
 <title>ShiftTrack Pro</title>
+<script src="version.js"></script>
 <script>
 // Cache buster — eski service worker'ı temizle
+// Sürüm numarası version.js'deki APP_VERSION'dan okunur — o dosyayı güncelle yeter.
 (function(){
-  var CV = 'shifttrack-v20'; // sw.js CACHE_NAME ile eşleştirildi
+  var CV = (typeof APP_VERSION !== 'undefined') ? APP_VERSION : 'shifttrack-v20';
   if (localStorage.getItem('st_cache_ver') !== CV) {
     localStorage.setItem('st_cache_ver', CV);
     if ('serviceWorker' in navigator) {
