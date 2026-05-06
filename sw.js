@@ -41,6 +41,8 @@ function fetchWithTimeout(req, ms) {
   });
 }
 
+const OFFLINE_RESPONSE = new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
@@ -55,7 +57,7 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
         }
         return res;
-      }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
+      }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html').then(r2 => r2 || OFFLINE_RESPONSE)))
     );
   } else {
     e.respondWith(
@@ -65,7 +67,7 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
         }
         return res;
-      }).catch(() => caches.match(e.request)))
+      }).catch(() => caches.match(e.request).then(r => r || new Response('', { status: 503, statusText: 'Offline' }))))
     );
   }
 });
