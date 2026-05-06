@@ -1,0 +1,31 @@
+name: Sürüm Otomatik Artır
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'version.js'          # version.js değişince tekrar tetiklenmesin
+      - '.github/**'
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mevcut sürümü oku ve bir artır
+        id: bump
+        run: |
+          CURRENT=$(grep -o 'v[0-9]*' version.js | grep -o '[0-9]*')
+          NEW=$((CURRENT + 1))
+          sed -i "s/shifttrack-v$CURRENT/shifttrack-v$NEW/" version.js
+          echo "new_version=v$NEW" >> $GITHUB_OUTPUT
+          echo "Sürüm: v$CURRENT → v$NEW"
+
+      - name: Değişikliği kaydet
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.js
+          git commit -m "chore: sürüm ${{ steps.bump.outputs.new_version }} [skip ci]"
+          git push
