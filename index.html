@@ -38,7 +38,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" crossorigin="anonymous">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" integrity="sha384-/o6I2CkkWC//PSjvWC/eYN7l3xM3tJm8ZzVkCOfp//W05QcE3mlGskpoHB6XqI+B" crossorigin="anonymous">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -5390,6 +5390,31 @@ function chgYear(d) {
 /* ============================================================
    INIT
 ============================================================ */
+// [FIX JS-01] Klavye kısayolları modül seviyesinde, init()'ten bağımsız
+let _keyboardRegistered = false;
+function registerKeyboardShortcuts() {
+  if (_keyboardRegistered) return;
+  _keyboardRegistered = true;
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
+    if (e.key === 'Escape') {
+      closeM(); closeWTModal(); closeCPModal(); closeNewUserModal();
+      const co = $('confirmOverlay'); if (co) co.classList.remove('show');
+      const po = $('pinOverlay'); if (po) po.classList.remove('show');
+      const qo = $('qrOverlay'); if (qo) qo.classList.remove('show');
+      closeCalc(); closeEmployer();
+    }
+    const modal = $('modal'), wtModal = $('wtModal'), cpModal = $('cpModal');
+    if ((modal && modal.classList.contains('show')) || (wtModal && wtModal.classList.contains('show')) || (cpModal && cpModal.classList.contains('show'))) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+    const pg = document.querySelector('.page.active'); if (!pg) return;
+    if (e.key === 'ArrowLeft') { if (pg.id === 'pg-calendar') chgM(-1); else if (pg.id === 'pg-earnings') chgE(-1); }
+    if (e.key === 'ArrowRight') { if (pg.id === 'pg-calendar') chgM(1); else if (pg.id === 'pg-earnings') chgE(1); }
+    if (e.key.toLowerCase() === 't' && pg.id === 'pg-calendar') goToday();
+    if (e.key === '?') showShortcuts();
+  });
+}
+
 function init() {
   loadLS();
   applyTheme('default');
@@ -5412,25 +5437,8 @@ function init() {
   const cpE = $('cpEnd'); if (cpE) cpE.addEventListener('input', updCPPreview);
   const cpB = $('cpBreak'); if (cpB) cpB.addEventListener('change', updCPPreview);
 
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
-    if (e.key === 'Escape') {
-      closeM(); closeWTModal(); closeCPModal(); closeNewUserModal();
-      const co = $('confirmOverlay'); if (co) co.classList.remove('show');
-      const po = $('pinOverlay'); if (po) po.classList.remove('show');
-      const qo = $('qrOverlay'); if (qo) qo.classList.remove('show');
-      closeCalc(); closeEmployer();
-    }
-    const modal = $('modal'), wtModal = $('wtModal'), cpModal = $('cpModal');
-    if ((modal && modal.classList.contains('show')) || (wtModal && wtModal.classList.contains('show')) || (cpModal && cpModal.classList.contains('show'))) return;
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
-    const pg = document.querySelector('.page.active'); if (!pg) return;
-    if (e.key === 'ArrowLeft') { if (pg.id === 'pg-calendar') chgM(-1); else if (pg.id === 'pg-earnings') chgE(-1); }
-    if (e.key === 'ArrowRight') { if (pg.id === 'pg-calendar') chgM(1); else if (pg.id === 'pg-earnings') chgE(1); }
-    if (e.key.toLowerCase() === 't' && pg.id === 'pg-calendar') goToday();
-    if (e.key === '?') showShortcuts();
-  });
-
+  // [FIX JS-01] Klavye kısayolları init() dışında, bir kez kurulur
+  registerKeyboardShortcuts();
   const cg = $('calGrid');
   if (cg) {
     cg.addEventListener('click', function(e) {
@@ -7501,7 +7509,7 @@ function renderEmployeeRightsPanel(u, y, m, d, e) {
       if (entered > 0) cmp.push({ label, entered, expected, diff: entered - expected });
     });
   }
-  const input = (field, placeholder) => `<input type="number" min="0" step="0.01" value="${rec[field] ?? ''}" placeholder="${placeholder}" onchange="savePayrollCheckField('${field}',this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--b);border-radius:8px;background:var(--bg);color:var(--t1)">`;
+  const input = (field, placeholder) => `<input type="number" id="inp-${field}" min="0" step="0.01" value="${rec[field] ?? ''}" placeholder="${placeholder}" onchange="savePayrollCheckField('${field}',this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--b);border-radius:8px;background:var(--bg);color:var(--t1)">`;
   const warnHtml = warnings.map(w => `<div class="ai-suggestion ${w.level==='danger'?'warning':''}" style="margin-bottom:6px"><i class="fas ${w.level==='ok'?'fa-check-circle':'fa-triangle-exclamation'}"></i>${escHtml(w.text)}</div>`).join('');
   const holidayHtml = holidays.length ? holidays.map(h => `<div class="esd"><span class="ek">${h.ds} · ${escHtml(h.name)} · ${h.hours.toFixed(1)}s</span><span class="ev pos">${h.payDays.toFixed(1)}g</span></div>`).join('') : '<div class="ai-empty">Bu ay kayıtlı resmi tatil çalışması yok.</div>';
   return `<div class="card" style="margin-top:16px">
@@ -7515,7 +7523,7 @@ function renderEmployeeRightsPanel(u, y, m, d, e) {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
       <div class="esb" style="margin:0">
         <div class="esb-title"><i class="fas fa-money-check-alt"></i>Maaş Farkı Kontrolü</div>
-        <label class="fl">Gerçek yatan net tutar</label>
+        <label class="fl" for="inp-actualPaid">Gerçek yatan net tutar</label>
         ${input('actualPaid','Örn: 42000')}
         <div style="margin-top:8px;font-size:12px;color:var(--t2)">Beklenen: <strong>${e ? fm(e.totalEarning) : '—'}</strong>${paidDiff !== null ? ` · Fark: ${diffBadge(paidDiff)}` : ''}</div>
       </div>
