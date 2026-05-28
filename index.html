@@ -23,6 +23,14 @@
       });
     }
   }
+  // [FIX RED-01] Global unhandled rejection handler
+  window.addEventListener('unhandledrejection', function(e) {
+    console.error('Unhandled promise rejection:', e.reason);
+    try { if (typeof toast === 'function') toast('Beklenmeyen bir hata oluştu.', 'error'); } catch(_) {}
+  });
+  window.addEventListener('error', function(e) {
+    console.error('Unhandled error:', e.message, e.filename, e.lineno);
+  });
 })();
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.deepseek.com https://*.googleapis.com https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com; object-src 'none'; base-uri 'self';">
@@ -4027,7 +4035,13 @@ function escHtml(s) {
 }
 function $(id) { return document.getElementById(id); }
 function setHtml(id, h) { const e = $(id); if (e) e.innerHTML = h; }
+// [FIX YELLOW-03] Sanitize eden guvenli setHtml wrapper
+function setSafeHtml(id, h) { const e = $(id); if (e) e.innerHTML = typeof h === 'string' ? escHtml(h) : h; }
 function setTxt(id, t) { const e = $(id); if (e) e.textContent = t; }
+// [FIX YELLOW-01] Tekrar eden guard-render pattern'ini fonksiyonlastir
+function guardUser(el) { const u = cu(); if (!u) { if (el) el.innerHTML = ''; return null; } return u; }
+// [FIX YELLOW-01] nullish-undefined fallback
+function nvl(v, fb) { return v != null ? v : (fb !== undefined ? fb : 0); }
 
 /* [FIX ERR-HANDLE-01] Ortak hata-güvenli parse & sayı yardımcıları */
 function safeParse(s, fallback) {
@@ -6291,6 +6305,7 @@ function getAllPresets() {
 ============================================================ */
 function openM(ds) {
   S.sd = ds;
+  modalOpen = true; // [FIX RED-05] cloud sync renderAll engelle
   const d = dsToDate(ds);
   const dow = d.getDay();
   const dn = DFL[dow === 0 ? 6 : dow - 1];
@@ -6395,7 +6410,7 @@ function hlPreset(sh) {
   if (c) c.classList.add('active');
 }
 
-function closeM() { const m = $('modal'); if (m) m.classList.remove('show'); S.sd = null; const ep = document.getElementById('noteEmojiPicker'); if (ep) ep.remove(); }
+function closeM() { const m = $('modal'); if (m) m.classList.remove('show'); S.sd = null; modalOpen = false; const ep = document.getElementById('noteEmojiPicker'); if (ep) ep.remove(); /* [FIX RED-05] bekleyen sync render varsa simdi yap */ if (_pendingRefresh) { _pendingRefresh = false; if (cu()) { renderAll(); updTop(); } } }
 
 function mMode(t, btn) {
   S.mt = t;
@@ -8193,6 +8208,21 @@ function clearWeeklyTemplate() {
 /* ============================================================
    DATA
 ============================================================ */
+// [FIX GREEN-01] requestIdleCallback ile debounced saveLS
+let savePending = false;
+function scheduleIdleSave() {
+  if (savePending) return;
+  savePending = true;
+  const doSave = function() {
+    savePending = false;
+    saveLS();
+  };
+  if (typeof requestIdleCallback !== 'undefined') {
+    requestIdleCallback(doSave, { timeout: 500 });
+  } else {
+    setTimeout(doSave, 100);
+  }
+}
 function saveLS() {
   try {
     const d = JSON.stringify({ users:S.u, deletedUsers:S.deletedUsers || {}, version:DATA_VERSION, nextUid:S.nextUid });
@@ -8205,6 +8235,8 @@ function saveLS() {
       skipNextPush = false;
       return;
     }
+    // [FIX RED-07] syncInProgress iken push planlama — transaction icindeki saveLS'ler pushlanmasin
+    if (syncInProgress) return;
     // Buluta da gönder (debounced)
     debouncedPush();
   } catch(e) {
@@ -9910,6 +9942,8 @@ function requestNotifPermission() {
   Notification.requestPermission().then(perm => {
     if (perm === 'granted') toast('Bildirimler açıldı!', 'success');
     else toast('Bildirimler reddedildi', 'error');
+  }).catch(() => {
+    toast('Bildirim izni alınamadı', 'error');
   });
 }
 
@@ -10146,7 +10180,10 @@ const FIREBASE_CONFIG = {
 
 let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
 let syncInProgress = false, lastSyncTime = 0;
+let syncGeneration = 0; // [FIX RED-04] generational timeout tracking
 let skipNextPush = false; // cloud'dan gelen veriyi geri push etmeyi engeller
+let modalOpen = false; // [FIX RED-05] modal acikken sync render engelle
+let _pendingRefresh = false; // [FIX RED-05] modal kapandiginda render yapilacak mi
 const SYNC_DEBOUNCE = 3000; // 3 saniye debounce
 const SYNC_TIMEOUT = 15000; // 15 saniye timeout
 
@@ -10462,11 +10499,12 @@ function mergeUsersMap(localUsers, cloudUsers, deletedUsers) {
 function pushToCloud(callback) {
   if (!fbDb || !fbUser || syncInProgress) { if (callback) callback(); return; }
   syncInProgress = true;
+  const gen = ++syncGeneration; // [FIX RED-04] generational timeout tracking
   setSyncState('syncing');
 
   // Timeout — takılmayı engelle
   const timeoutId = setTimeout(() => {
-    if (syncInProgress) {
+    if (syncGeneration === gen && syncInProgress) { // [FIX RED-04] ayni generasyon mu kontrol et
       console.warn('Push timeout — syncInProgress sıfırlandı');
       syncInProgress = false;
       setSyncState('error');
@@ -10731,6 +10769,8 @@ function pullFromCloud(callback) {
           skipNextPush = true;
           saveLS();
           invalidateMDCache();
+          // [FIX RED-06] cloud sync sonrasi undo stack temizle
+          if (undoStack.length) { undoStack.length = 0; updUndoBtn(); }
         }
       }
       clearTimeout(pullTimeout);
@@ -10803,6 +10843,11 @@ function startRealtimeSync() {
         skipNextPush = true;
         saveLS();
         invalidateMDCache();
+        // [FIX RED-05] modal aciksa renderAll atla, [FIX RED-06] undo stack temizle
+        if (modalOpen) { _pendingRefresh = true; return; }
+        _pendingRefresh = false;
+        // [FIX RED-06] cloud sync sonrasi undo stack gecersiz kalir, temizle
+        undoStack.length = 0; updUndoBtn();
         if (cu()) { renderAll(); updTop(); }
         setSyncState('online');
         toast('Diğer cihazdan güncelleme alındı', 'info');
@@ -10866,6 +10911,9 @@ document.addEventListener('visibilitychange', function() {
     if (timeSinceSync > 10000) { // 10 saniyeden fazla geçtiyse
       pullFromCloud(function() {
         invalidateMDCache();
+        // [FIX RED-05] modal aciksa renderAll atla, closeM'de render edilecek
+        if (modalOpen) { _pendingRefresh = true; return; }
+        _pendingRefresh = false;
         if (cu()) { renderAll(); updTop(); }
       });
     }
@@ -10918,21 +10966,21 @@ function forceSyncNow() {
   _forceSyncBusy = true;
   setSyncState('syncing');
   toast('Senkronizasyon başlatıldı...', 'info');
-  try {
-    pullFromCloud(() => {
-      pushToCloud(() => {
-        _forceSyncBusy = false;
-        invalidateMDCache();
-        if (cu()) { renderAll(); updTop(); loadSet(); }
-        setSyncState('online');
-        toast('Senkronizasyon tamamlandı', 'success');
-      });
+  // [FIX RED-03] try-catch async islemleri yakalamaz, Promise zincirine cevrildi
+  pullFromCloud(() => {
+    pushToCloud(() => {
+      _forceSyncBusy = false;
+      invalidateMDCache();
+      if (cu()) { renderAll(); updTop(); loadSet(); }
+      setSyncState('online');
+      toast('Senkronizasyon tamamlandı', 'success');
     });
-  } catch (e) {
+  }).catch(function(e) {
     _forceSyncBusy = false;
     setSyncState('error');
+    console.error('ForceSync failed:', e);
     toast('Senkronizasyon başarısız', 'error');
-  }
+  });
   /* Güvenlik: 20s sonra flag'i serbest bırak */
   setTimeout(() => { _forceSyncBusy = false; }, 20000);
 }
