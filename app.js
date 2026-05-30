@@ -6254,17 +6254,19 @@ if (isIOS && !isStandalone && !localStorage.getItem('st_install_dismissed')) {
 // ⚠️ Firebase yapılandırması — kendi Firebase projenizin bilgilerini girin!
 // https://console.firebase.google.com → Proje Ayarları → Web App → Config
 
-// ⚠️ Firebase yapılandırması — config.js dosyasından yüklenir
-// config.js bulunamazsa boş template kullanılır (Firebase devre dışı kalır)
+// ⚠️ Firebase yapılandırması
+// Firebase API anahtarı gizli değil, genel bir tanımlayıcıdır.
+// Güvenlik Firestore kuralları ve Firebase Console'dan HTTP referrer kısıtlaması ile sağlanır:
+// Firebase Console → Proje Ayarları → API ve Hizmetler → Kimlik Bilgileri → Browser key → HTTP referans adresleri
 if (typeof FIREBASE_CONFIG === 'undefined') {
   var FIREBASE_CONFIG = {
-    apiKey: "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-    authDomain: "your-project.firebaseapp.com",
-    projectId: "your-project-id",
-    storageBucket: "your-project.firebasestorage.app",
-    messagingSenderId: "000000000000",
-    appId: "1:000000000000:web:xxxxxxxxxxxxxxxxxxxx",
-    measurementId: "G-XXXXXXXXXX"
+    apiKey: "AIzaSyClbILaI24aeB8yL-9Pdf6YWgrc7PRJGKo",
+    authDomain: "shift-a50d2.firebaseapp.com",
+    projectId: "shift-a50d2",
+    storageBucket: "shift-a50d2.firebasestorage.app",
+    messagingSenderId: "555190046824",
+    appId: "1:555190046824:web:d168bebfbe8866e4ea2bdd",
+    measurementId: "G-3REEMPWMP9"
   };
 }
 
