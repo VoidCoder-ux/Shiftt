@@ -1,832 +1,4 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
-<title>ShiftTrack Pro</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.gstatic.com https://*.google.com https://apis.google.com https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.deepseek.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.google.com https://api.deepseek.com wss://*.firebaseapp.com https://*.firebaseio.com; frame-src 'self' https://*.firebaseapp.com https://*.google.com https://accounts.google.com; object-src 'none'">
-<script src="version.js"></script>
-<script>
-// Cache buster — eski service worker'ı temizle
-// Sürüm numarası version.js'deki APP_VERSION'dan okunur — o dosyayı güncelle yeter.
-(function(){
-  var CV = (typeof APP_VERSION !== 'undefined') ? APP_VERSION : 'shifttrack-v20';
-  if (localStorage.getItem('st_cache_ver') !== CV) {
-    localStorage.setItem('st_cache_ver', CV);
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function(regs) {
-        regs.forEach(function(r) { r.unregister(); });
-        caches.keys().then(function(keys) {
-          Promise.all(keys.map(function(k) { return caches.delete(k); })).then(function() {
-            location.reload(true);
-          });
-        });
-      });
-    }
-  }
-})();
-</script>
-<meta name="theme-color" content="#8b5cf6">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.json">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" crossorigin="anonymous">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" integrity="sha384-/o6I2CkkWC//PSjvWC/eYN7l3xM3tJm8ZzVkCOfp//W05QcE3mlGskpoHB6XqI+B" crossorigin="anonymous">
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
-<!-- ===== eBORDRO MODULE CDN ===== -->
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" integrity="sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3" crossorigin="anonymous"></script>
-<!-- ===== eBORDRO MODULE CDN END ===== -->
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
-<!-- Firebase -->
-<script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" integrity="sha384-sEVIly94UBRLKWdkYoPpSG7GD/e79YHMrxVyZaOk712Ga7+EAw6w1EFi+xBzBdd+" crossorigin="anonymous"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js" integrity="sha384-EkqK+ezBWJuvO3hfrSx2iVqr3YQbhmnzn8kPhOpBZ+0GMVU5oGSgptwIu8D84HjE" crossorigin="anonymous"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js" integrity="sha384-M481iNZJtbpypKgvlvZ+78Giq0BsewFLk5r2k+MOcGXlwKCc27DQRZ+WCV/zpmpC" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="style.css">
-</head>
-<body>
-
-<div class="toast-container" id="toastContainer"></div>
-
-<!-- CONFIRM -->
-<div class="confirm-overlay" id="confirmOverlay">
-  <div class="confirm-box">
-    <div class="confirm-icon ci-danger"><i class="fas fa-exclamation-triangle"></i></div>
-    <h4 id="confirmTitle">Emin misiniz?</h4>
-    <p id="confirmMsg"></p>
-    <div class="confirm-btns">
-      <button class="btn btn-ghost btn-sm" onclick="confirmCancel()">İptal</button>
-      <button class="btn btn-danger btn-sm" onclick="confirmOk()"><i class="fas fa-check"></i> Onayla</button>
-    </div>
-  </div>
-</div>
-
-<!-- NEW USER MODAL -->
-<div class="overlay" id="newUserModal">
-  <div class="modal" style="max-width:340px">
-    <div class="modal-top">
-      <h3><i class="fas fa-user-plus" style="color:var(--p);margin-right:6px"></i>Yeni Kullanıcı</h3>
-      <button class="modal-x" onclick="closeNewUserModal()" aria-label="Kapat"><i class="fas fa-times"></i></button>
-    </div>
-    <div class="modal-body">
-      <div class="fg"><label>Kullanıcı Adı</label><input type="text" id="newUserName" placeholder="İsim girin..." maxlength="30" autocomplete="off"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-ghost btn-sm" onclick="closeNewUserModal()">İptal</button>
-      <button class="btn btn-primary btn-sm" onclick="confirmNewUser()"><i class="fas fa-check"></i>Ekle</button>
-    </div>
-  </div>
-</div>
-
-<!-- WT DAY MODAL -->
-<div class="wt-modal-overlay" id="wtModal">
-  <div class="wt-modal">
-    <div class="wt-modal-top"><h3 id="wtModalTitle">Pazartesi</h3><button class="modal-x" onclick="closeWTModal()" aria-label="Kapat"><i class="fas fa-times"></i></button></div>
-    <div class="wt-modal-body">
-      <div class="wt-preset-btns">
-        <button class="btn btn-soft btn-sm" onclick="wtSetPreset('08:00','16:00')"><i class="fas fa-sun"></i>Sabah</button>
-        <button class="btn btn-soft btn-sm" onclick="wtSetPreset('12:00','20:00')"><i class="fas fa-cloud-sun"></i>Öğlen</button>
-        <button class="btn btn-soft btn-sm" onclick="wtSetPreset('16:00','00:00')"><i class="fas fa-moon"></i>Akşam</button>
-        <button class="btn btn-soft btn-sm" onclick="wtSetPreset('22:00','06:00')"><i class="fas fa-star"></i>Gece</button>
-        <button class="btn btn-danger btn-sm" onclick="wtSetOff()"><i class="fas fa-times"></i>İzin</button>
-      </div>
-      <div class="time-inputs">
-        <div class="ti"><label>Giriş</label><input type="time" id="wtStart" value="08:00"></div>
-        <div class="ti"><label>Çıkış</label><input type="time" id="wtEnd" value="16:00"></div>
-        <div class="ti"><label>Mola</label>
-          <select id="wtBreak">
-            <option value="0">Yok</option><option value="15">15dk</option>
-            <option value="30" selected>30dk</option><option value="45">45dk</option><option value="60">1s</option>
-          </select>
-        </div>
-      </div>
-      <div id="wtPreview" style="text-align:center;font-size:13px;font-weight:800;color:var(--p);margin-top:6px"></div>
-    </div>
-    <div class="wt-modal-foot">
-      <button class="btn btn-ghost btn-sm" onclick="closeWTModal()">İptal</button>
-      <button class="btn btn-primary btn-sm" onclick="saveWTDay()"><i class="fas fa-check"></i>Kaydet</button>
-    </div>
-  </div>
-</div>
-
-<!-- CUSTOM PRESET MODAL -->
-<div class="cp-modal-overlay" id="cpModal">
-  <div class="cp-modal">
-    <div class="cp-modal-top"><h3>Yeni Vardiya Şablonu</h3><button class="modal-x" onclick="closeCPModal()" aria-label="Kapat"><i class="fas fa-times"></i></button></div>
-    <div class="cp-modal-body">
-      <div class="fg"><label>Şablon Adı</label><input type="text" id="cpName" placeholder="Gece vardiyası..." maxlength="30"></div>
-      <div class="fg">
-        <label>İkon</label>
-        <div class="emoji-grid" id="emojiGrid"></div>
-      </div>
-      <div class="time-inputs">
-        <div class="ti"><label>Giriş</label><input type="time" id="cpStart" value="22:00"></div>
-        <div class="ti"><label>Çıkış</label><input type="time" id="cpEnd" value="06:00"></div>
-        <div class="ti"><label>Mola</label>
-          <select id="cpBreak">
-            <option value="0">Yok</option><option value="15">15dk</option>
-            <option value="30" selected>30dk</option><option value="45">45dk</option><option value="60">1s</option>
-          </select>
-        </div>
-      </div>
-      <div id="cpPreview" style="text-align:center;font-size:13px;font-weight:800;color:var(--p);margin-top:4px"></div>
-    </div>
-    <div class="cp-modal-foot">
-      <button class="btn btn-ghost btn-sm" onclick="closeCPModal()">İptal</button>
-      <button class="btn btn-primary btn-sm" onclick="saveCPModal()"><i class="fas fa-check"></i>Kaydet</button>
-    </div>
-  </div>
-</div>
-
-<!-- PIN MODAL -->
-<div class="pin-overlay" id="pinOverlay">
-  <div class="pin-box">
-    <h4 id="pinTitle">PIN Girin</h4>
-    <p style="font-size:12px;color:var(--t2);margin-top:6px" id="pinSubtitle"></p>
-    <div class="pin-dots" id="pinDots"><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div></div>
-    <div class="pin-keypad" id="pinKeypad">
-      <button class="pin-key" onclick="pinInput(1)">1</button><button class="pin-key" onclick="pinInput(2)">2</button><button class="pin-key" onclick="pinInput(3)">3</button>
-      <button class="pin-key" onclick="pinInput(4)">4</button><button class="pin-key" onclick="pinInput(5)">5</button><button class="pin-key" onclick="pinInput(6)">6</button>
-      <button class="pin-key" onclick="pinInput(7)">7</button><button class="pin-key" onclick="pinInput(8)">8</button><button class="pin-key" onclick="pinInput(9)">9</button>
-      <button class="pin-key pk-action" onclick="pinClear()"><i class="fas fa-backspace"></i></button><button class="pin-key" onclick="pinInput(0)">0</button>
-      <button class="pin-key pk-action" onclick="pinCancel()"><i class="fas fa-times"></i></button>
-    </div>
-  </div>
-</div>
-
-<!-- QR MODAL -->
-<div class="qr-modal-overlay" id="qrOverlay">
-  <div class="qr-modal">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <h3><i class="fas fa-qrcode" style="color:var(--p);margin-right:6px"></i>Veri Transferi</h3>
-      <button class="modal-x" onclick="closeQR()" aria-label="Kapat"><i class="fas fa-times"></i></button>
-    </div>
-    <div class="mode-tabs" style="margin-bottom:12px">
-      <button class="mode-tab active" onclick="qrMode('export',this)"><i class="fas fa-upload"></i>Paylaş</button>
-      <button class="mode-tab" onclick="qrMode('import',this)"><i class="fas fa-download"></i>Al</button>
-    </div>
-    <div id="qrExportPane">
-      <p style="font-size:12px;color:var(--t2);margin-bottom:12px">QR kodu diğer cihazdan okutun</p>
-      <div id="qrCode"></div>
-      <button class="btn btn-soft btn-sm" onclick="copyShareLink()" style="margin-top:10px"><i class="fas fa-copy"></i>Linki Kopyala</button>
-    </div>
-    <div id="qrImportPane" style="display:none">
-      <p style="font-size:12px;color:var(--t2);margin-bottom:12px">Paylaşılan linki yapıştırın</p>
-      <div class="fg"><textarea id="qrImportData" placeholder="Paylaşım linkini veya veriyi yapıştırın..." rows="4" style="font-size:11px"></textarea></div>
-      <button class="btn btn-primary btn-sm" onclick="importFromQR()"><i class="fas fa-download"></i>İçe Aktar</button>
-    </div>
-  </div>
-</div>
-
-<!-- DOCUMENT UPLOAD MODAL -->
-<div id="docUploadModal" onclick="if(event.target===this)closeDocUpload()">
-  <div class="doc-upload-box">
-    <h3><i class="fas fa-cloud-upload-alt" style="color:var(--p)"></i>Belge Ekle</h3>
-    <div class="doc-drop-zone" id="docDropZone" onclick="$('docFileInput').click()" ondragover="docDragOver(event)" ondragleave="docDragLeave(event)" ondrop="docDrop(event)">
-      <div class="dz-icon">📎</div>
-      <p>Fotoğraf veya PDF seçin</p>
-      <small>JPG, PNG, PDF · Maks. 5 MB</small>
-    </div>
-    <input type="file" id="docFileInput" accept="image/*,.pdf" style="display:none" onchange="docFileSelected(this)">
-    <div class="doc-preview-wrap" id="docPreviewWrap">
-      <div id="docPreviewContent"></div>
-    </div>
-    <div class="upload-progress" id="uploadProgress"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
-    <div class="fg" style="margin-bottom:10px">
-      <label class="fl">Belge Adı</label>
-      <input type="text" id="docNameInput" placeholder="örn. Hijyen Sertifikası 2025" maxlength="60">
-    </div>
-    <div class="fg" style="margin-bottom:14px">
-      <label class="fl">Kategori</label>
-      <select id="docCatSelect">
-        <option value="hygiene">🧼 Hijyen Belgesi</option>
-        <option value="mastery">🏆 Ustalık Belgesi</option>
-        <option value="payslip">🧾 Bordro</option>
-        <option value="contract">📑 İş Sözleşmesi</option>
-        <option value="sgk">🏥 SGK Belgesi</option>
-        <option value="leave_form">🗓️ İzin Formu</option>
-        <option value="passport">📘 Pasaport</option>
-        <option value="id">🪪 Kimlik / Nüfus Cüzdanı</option>
-        <option value="certificate">📜 Sertifika</option>
-        <option value="resume">📋 Özgeçmiş</option>
-        <option value="other">📄 Diğer</option>
-      </select>
-    </div>
-    <div id="docErrorMsg" style="display:none;padding:10px 12px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:10px;font-size:12px;color:var(--r);margin-bottom:12px;word-break:break-word"></div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-outline" style="flex:1" onclick="closeDocUpload()">İptal</button>
-      <button class="btn btn-primary" style="flex:2" id="docSaveBtn" onclick="saveDocument()"><i class="fas fa-save"></i>Kaydet</button>
-    </div>
-  </div>
-</div>
-
-<!-- DOC VIEWER -->
-<div id="docViewer" onclick="closeDocViewer()">
-  <div class="dv-bar" onclick="event.stopPropagation()">
-    <span class="dv-name" id="dvName"></span>
-    <button class="btn btn-soft btn-xs" id="dvWaBtn" onclick="shareDocWA(currentViewDoc)"><i class="fab fa-whatsapp"></i>WhatsApp</button>
-    <button class="btn btn-outline btn-xs" onclick="closeDocViewer()"><i class="fas fa-times"></i></button>
-  </div>
-  <div id="dvContent" onclick="event.stopPropagation()"></div>
-</div>
-
-<!-- SHIFT CALCULATOR MODAL -->
-<div class="calc-overlay" id="calcOverlay" onclick="if(event.target===this)closeCalc()">
-  <div class="calc-box">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <h3 style="font-size:16px;font-weight:800"><i class="fas fa-calculator" style="color:var(--p);margin-right:6px"></i>Mesai Hesap Makinesi</h3>
-      <button class="modal-x" onclick="closeCalc()" aria-label="Kapat"><i class="fas fa-times"></i></button>
-    </div>
-    <p style="font-size:11px;color:var(--t2);margin-bottom:14px">"X tarihten Y tarihine kadar çalışırsam ne kadar kazanırım?" simülasyonu</p>
-    <div class="fg"><label>Başlangıç Tarihi</label><input type="date" id="calcDateFrom"></div>
-    <div class="fg"><label>Bitiş Tarihi</label><input type="date" id="calcDateTo"></div>
-    <div class="time-inputs" style="margin-top:8px">
-      <div class="ti"><label>Giriş</label><input type="time" id="calcStart" value="08:00"></div>
-      <div class="ti"><label>Çıkış</label><input type="time" id="calcEnd" value="16:00"></div>
-      <div class="ti"><label>Mola</label>
-        <select id="calcBreak">
-          <option value="0">Yok</option><option value="15">15dk</option>
-          <option value="30" selected>30dk</option><option value="45">45dk</option><option value="60">1s</option>
-        </select>
-      </div>
-    </div>
-    <div style="margin-top:8px">
-      <label style="font-size:11px;font-weight:700;color:var(--t2);display:flex;align-items:center;gap:6px;cursor:pointer">
-        <input type="checkbox" id="calcSkipWeekends" checked style="accent-color:var(--p)">Haftasonlarını atla
-      </label>
-      <label style="font-size:11px;font-weight:700;color:var(--t2);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px">
-        <input type="checkbox" id="calcSkipHolidays" checked style="accent-color:var(--p)">Resmi tatilleri atla
-      </label>
-    </div>
-    <button class="btn btn-primary" onclick="runCalc()" style="margin-top:12px;width:100%"><i class="fas fa-calculator"></i>Hesapla</button>
-    <div id="calcResult"></div>
-  </div>
-</div>
-
-<!-- EMPLOYER MODE OVERLAY -->
-<div class="employer-overlay" id="employerOverlay" onclick="if(event.target===this)closeEmployer()">
-  <div class="employer-box">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <h3 style="font-size:16px;font-weight:800"><i class="fas fa-users" style="color:var(--p);margin-right:6px"></i>İşveren Modu — Takım Görünümü</h3>
-      <button class="modal-x" onclick="closeEmployer()" aria-label="Kapat"><i class="fas fa-times"></i></button>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <div class="cal-nav">
-        <button class="cal-nav-btn" onclick="chgTeamWeek(-1)"><i class="fas fa-chevron-left"></i></button>
-        <span class="cal-month-title" id="teamWeekTitle" style="font-size:14px;min-width:200px"></span>
-        <button class="cal-nav-btn" onclick="chgTeamWeek(1)"><i class="fas fa-chevron-right"></i></button>
-      </div>
-      <button class="btn btn-soft btn-sm" onclick="teamGoThisWeek()"><i class="fas fa-crosshairs"></i>Bu Hafta</button>
-    </div>
-    <div id="teamContent"></div>
-  </div>
-</div>
-
-<!-- INSTALL BANNER -->
-<div class="install-banner" id="installBanner">
-  <i class="fas fa-mobile-alt"></i>
-  <span>Ana ekrana ekle</span>
-  <button class="ib-install" onclick="installPWA()">Ekle</button>
-  <button class="ib-close" onclick="dismissInstall()">×</button>
-</div>
-
-<!-- IOS INSTALL MODAL -->
-<div class="ios-install-overlay" id="iosInstallOverlay" onclick="closeIOSInstall(event)">
-  <div class="ios-install-box">
-    <h3><i class="fas fa-mobile-alt" style="color:var(--p);margin-right:8px"></i>Ana Ekrana Ekle</h3>
-    <p>ShiftTrack Pro'yu ana ekranınıza ekleyerek uygulama gibi kullanın</p>
-    <div class="ios-steps">
-      <div class="ios-step">
-        <div class="ios-step-num">1</div>
-        <div class="ios-step-text">
-          Tarayıcının alt kısmındaki paylaş butonuna dokunun
-          <small>Safari'nin alt çubuğundaki kutu+ok simgesi</small>
-        </div>
-        <div class="ios-step-icon">⬆️</div>
-      </div>
-      <div class="ios-step">
-        <div class="ios-step-num">2</div>
-        <div class="ios-step-text">
-          Listede <strong>"Ana Ekrana Ekle"</strong> seçeneğini bulun
-          <small>Aşağı kaydırmanız gerekebilir</small>
-        </div>
-        <div class="ios-step-icon">➕</div>
-      </div>
-      <div class="ios-step">
-        <div class="ios-step-num">3</div>
-        <div class="ios-step-text">
-          Sağ üstteki <strong>"Ekle"</strong> butonuna dokunun
-          <small>Uygulama ana ekranınıza eklenecek</small>
-        </div>
-        <div class="ios-step-icon">✅</div>
-      </div>
-    </div>
-    <button class="btn btn-primary" style="width:100%" onclick="closeIOSInstall()">Anladım</button>
-  </div>
-</div>
-
-<!-- AUTH SCREEN -->
-<div id="authScreen">
-  <div class="auth-box">
-    <div class="auth-brand">
-      <div class="icon"><i class="fas fa-clock"></i></div>
-      <h1>ShiftTrack Pro</h1>
-      <p>Giriş yapın veya kayıt olun — verileriniz tüm cihazlarda senkronize olsun</p>
-    </div>
-    <div id="authError" class="auth-error"></div>
-    <div id="authSuccess" class="auth-success"></div>
-    <div class="auth-tabs">
-      <button class="auth-tab active" onclick="authTab('login',this)">Giriş</button>
-      <button class="auth-tab" onclick="authTab('register',this)">Kayıt Ol</button>
-    </div>
-    <div id="authLoginPane">
-      <div class="auth-fg"><label>E-posta</label><input type="email" id="authEmail" placeholder="ornek@mail.com" autocomplete="email"></div>
-      <div class="auth-fg"><label>Şifre</label><input type="password" id="authPass" placeholder="••••••" autocomplete="current-password"></div>
-      <button class="auth-btn" id="authLoginBtn" onclick="firebaseLogin()"><i class="fas fa-sign-in-alt" style="margin-right:6px"></i>Giriş Yap</button>
-    </div>
-    <div id="authRegisterPane" style="display:none">
-      <div class="auth-fg"><label>E-posta</label><input type="email" id="authRegEmail" placeholder="ornek@mail.com" autocomplete="email"></div>
-      <div class="auth-fg"><label>Şifre (min 6 karakter)</label><input type="password" id="authRegPass" placeholder="••••••" autocomplete="new-password"></div>
-      <div class="auth-fg"><label>Şifre Tekrar</label><input type="password" id="authRegPass2" placeholder="••••••" autocomplete="new-password"></div>
-      <button class="auth-btn" id="authRegBtn" onclick="firebaseRegister()"><i class="fas fa-user-plus" style="margin-right:6px"></i>Kayıt Ol</button>
-    </div>
-    <div class="auth-divider">veya</div>
-    <button class="auth-skip" onclick="skipAuth()"><i class="fas fa-user-secret" style="margin-right:6px"></i>Hesap olmadan devam et (sadece bu cihaz)</button>
-    <div id="authResetLink" style="text-align:center;margin-top:12px">
-      <a href="#" onclick="firebaseResetPass();return false" style="font-size:11px;color:var(--p);text-decoration:none;font-weight:600">Şifremi Unuttum</a>
-    </div>
-  </div>
-</div>
-
-<!-- LOGIN -->
-<div id="loginScreen">
-  <div class="login-container">
-    <div class="login-brand">
-      <div class="icon"><i class="fas fa-clock"></i></div>
-      <h1>ShiftTrack Pro</h1>
-      <p>Akıllı Vardiya &amp; Kazanç Yönetimi</p>
-      <span class="version">v6.7 Cloud</span>
-    </div>
-    <div class="login-cards" id="loginCards"></div>
-  </div>
-</div>
-
-<!-- MAIN APP -->
-<div id="mainApp">
-  <header class="topbar">
-    <div class="topbar-brand"><div class="ico"><i class="fas fa-clock"></i></div>ShiftTrack<span class="cloud-user" id="cloudUserInfo"></span></div>
-    <div class="topbar-right">
-      <div class="sync-status" id="syncStatus" title="Dokun: Şimdi senkronize et" onclick="forceSyncNow()" style="cursor:pointer"><div class="sync-dot offline" id="syncDot"></div><span id="syncText">Çevrimdışı</span></div>
-      <button class="topbar-btn notif-bell" id="notifBtn" onclick="showNotifications()" title="Bildirimler" aria-label="Bildirimler"><i class="fas fa-bell"></i><span class="notif-badge" id="notifBadge" style="display:none"></span></button>
-      <button class="topbar-btn tb-desktop" onclick="showShortcuts()" title="Kısayollar (?)" aria-label="Kısayollar"><i class="fas fa-keyboard"></i></button>
-      <button class="topbar-btn tb-desktop" id="undoBtn" disabled onclick="undo()" title="Geri Al (Ctrl+Z)" aria-label="Geri Al"><i class="fas fa-undo"></i></button>
-      <div class="topbar-user" onclick="go('settings',document.querySelectorAll('.nav-tab')[6])">
-        <div class="av" id="topAv">U</div>
-        <span id="topName">Kullanıcı</span>
-      </div>
-      <button class="topbar-btn danger" onclick="logout()" title="Çıkış" aria-label="Çıkış"><i class="fas fa-sign-out-alt"></i></button>
-    </div>
-  </header>
-  <nav class="nav-tabs">
-    <button class="nav-tab active" onclick="go('dashboard',this)"><i class="fas fa-th-large"></i><span>Panel</span></button>
-    <button class="nav-tab" onclick="go('calendar',this)"><i class="fas fa-calendar-alt"></i><span>Takvim</span></button>
-    <button class="nav-tab" onclick="go('stats',this)"><i class="fas fa-chart-line"></i><span>İstatistik</span></button>
-    <button class="nav-tab" onclick="go('leaves',this)"><i class="fas fa-umbrella-beach"></i><span>İzinler</span></button>
-    <button class="nav-tab" onclick="go('earnings',this)"><i class="fas fa-wallet"></i><span>Kazanç</span></button>
-    <button class="nav-tab" onclick="go('ai',this)"><i class="fas fa-wand-magic-sparkles"></i><span>AI</span></button>
-    <button class="nav-tab" onclick="go('settings',this)"><i class="fas fa-cog"></i><span>Ayarlar</span></button>
-    <button class="nav-tab" onclick="go('documents',this)"><i class="fas fa-folder-open"></i><span>Evrak</span></button>
-  </nav>
-  <main class="content">
-
-    <!-- DASHBOARD -->
-    <div class="page active" id="pg-dashboard">
-      <div class="page-head dash-page-head">
-        <div class="dash-page-title">
-          <h1>Kontrol Paneli</h1>
-          <p id="dashSub"></p>
-        </div>
-        <div class="dash-actions">
-          <div id="dashStreak"></div>
-          <button class="btn btn-soft btn-sm" onclick="openCalc()" title="Mesai Hesap Makinesi"><i class="fas fa-calculator"></i></button>
-          <button class="btn btn-soft btn-sm" onclick="openEmployer()" title="İşveren Modu"><i class="fas fa-users"></i></button>
-          <button class="btn btn-outline btn-sm" onclick="shareMonthReport()" title="Rapor Paylaş"><i class="fas fa-share-alt"></i></button>
-        </div>
-      </div>
-
-      <div id="dashTodayWidget"></div>
-      <div class="stats" id="statsEl"></div>
-
-      <div class="dash-mid-grid">
-        <div id="dashProgressBar"></div>
-        <div id="dashWeekSummary"></div>
-      </div>
-
-      <div id="dashFMTracker"></div>
-      <div id="dashOTComp"></div>
-      <div id="dashAISummary"></div>
-      <div id="dashYearlyCumul"></div>
-      <div id="dashGoal" class="goal-wrap"></div>
-      <div class="year-overview-wrap" id="yearOverviewWrap"></div>
-      <div id="dashLast7Days"></div>
-
-      <div class="dash-bottom-grid">
-        <div class="card dash-chart-card">
-          <div class="card-head">
-            <h3><i class="fas fa-chart-bar"></i>Haftalık Saatler</h3>
-            <span class="dash-card-meta">Limit: sözleşme</span>
-          </div>
-          <div class="week-chart" id="weekChart"></div>
-        </div>
-        <div class="card dash-summary-card">
-          <div class="card-head">
-            <h3><i class="fas fa-layer-group"></i>Özet</h3>
-          </div>
-          <div class="info-list" id="dashInfo"></div>
-          <div id="dashHeatmap" style="margin-top:14px"></div>
-        </div>
-      </div>
-
-      <div id="dashEarnSummary"></div>
-      <div id="dashReports"></div>
-    </div>
-
-    <!-- CALENDAR -->
-    <div class="page" id="pg-calendar">
-      <div class="page-head">
-        <div><h1>Vardiya Takvimi</h1><p>Güne tıklayarak giriş yapın</p></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-outline btn-sm" onclick="toggleMultiSelect()" id="multiSelBtn"><i class="fas fa-object-group"></i>Çoklu Seç</button>
-          <button class="btn btn-outline btn-sm" onclick="repeatLastWeek()" title="Geçen hafta → bu hafta"><i class="fas fa-redo"></i>Haftayı Tekrarla</button>
-          <button class="btn btn-outline btn-sm" onclick="copyThisWeekToNext()" title="Bu hafta → sonraki hafta"><i class="fas fa-forward"></i>Sonraki Haftaya Kopyala</button>
-          <button class="btn btn-soft btn-sm" onclick="goToday()"><i class="fas fa-crosshairs"></i>Bugün</button>
-        </div>
-      </div>
-      <div id="copyBar"></div>
-      <div id="multiBar"></div>
-      <div class="card">
-        <div class="cal-controls">
-          <div class="cal-nav">
-            <button class="cal-nav-btn" onclick="chgM(-1)"><i class="fas fa-chevron-left"></i></button>
-            <span class="cal-month-title" id="calTitle"></span>
-            <button class="cal-nav-btn" onclick="chgM(1)"><i class="fas fa-chevron-right"></i></button>
-          </div>
-          <span style="font-size:11px;color:var(--t3);font-weight:600" id="calSummary"></span>
-        </div>
-        <div class="cal-grid" id="calGrid"></div>
-        <div id="calEarnBar"></div>
-        <div id="calMonthSummary"></div>
-        <div class="cal-legend">
-          <span><i class="fas fa-circle" style="color:var(--p)"></i>Bugün</span>
-          <span><i class="fas fa-circle" style="color:var(--g)"></i>Vardiya</span>
-          <span><i class="fas fa-circle" style="color:var(--r)"></i>R.Tatil</span>
-<span><i class="fas fa-circle" style="color:var(--leave-annual)"></i>Y.İzin</span>
-                                              <span><i class="fas fa-circle" style="color:var(--leave-sick)"></i>Rapor</span>
-        </div>
-        <div id="shiftStats"></div>
-      </div>
-      <div id="bankHolidaysSection"></div>
-    </div>
-
-    <!-- STATS -->
-    <div class="page" id="pg-stats">
-      <div class="page-head"><div><h1>İstatistik</h1><p>6 aylık trend analizi</p></div></div>
-      <div id="statsContent"></div>
-    </div>
-
-    <!-- LEAVES -->
-    <div class="page" id="pg-leaves">
-      <div class="page-head"><div><h1>İzin Yönetimi</h1><p>İzin haklarınız</p></div></div>
-      <div class="leave-cards" id="leaveCards"></div>
-      <div class="card">
-        <div class="card-head">
-          <h3><i class="fas fa-history"></i>Geçmiş — <span id="leaveYr"></span></h3>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <div class="leave-year-nav">
-              <button onclick="chgLeaveYear(-1)"><i class="fas fa-chevron-left"></i></button>
-              <button onclick="chgLeaveYear(1)"><i class="fas fa-chevron-right"></i></button>
-            </div>
-            <select id="leaveFilter" onchange="renderLeaves()" style="padding:4px 8px;font-size:11px;width:auto">
-              <option value="all">Tümü</option>
-              <option value="annual">Yıllık İzin</option>
-              <option value="sick">Rapor</option>
-              <option value="weekly">H.Tatil</option>
-              <option value="unpaid">Ücretsiz</option>
-            </select>
-          </div>
-        </div>
-        <div id="leaveSearchWrap"></div>
-        <div id="leaveTable"></div>
-      </div>
-    </div>
-
-    <!-- EARNINGS -->
-    <div class="page" id="pg-earnings">
-      <div class="page-head"><div><h1>Kazanç Raporu</h1><p>Aylık gelir detayları</p></div></div>
-      <div class="cal-controls" style="margin-bottom:16px">
-        <div class="cal-nav">
-          <button class="cal-nav-btn" onclick="chgE(-1)"><i class="fas fa-chevron-left"></i></button>
-          <span class="cal-month-title" id="earnTitle"></span>
-          <button class="cal-nav-btn" onclick="chgE(1)"><i class="fas fa-chevron-right"></i></button>
-        </div>
-      </div>
-      <div id="earnContent"></div>
-      <div id="earnCompare" style="margin-top:16px"></div>
-    </div>
-
-    <!-- AI ASSISTANT -->
-    <div class="page" id="pg-ai">
-      <div class="page-head">
-        <div><h1>AI Asistan</h1><p>Yerel tahmin, bordro açıklaması ve profil önerileri</p></div>
-        <button class="btn btn-soft btn-sm" onclick="renderAIAssistantPage()"><i class="fas fa-rotate"></i>Yenile</button>
-      </div>
-      <div id="aiAssistantContent"></div>
-    </div>
-
-    <!-- SETTINGS -->
-    <div class="page" id="pg-settings">
-      <div class="page-head"><div><h1>Ayarlar</h1><p>Kişisel bilgiler ve görünüm</p></div></div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-palette"></i>Tema</h3>
-        <div style="font-size:10px;font-weight:700;color:var(--t3);margin-bottom:6px;text-transform:uppercase">Karanlık</div>
-        <div class="theme-picker" id="themePicker">
-          <div class="theme-dot" data-t="default" onclick="setTheme('default')"></div>
-          <div class="theme-dot" data-t="ocean" onclick="setTheme('ocean')"></div>
-          <div class="theme-dot" data-t="forest" onclick="setTheme('forest')"></div>
-          <div class="theme-dot" data-t="sunset" onclick="setTheme('sunset')"></div>
-          <div class="theme-dot" data-t="rose" onclick="setTheme('rose')"></div>
-          <div class="theme-dot" data-t="gold" onclick="setTheme('gold')"></div>
-        </div>
-        <div style="font-size:10px;font-weight:700;color:var(--t3);margin:10px 0 6px;text-transform:uppercase">Aydınlık</div>
-        <div class="theme-picker">
-          <div class="theme-dot" data-t="light" onclick="setTheme('light')" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);border:2px solid #e2dff0"></div>
-          <div class="theme-dot" data-t="light-ocean" onclick="setTheme('light-ocean')" style="background:linear-gradient(135deg,#0891b2,#22d3ee);border:2px solid #bae6fd"></div>
-        </div>
-        <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
-          <label style="font-size:11px;font-weight:700;color:var(--t2);cursor:pointer;display:flex;align-items:center;gap:6px">
-            <input type="checkbox" id="autoThemeToggle" onchange="toggleAutoTheme(this.checked)" style="accent-color:var(--p)">
-            Sistem temasına göre otomatik geçiş
-          </label>
-        </div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-user"></i>Kişisel Bilgiler</h3>
-        <div class="fg"><label>Ad Soyad</label><input type="text" id="sName" placeholder="Adınız" onchange="sSet('name',this.value)"></div>
-        <div class="fg"><label>İşe Başlama</label><input type="date" id="sStart" onchange="sSet('startDate',this.value)"></div>
-        <div class="fg"><label>Doğum Tarihi</label><input type="date" id="sBirth" onchange="sSet('birthDate',this.value)"></div>
-        <div id="seniorityInfo"></div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-money-bill-wave"></i>Maaş</h3>
-        <div class="hint"><i class="fas fa-lightbulb"></i><span>Net maaş girin. Günlük = maaş ÷ 30. Tam ay çalışınca tam maaş alınır.</span></div>
-        <div class="fg"><label>Aylık Net (₺)</label><input type="number" id="sSalary" placeholder="25000" min="0" step="100" onchange="sSet('netSalary',this.value)"></div>
-        <div class="salary-preview" id="salPrev" style="display:none">
-          <div class="amt" id="salAmt">₺0</div>
-          <div class="det" id="salDet"></div>
-        </div>
-      </div>
-
-      <!-- [FEAT F5] Zam Simülatörü -->
-      <div class="card s-card">
-        <h3><i class="fas fa-chart-line"></i>Zam Simülatörü</h3>
-        <div class="hint"><i class="fas fa-lightbulb"></i><span>Yüzde veya hedef net maaş girin — brüt/net fark ve yıllık etki anında görünsün.</span></div>
-        <div class="raise-sim-tabs">
-          <button class="rst-tab active" type="button" onclick="rsSwitch('pct')">% Zam</button>
-          <button class="rst-tab" type="button" onclick="rsSwitch('net')">Hedef Net</button>
-          <button class="rst-tab" type="button" onclick="rsSwitch('gross')">Hedef Brüt</button>
-        </div>
-        <div class="fg" id="rsInputWrap">
-          <label id="rsLabel">Zam Oranı (%)</label>
-          <input type="number" id="rsInput" placeholder="25" min="0" step="0.5" oninput="renderRaiseSim()">
-        </div>
-        <div id="rsResult" class="raise-sim-result"></div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-calendar-check"></i>Yıllık İzin</h3>
-        <div class="fg"><label>İzin Hakkı (gün)</label><input type="number" id="sLeave" placeholder="14" min="0" max="40" onchange="sSet('annualLeave',this.value)"></div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-bullseye"></i>Aylık Saat Hedefi</h3>
-        <div class="hint"><i class="fas fa-lightbulb"></i><span>Saatlik ücret hesaplaması için aylık toplam çalışma saati. Varsayılan: 225 (Yargıtay 9.HD: 30 gün × 7,5s). Tercihe göre 195 (45×52,18÷12) da kullanılabilir.</span></div>
-        <div class="fg"><label>Aylık Saat</label><input type="number" id="sMH" placeholder="225" min="100" max="400" step="5" onchange="sSet('monthlyHours',this.value)"></div>
-        <div class="fg" style="margin-top:8px"><label>Haftalık Sözleşme Saati</label><input type="number" id="sWCH" placeholder="45" min="15" max="45" step="1" onchange="sSet('weeklyContractHours',this.value)">
-          <small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">Sözleşme 45'ten az ise (örn. 40s), aradaki saatler %25 zamlı (fazla sürelerle çalışma) ödenir.</small>
-        </div>
-      </div>
-
-      <!-- [FIX] Fazla Mesai → İzin Karşılığı (Comp Time) -->
-      <div class="card s-card">
-        <h3><i class="fas fa-exchange-alt"></i>Fazla Mesai Yönetimi</h3>
-        <div class="hint"><i class="fas fa-lightbulb"></i><span>FM saatlerini ücret olarak al veya izin olarak biriktir. İzin modunda takvimde "FM İzni" seçeneği aktif olur.</span></div>
-        <div class="fg">
-          <label>FM Modu</label>
-          <div class="radio-row">
-            <label class="radio-opt"><input type="radio" name="otMode" data-ot-mode="1" value="pay" onchange="sSet('otCompMode',this.value)"> 💰 Ücret öde</label>
-            <label class="radio-opt"><input type="radio" name="otMode" data-ot-mode="1" value="leave" onchange="sSet('otCompMode',this.value)"> 🏖️ İzin biriktir</label>
-          </div>
-        </div>
-        <div class="fg"><label>FM Katsayısı</label><input type="number" id="sOTRate" placeholder="1.5" min="1.5" max="3" step="0.5" onchange="sSet('otCompRate',this.value)"><small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">TR İş Kanunu gereği minimum 1.5×</small></div>
-        <div class="fg" style="margin-top:10px">
-          <label>FM Hesap Modu</label>
-          <div class="radio-row" id="otCalcModeRow">
-            <label class="radio-opt" title="4857/41 — haftalık 45 saat üstü FM. Hafta tamamlanmadan FM hesaplanmaz."><input type="radio" name="otCalcMode" data-otcalc-mode="1" value="weekly45" onchange="sSet('otCalcMode',this.value)"> 📅 Haftalık 45s</label>
-            <label class="radio-opt" title="Günlük 7,5 saat üstü FM (toplu sözleşme/işyeri uygulaması). Hafta beklenmeden günlük olarak işlenir."><input type="radio" name="otCalcMode" data-otcalc-mode="1" value="daily75" onchange="sSet('otCalcMode',this.value)"> ⏰ Günlük 7,5s</label>
-            <label class="radio-opt" title="İkisinden hangisi daha fazla FM üretirse: günlük 7,5 üstü + haftalık 45 üstü (kesişimde çift sayım yok)."><input type="radio" name="otCalcMode" data-otcalc-mode="1" value="hybrid" onchange="sSet('otCalcMode',this.value)"> 🔀 Karma</label>
-          </div>
-          <small style="color:var(--t3);font-size:10px;margin-top:4px;display:block">Varsayılan haftalık 45s (yasal). Sözleşme/işyeri uygulaması günlük çalışma süresini esas alıyorsa "Günlük 7,5s" seçin.</small>
-        </div>
-        <div id="otBalanceDisplay"></div>
-      </div>
-
-      <!-- [FIX] Akıllı Vardiya Önerileri toggle -->
-      <div class="card s-card">
-        <h3><i class="fas fa-lightbulb"></i>Akıllı Vardiya Önerileri</h3>
-        <div class="hint"><i class="fas fa-info-circle"></i><span>Boş günlerde yasal sınırlara (11s dinlenme, 45s/hafta) uyan günleri 💡 ikonu ile işaretle.</span></div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
-          <label style="font-size:11px;font-weight:700;color:var(--t2);cursor:pointer;display:flex;align-items:center;gap:6px">
-            <input type="checkbox" id="hideSuggestionsToggle" onchange="sSet('hideSuggestions',!this.checked)" style="accent-color:var(--p)">
-            Önerileri göster
-          </label>
-        </div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-bullseye"></i>Hedefler</h3>
-        <div class="hint"><i class="fas fa-lightbulb"></i><span>Aylık saat ve kazanç hedefi belirleyin. Dashboard'da ilerleme gösterilir.</span></div>
-        <div class="fg"><label>Aylık Saat Hedefi</label><input type="number" id="sGoalHours" placeholder="180" min="0" max="400" step="5" onchange="sSet('goalHours',this.value)"></div>
-        <div class="fg"><label>Aylık Kazanç Hedefi (₺)</label><input type="number" id="sGoalEarning" placeholder="30000" min="0" step="500" onchange="sSet('goalEarning',this.value)"></div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-lock"></i>Güvenlik</h3>
-        <div class="hint"><i class="fas fa-shield-alt"></i><span>4 haneli PIN ile hesabınızı koruyun.</span></div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span id="pinStatus" style="font-size:12px;color:var(--t2)"></span>
-          <button class="btn btn-soft btn-sm" id="pinSetBtn" onclick="setupPIN()"><i class="fas fa-lock"></i>PIN Ayarla</button>
-          <button class="btn btn-danger btn-sm" id="pinDelBtn" onclick="removePIN()" style="display:none"><i class="fas fa-lock-open"></i>Kaldır</button>
-        </div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-bell"></i>Bildirimler</h3>
-        <p style="font-size:12px;color:var(--t2);margin-bottom:8px">Yarınki vardiya hatırlatması (akşam 20:00)</p>
-        <button class="btn btn-soft btn-sm" onclick="requestNotifPermission()"><i class="fas fa-bell"></i>Bildirimleri Aç</button>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-clock"></i>Vardiya Şablonları</h3>
-        <div id="customPresets"></div>
-        <button class="btn btn-soft btn-sm" onclick="openCPModal()" style="margin-top:8px"><i class="fas fa-plus"></i>Ekle</button>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-calendar-week"></i>Haftalık Şablon</h3>
-        <div class="hint"><i class="fas fa-lightbulb"></i><span>Haftanın her günü için sabit vardiya tanımlayın, sonra bir aya toplu uygulayın.</span></div>
-        <div id="weeklyTemplate"></div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-qrcode"></i>Vardiya Şablonu Paylaşımı</h3>
-        <div class="hint"><i class="fas fa-lightbulb"></i><span>Haftalık şablonunuzu QR kod ile başka kullanıcıya aktarın.</span></div>
-        <div id="tplShareSection"></div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-sticky-note"></i>Notlarım</h3>
-        <div class="notes-panel">
-          <textarea id="userNotes" placeholder="Genel notlarınızı buraya yazın..." rows="4"></textarea>
-          <div class="note-save-row"><button class="btn btn-primary btn-sm" onclick="saveNotes()"><i class="fas fa-save"></i>Kaydet</button></div>
-        </div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-database"></i>Veri</h3>
-        <div id="dataUsage" style="margin-bottom:12px"></div>
-        <div class="data-btns">
-          <button class="btn btn-outline" onclick="exportD()"><i class="fas fa-download"></i>Yedekle</button>
-          <button class="btn btn-outline" onclick="exportCSV()"><i class="fas fa-file-csv"></i>CSV</button>
-          <button class="btn btn-outline" onclick="exportPDF()"><i class="fas fa-file-pdf"></i>PDF</button>
-          <button class="btn btn-outline" onclick="shareMonthReport()"><i class="fas fa-share-alt"></i>Paylaş</button>
-          <button class="btn btn-outline" onclick="openQR()"><i class="fas fa-qrcode"></i>QR Transfer</button>
-          <button class="btn btn-outline" onclick="document.getElementById('impF').click()"><i class="fas fa-upload"></i>Yükle</button>
-          <input type="file" id="impF" style="display:none" accept=".json" onchange="importD(event)">
-          <button class="btn btn-danger" onclick="clearD()"><i class="fas fa-trash"></i>Sıfırla</button>
-          <button class="btn btn-danger" onclick="deleteCurrentUser()"><i class="fas fa-user-minus"></i>Hesabı Sil</button>
-        </div>
-      </div>
-
-      <div class="card s-card" id="installAppCard">
-        <h3><i class="fas fa-mobile-alt"></i>Ana Ekrana Ekle</h3>
-        <p style="font-size:12px;color:var(--t2);margin-bottom:10px">Uygulamayı ana ekranınıza ekleyerek daha hızlı erişin. İnternet bağlantısı olmadan da çalışır.</p>
-        <div id="installAppStatus"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-          <button class="btn btn-primary btn-sm" id="installAppBtn" onclick="triggerInstall()" style="display:none"><i class="fas fa-download"></i>Ana Ekrana Ekle</button>
-          <button class="btn btn-soft btn-sm" id="iosInstallBtn" onclick="showIOSInstall()" style="display:none"><i class="fas fa-info-circle"></i>Nasıl Eklenir?</button>
-        </div>
-      </div>
-
-      <div class="card s-card" id="cloudAccountCard">
-        <h3><i class="fas fa-cloud"></i>Bulut Hesabı</h3>
-        <div id="cloudAccountInfo"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-          <button class="btn btn-primary btn-sm" id="cloudSyncBtn" onclick="manualSync()" style="display:none"><i class="fas fa-sync"></i>Şimdi Senkronize Et</button>
-          <button class="btn btn-outline btn-sm" id="cloudLogoutBtn" onclick="firebaseLogout()" style="display:none"><i class="fas fa-sign-out-alt"></i>Bulut Hesabından Çık</button>
-          <button class="btn btn-primary btn-sm" id="cloudLoginBtn" onclick="showAuthScreen()" style="display:none"><i class="fas fa-cloud-upload-alt"></i>Bulut Hesabı Bağla</button>
-        </div>
-      </div>
-
-      <div class="card s-card">
-        <h3><i class="fas fa-calculator"></i>İhbar &amp; Kıdem Tazminatı</h3>
-        <p style="font-size:12px;color:var(--t2);margin-bottom:10px">İşe giriş tarihiniz ve maaşınıza göre ihbar ve kıdem tazminatı, yıllık izin durumu ve vergi dilimi hesaplanır.</p>
-        <button class="btn btn-primary btn-sm" onclick="openSeveranceModal()"><i class="fas fa-calculator"></i>Hesapla</button>
-      </div>
-    </div>
-
-    <!-- EVRAKLARIM -->
-    <div class="page" id="pg-documents">
-      <div class="docs-hero">
-        <h2><i class="fas fa-folder-open" style="margin-right:8px"></i>Evraklarım</h2>
-        <p>Belgelerinizi güvenle saklayın, WhatsApp ile anında paylaşın</p>
-      </div>
-      <div class="doc-cats" id="docCatFilter"></div>
-      <div id="docsContent"></div>
-      <button class="docs-add-btn" onclick="openDocUpload()" title="Belge Ekle"><i class="fas fa-plus"></i></button>
-    </div>
-
-  </main>
-</div>
-
-<!-- SHIFT MODAL -->
-<div class="overlay" id="modal">
-  <div class="modal">
-    <div class="modal-top">
-      <div style="display:flex;align-items:center;gap:8px">
-        <h3 id="mTitle">16</h3>
-        <span class="date-badge" id="mDate">Pzt</span>
-      </div>
-      <button class="modal-x" onclick="closeM()" aria-label="Kapat"><i class="fas fa-times"></i></button>
-    </div>
-    <div class="modal-body">
-      <div id="mAlert" class="h-alert" style="display:none"><i class="fas fa-flag"></i><span id="mAlertTx"></span></div>
-      <div id="mConflictWarn" class="h-warn" style="display:none"><i class="fas fa-exclamation-triangle"></i><span id="mConflictTx"></span></div>
-      <div id="mNightInfo" class="h-info" style="display:none"><i class="fas fa-moon"></i><span id="mNightTx"></span></div>
-      <div id="mBreakInfo" class="h-info" style="display:none;color:var(--r)"><i class="fas fa-coffee"></i><span id="mBreakTx"></span></div>
-      <div class="mode-tabs">
-        <button class="mode-tab active" onclick="mMode('shift',this)"><i class="fas fa-clock"></i>Vardiya</button>
-        <button class="mode-tab" onclick="mMode('leave',this)"><i class="fas fa-umbrella-beach"></i>İzin</button>
-      </div>
-      <div id="mShift">
-        <div class="preset-row" id="presetRow"></div>
-        <div class="time-inputs">
-          <div class="ti"><label>Giriş</label><input type="time" id="iStart" value="08:00"></div>
-          <div class="ti"><label>Çıkış</label><input type="time" id="iEnd" value="16:00"></div>
-          <div class="ti"><label>Mola</label>
-            <select id="iBreak">
-              <option value="0">Yok</option><option value="15">15dk</option>
-              <option value="30" selected>30dk</option><option value="45">45dk</option>
-              <option value="60">1s</option><option value="90">1.5s</option>
-            </select>
-          </div>
-        </div>
-        <div class="result-box">
-          <div class="rb-item"><div class="rb-val" id="rbGross">8s</div><div class="rb-lbl">Brüt</div></div>
-          <div class="rb-div"></div>
-          <div class="rb-item"><div class="rb-val accent" id="rbBreak">30dk</div><div class="rb-lbl">Mola</div></div>
-          <div class="rb-div"></div>
-          <div class="rb-item"><div class="rb-val green" id="rbNet">7.5s</div><div class="rb-lbl">Net</div></div>
-          <div class="rb-div"></div>
-          <div class="rb-item"><div class="rb-val" id="rbOT" style="color:var(--t3)">—</div><div class="rb-lbl">F.Mesai</div></div>
-        </div>
-        <div id="mEarningPreview" style="margin-top:8px;text-align:center;font-size:11px;color:var(--t2);font-weight:600"></div>
-        <div class="fg" style="margin-top:10px"><label>Not</label><div style="display:flex;gap:4px"><input type="text" id="iShiftNote" placeholder="Opsiyonel..." maxlength="100" style="flex:1"><button type="button" class="btn btn-outline btn-sm" onclick="toggleNoteEmoji('iShiftNote')" style="flex-shrink:0;padding:0 8px;font-size:14px">😊</button></div></div>
-      </div>
-      <div id="mLeave" style="display:none">
-        <div class="lt-row">
-          <div class="lt-opt" data-t="annual" onclick="selLT('annual',this)"><i class="fas fa-umbrella-beach" style="color:var(--leave-annual)"></i>Yıllık İzin<small>Ücretli</small></div>
-          <div class="lt-opt" data-t="weekly" onclick="selLT('weekly',this)"><i class="fas fa-couch" style="color:var(--p)"></i>Hafta Tatili<small>Ücretli</small></div>
-          <div class="lt-opt" data-t="sick" onclick="selLT('sick',this)"><i class="fas fa-notes-medical" style="color:var(--leave-sick)"></i>Rapor<small>Hastalık</small></div>
-          <div class="lt-opt" data-t="unpaid" onclick="selLT('unpaid',this)"><i class="fas fa-ban" style="color:var(--r)"></i>Ücretsiz<small>Kesinti</small></div>
-          <!-- [FIX] FM İzni — yalnızca otCompMode==='leave' modunda görünür -->
-          <div class="lt-opt" data-t="ot_comp" id="ltOptOTComp" onclick="selLT('ot_comp',this)" style="display:none"><i class="fas fa-exchange-alt" style="color:var(--leave-ot-comp)"></i>FM İzni<small id="ltOptOTCompBal">Bakiyeden</small></div>
-        </div>
-        <div class="fg"><label>Not</label><div style="display:flex;gap:4px"><input type="text" id="iNote" placeholder="Opsiyonel..." maxlength="100" style="flex:1"><button type="button" class="btn btn-outline btn-sm" onclick="toggleNoteEmoji('iNote')" style="flex-shrink:0;padding:0 8px;font-size:14px">😊</button></div></div>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-outline btn-sm" id="mPaste" onclick="pasteAndClose()" style="display:none;margin-right:auto"><i class="fas fa-paste"></i>Yapıştır</button>
-      <button class="btn btn-outline btn-sm" id="mCopy" onclick="copyShift()" style="display:none"><i class="fas fa-copy"></i></button>
-      <button class="btn btn-danger btn-sm" id="mDel" onclick="delEntry()" style="display:none"><i class="fas fa-trash"></i>Sil</button>
-      <button class="btn btn-ghost btn-sm" onclick="closeM()">İptal</button>
-      <button class="btn btn-primary btn-sm" onclick="saveEntry()"><i class="fas fa-check"></i>Kaydet</button>
-    </div>
-  </div>
-</div>
-
-=====================================================
+/* ============================================================
    CONSTANTS
 ============================================================ */
 const DATA_VERSION = '5.4';
@@ -1242,8 +414,11 @@ function nightHoursForPart(part) {
   const e = safeNum(part.endMin, 0);
   const span = Math.max(0, e - s);
   if (span <= 0) return 0;
-  const nightStart = (payrollConfig && payrollConfig.nightStartMin) || 1200;
-  const nightEnd   = (payrollConfig && payrollConfig.nightEndMin)   || 360;
+  // Part'ın ait olduğu yılın config'ini kullan; bulunamazsa mevcut yıla fallback
+  const _partYear = (parseDS(part.ds) || {}).y || new Date().getFullYear();
+  const _cfg = payrollCfg(_partYear);
+  const nightStart = _cfg.nightStartMin || 1200;
+  const nightEnd   = _cfg.nightEndMin   || 360;
   const overlap = (a, b, c, d) => Math.max(0, Math.min(b, d) - Math.max(a, c));
   // Gece pencereleri: [00:00, 06:00) ve [20:00, 24:00)
   const nightMin = overlap(s, e, 0, nightEnd) + overlap(s, e, nightStart, 1440);
@@ -1762,7 +937,7 @@ function getPrevMD() {
 /* ============================================================
    EARNING CALCULATION
 ============================================================ */
-function calcEarningForMonth(y, m, ns) {
+function calcEarningForMonth(y, m, ns, opts = {}) {
   /* [FIX ERR-HANDLE-08] NaN/Infinity ns input'u red et */
   ns = safeNum(ns, 0);
   if (!ns || ns <= 0 || !Number.isFinite(ns)) return null;
@@ -1771,10 +946,19 @@ function calcEarningForMonth(y, m, ns) {
   const tY = today.getFullYear(), tM = today.getMonth(), tD = today.getDate();
   const isCur = (y === tY && m === tM);
   const isFut = (y > tY || (y === tY && m > tM));
-  const d = getMD(y, m, isCur ? { throughDay:tD } : undefined);
+  const includeFutureRecords = !!(opts && opts.includeFutureRecords);
+  const d = getMD(y, m, (isCur && !includeFutureRecords) ? { throughDay:tD } : undefined);
   /* [FIX BUG-02] Saatlik ücret hesabında kullanıcının monthlyHours'unu kullan */
   const _mh = getMonthlyHours(u);
-  const dim = d.dim, dr = ns / 30, hr = _mh > 0 ? ns / _mh : 0;
+  const dim = d.dim, dr = ns / 30;
+  /* [FIX OT-GROSS] FM ve fazla çalışma ücreti 4857/41 gereği BRÜT saatlik ücret bazında
+     hesaplanmalı. findGrossFromNet ikili arama ile net → brüt dönüşümü yapar.
+     Taban maaş ve eksik gün hesabı net (dr) üzerinden kalmaya devam eder. */
+  const _fullGrossForOT = (Number.isFinite(ns) && ns > 0)
+    ? findGrossFromNet(ns, 'single', 0, 0, m, undefined, y)
+    : 0;
+  const hrGross = (_mh > 0 && _fullGrossForOT > 0) ? _fullGrossForOT / _mh : 0;
+  const hr = _mh > 0 ? ns / _mh : 0;  // net saatlik oran (geriye dönük uyumluluk / display)
 
   let ev;
   if (isFut) ev = 0;
@@ -1783,7 +967,7 @@ function calcEarningForMonth(y, m, ns) {
 
   if (isFut) {
     return {
-      dailyRate: dr, hourlyRate: hr,
+      dailyRate: dr, hourlyRate: hr, hourlyRateGross: hrGross, dailyRateGross: _fullGrossForOT > 0 ? _fullGrossForOT / 30 : dr,
       basePay: 0, overtimePay: 0, overtimePay125: 0, holidayPay: 0, totalEarning: 0,
       paidDays: 0, workedDays: d.wd || 0, workPaidDays: d.workDayEquiv || 0, weeklyDays: d.wr || 0,
       annualDays: d.mau || 0, sickDays: d.msd || 0, unpaidDays: d.ud || 0, otCompDays: d.otcm || 0,
@@ -1810,30 +994,20 @@ function calcEarningForMonth(y, m, ns) {
   const pd = workPaidDays + d.wr + d.mau + d.msd + (d.otcm || 0);
   const mis = Math.max(0, ev - pd - d.ud - fp);
   const ab = d.ud + mis;
-  const bp = Math.max(0, ns - (ab * dr));
+  /* Günlük (G) sözleşmelerde gerçek ay gün sayısı üzerinden baz ücret hesaplanır.
+     Ocak (31g) → 31×dr, Şubat (28g) → 28×dr. Aylık sabit için 30-günlük ayda fark yok. */
+  const bp = Math.max(0, dim * dr - (ab * dr));
 
-  /* [FIX Md.47 + P7] Tatil çalışması ilave ücreti: basePay içinde normal tatil ücreti var;
-     Madde 47 gereği ilave 1 günlük BRÜT ücret ödenir. Bu ekran "TAHMİNİ NET" gösterdiği için
-     brüt ek ücretin marjinal vergi/SGK sonrası net karşılığını hesaplıyoruz. */
+  /* Md.47 tatil ilave ücreti = 1 günlük NET ücret (dr). Bordro doğrulaması:
+     brüt extra (₺1.930,31) → marjinal vergi/SGK sonrası net = tam ₺1.380 = dr. */
   const _hpd = (d.hpd !== undefined ? d.hpd : d.hdw) || 0;
-  let hp;
-  if (_hpd > 0 && Number.isFinite(ns) && ns > 0) {
-    const _cfgHp = payrollCfg(y);
-    const _fullGross = findGrossFromNet(ns, 'single', 0, 0, m, undefined, y);
-    const _dailyGross = _fullGross / 30;
-    const _sgkRate = _cfgHp.sgkEmployee + _cfgHp.unemploymentEmployee; // 0.15
-    const _approxYTD = ns * (m + 1); // yaklaşık net YTD (dilim tahmini)
-    const _gvRate = _bracketRateFor(_approxYTD, y);
-    const _stamp = _cfgHp.stampTaxRate;
-    const _netRatio = (1 - _sgkRate) * (1 - _gvRate) - _stamp;
-    hp = _hpd * _dailyGross * Math.max(0.4, Math.min(1, _netRatio));
-  } else {
-    hp = _hpd * dr; // fallback (eski davranış)
-  }
+  const hp = _hpd * dr;
   /* [FIX] otCompMode: 'leave' modunda FM eki ödenmez, saatler bakiyeye eklenir */
   const compMode = u.otCompMode || 'pay';
   const compRate = getOTRate(u);
   const partialRate = payrollCfg(y).otPartialMultiplier;
+  /* Ekran TAHMİNİ NET gösterdiği için FM net saatlik ücret (hr) üzerinden hesaplanır.
+     hrGross referans/bilgi amaçlı return objesinde tutulmaya devam eder. */
   const op    = compMode === 'leave' ? 0 : (d.oh    || 0) * hr * compRate;
   /* [FIX P4] Sözleşme <45s sözleşmeli için fazla sürelerle çalışma %25 zamlı (4857/41/4) */
   const op125 = compMode === 'leave' ? 0 : (d.oh125 || 0) * hr * partialRate;
@@ -1842,9 +1016,9 @@ function calcEarningForMonth(y, m, ns) {
   const te = Number.isFinite(teRaw) ? Math.max(0, teRaw) : 0;
 
   return {
-    dailyRate: dr, hourlyRate: hr,
+    dailyRate: dr, hourlyRate: hr, hourlyRateGross: hrGross, dailyRateGross: _fullGrossForOT > 0 ? _fullGrossForOT / 30 : dr,
     basePay: bp, overtimePay: op, overtimePay125: op125, holidayPay: hp, totalEarning: te,
-    paidDays: Math.round(pd * 100) / 100, workedDays: d.wd, workPaidDays: Math.round(workPaidDays * 100) / 100, weeklyDays: d.wr,
+    paidDays: Math.round((dim - ab) * 100) / 100, workedDays: d.wd, workPaidDays: Math.round(workPaidDays * 100) / 100, weeklyDays: d.wr,
     annualDays: d.mau, sickDays: d.msd, unpaidDays: d.ud, otCompDays: d.otcm || 0,
     missingDays: mis, absentDays: ab, freePassDays: fp,
     dim, totalHours: d.th, overtimeHours: d.oh, overtimeHours125: d.oh125 || 0,
@@ -1998,16 +1172,11 @@ function answerAIQuestion(question, ctx) {
 
 function getDeepSeekSettings() {
   try {
-    const legacyLocalKey = localStorage.getItem('st_deepseek_api_key') || '';
-    const storagePref = localStorage.getItem('st_deepseek_storage');
-    const storage = storagePref === 'local' || (!storagePref && legacyLocalKey) ? 'local' : 'session';
-    const apiKey = storage === 'local'
-      ? legacyLocalKey
-      : (sessionStorage.getItem('st_deepseek_api_key') || '');
+    let apiKey = sessionStorage.getItem('st_deepseek_api_key') || '';
     return {
       apiKey,
       model: localStorage.getItem('st_deepseek_model') || 'deepseek-chat',
-      storage,
+      storage: 'session',
       consent: localStorage.getItem('st_deepseek_remote_consent') === '1'
     };
   } catch(_) {
@@ -2018,28 +1187,22 @@ function getDeepSeekSettings() {
 function saveDeepSeekSettings() {
   const keyEl = $('aiDeepSeekKey');
   const modelEl = $('aiDeepSeekModel');
-  const rememberEl = $('aiDeepSeekRemember');
   const consentEl = $('aiDeepSeekConsent');
   const key = keyEl ? keyEl.value.trim() : '';
   const model = modelEl ? modelEl.value.trim() : 'deepseek-chat';
   try {
-    const storage = rememberEl && rememberEl.checked ? 'local' : 'session';
-    localStorage.setItem('st_deepseek_storage', storage);
-    if (key && storage === 'local') {
-      localStorage.setItem('st_deepseek_api_key', key);
-      sessionStorage.removeItem('st_deepseek_api_key');
-    } else if (key) {
+    if (key) {
       sessionStorage.setItem('st_deepseek_api_key', key);
       localStorage.removeItem('st_deepseek_api_key');
     } else {
       localStorage.removeItem('st_deepseek_api_key');
       sessionStorage.removeItem('st_deepseek_api_key');
     }
+    localStorage.removeItem('st_deepseek_storage');
     localStorage.setItem('st_deepseek_model', model || 'deepseek-chat');
     if (consentEl && consentEl.checked) localStorage.setItem('st_deepseek_remote_consent', '1');
     else localStorage.removeItem('st_deepseek_remote_consent');
-    const modeText = storage === 'local' ? 'kalıcı olarak bu cihazda' : 'yalnızca bu oturumda';
-    setTxt('aiApiStatus', key ? `DeepSeek API ${consentEl && consentEl.checked ? 'aktif' : 'hazır, dış servis onayı bekliyor'}. Key ${modeText} saklanır.` : 'API key boşaltıldı; yerel MVP cevapları kullanılacak.');
+    setTxt('aiApiStatus', key ? `DeepSeek API ${consentEl && consentEl.checked ? 'aktif' : 'hazır, dış servis onayı bekliyor'}. Key yalnızca bu oturumda saklanır.` : 'API key boşaltıldı; yerel MVP cevapları kullanılacak.');
     toast(key ? 'DeepSeek API kaydedildi' : 'DeepSeek API kaldırıldı', key ? 'success' : 'info');
   } catch(e) {
     toast('API ayarı kaydedilemedi', 'error');
@@ -2056,7 +1219,6 @@ function clearDeepSeekSettings() {
   } catch(_) {}
   const keyEl = $('aiDeepSeekKey'); if (keyEl) keyEl.value = '';
   const modelEl = $('aiDeepSeekModel'); if (modelEl) modelEl.value = 'deepseek-chat';
-  const rememberEl = $('aiDeepSeekRemember'); if (rememberEl) rememberEl.checked = false;
   const consentEl = $('aiDeepSeekConsent'); if (consentEl) consentEl.checked = false;
   setTxt('aiApiStatus', 'DeepSeek API kapalı. Yerel MVP cevapları kullanılacak.');
   toast('DeepSeek API temizlendi', 'info');
@@ -2207,13 +1369,13 @@ function renderAIAssistantPage() {
             <input id="aiDeepSeekKey" type="password" placeholder="DeepSeek API key" value="${escHtml(apiCfg.apiKey)}" autocomplete="off">
             <input id="aiDeepSeekModel" type="text" placeholder="Model" value="${escHtml(apiCfg.model || 'deepseek-chat')}">
             <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)"><input id="aiDeepSeekConsent" type="checkbox" ${apiCfg.consent ? 'checked' : ''}>Vardiya, izin, kazanç ve varsa bordro özetini DeepSeek'e göndermeyi onaylıyorum</label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)"><input id="aiDeepSeekRemember" type="checkbox" ${apiCfg.storage === 'local' ? 'checked' : ''}>API key bu cihazda kalıcı saklansın</label>
+            <div style="font-size:10px;color:var(--t3);margin-top:2px"><i class="fas fa-shield-alt" style="margin-right:4px"></i>API key güvenlik gereği yalnızca bu oturumda saklanır, sayfa kapanınca silinir.</div>
             <div class="ai-api-actions">
               <button class="btn btn-primary btn-sm" type="button" onclick="saveDeepSeekSettings()"><i class="fas fa-save"></i>Kaydet</button>
               <button class="btn btn-outline btn-sm" type="button" onclick="clearDeepSeekSettings()"><i class="fas fa-trash"></i></button>
             </div>
           </div>
-          <div class="ai-api-status" id="aiApiStatus">${apiCfg.apiKey ? (apiCfg.consent ? `DeepSeek API aktif. Key ${apiCfg.storage === 'local' ? 'bu cihazda kalıcı' : 'bu oturumda'} saklanır.` : 'API key hazır; dış servise veri gönderimi için onay kutusunu işaretleyin.') : 'API key girilmezse sohbet yerel MVP cevaplarını kullanır.'}</div>
+          <div class="ai-api-status" id="aiApiStatus">${apiCfg.apiKey ? (apiCfg.consent ? `DeepSeek API aktif. Key bu oturumda saklanır.` : 'API key hazır; dış servise veri gönderimi için onay kutusunu işaretleyin.') : 'API key girilmezse sohbet yerel MVP cevaplarını kullanır.'}</div>
         </div>
         <div class="ai-card" style="margin-bottom:16px">
           <h3><i class="fas fa-comments"></i>Takvim Sohbeti</h3>
@@ -2355,25 +1517,6 @@ function init() {
   const cpE = $('cpEnd'); if (cpE) cpE.addEventListener('input', updCPPreview);
   const cpB = $('cpBreak'); if (cpB) cpB.addEventListener('change', updCPPreview);
 
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
-    if (e.key === 'Escape') {
-      closeM(); closeWTModal(); closeCPModal(); closeNewUserModal();
-      const co = $('confirmOverlay'); if (co) co.classList.remove('show');
-      const po = $('pinOverlay'); if (po) po.classList.remove('show');
-      const qo = $('qrOverlay'); if (qo) qo.classList.remove('show');
-      closeCalc(); closeEmployer();
-    }
-    const modal = $('modal'), wtModal = $('wtModal'), cpModal = $('cpModal');
-    if ((modal && modal.classList.contains('show')) || (wtModal && wtModal.classList.contains('show')) || (cpModal && cpModal.classList.contains('show'))) return;
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
-    const pg = document.querySelector('.page.active'); if (!pg) return;
-    if (e.key === 'ArrowLeft') { if (pg.id === 'pg-calendar') chgM(-1); else if (pg.id === 'pg-earnings') chgE(-1); }
-    if (e.key === 'ArrowRight') { if (pg.id === 'pg-calendar') chgM(1); else if (pg.id === 'pg-earnings') chgE(1); }
-    if (e.key.toLowerCase() === 't' && pg.id === 'pg-calendar') goToday();
-    if (e.key === '?') showShortcuts();
-  });
-
   const cg = $('calGrid');
   if (cg) {
     cg.addEventListener('click', function(e) {
@@ -2401,6 +1544,27 @@ function init() {
   const cpModalEl = $('cpModal'); if (cpModalEl) cpModalEl.addEventListener('click', function(e) { if (e.target === this) closeCPModal(); });
   const nuModalEl = $('newUserModal'); if (nuModalEl) nuModalEl.addEventListener('click', function(e) { if (e.target === this) closeNewUserModal(); });
   const nuInput = $('newUserName'); if (nuInput) nuInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') confirmNewUser(); });
+}
+
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
+    if (e.key === 'Escape') {
+      closeM(); closeWTModal(); closeCPModal(); closeNewUserModal();
+      const co = $('confirmOverlay'); if (co) co.classList.remove('show');
+      const po = $('pinOverlay'); if (po) po.classList.remove('show');
+      const qo = $('qrOverlay'); if (qo) qo.classList.remove('show');
+      closeCalc(); closeEmployer();
+    }
+    const modal = $('modal'), wtModal = $('wtModal'), cpModal = $('cpModal');
+    if ((modal && modal.classList.contains('show')) || (wtModal && wtModal.classList.contains('show')) || (cpModal && cpModal.classList.contains('show'))) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+    const pg = document.querySelector('.page.active'); if (!pg) return;
+    if (e.key === 'ArrowLeft') { if (pg.id === 'pg-calendar') chgM(-1); else if (pg.id === 'pg-earnings') chgE(-1); }
+    if (e.key === 'ArrowRight') { if (pg.id === 'pg-calendar') chgM(1); else if (pg.id === 'pg-earnings') chgE(1); }
+    if (e.key.toLowerCase() === 't' && pg.id === 'pg-calendar') goToday();
+    if (e.key === '?') showShortcuts();
+  });
 }
 
 /* ============================================================
@@ -2507,9 +1671,7 @@ function go(p, btn) {
   const pg = $('pg-' + p); if (pg) pg.classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  /* [FIX] Panel↔Kazanç ay tutarlılığı: kazanç sayfasına girince takvim/panel ayına senkronla.
-     Dashboard S.cm/S.cy, kazanç S.em/S.ey kullanıyordu; bağımsız navigasyon farklı ay → farklı
-     kazanç gösteriyordu. Sayfaya her girişte panelle aynı aya hizalanır. */
+  /* [FIX] Panel↔Kazanç ay tutarlılığı: kazanç sayfasına girince takvim/panel ayına senkronla */
   if (p === 'earnings') { S.em = S.cm; S.ey = S.cy; }
   renderActivePage();
 }
@@ -2569,7 +1731,7 @@ function renderDash() {
   setHtml('statsEl', `
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-clock"></i></div><div class="val">${d.th.toFixed(1)}</div><div class="lbl">Toplam Saat</div>${cmp(d.th, prev.th)}</div>
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-fire"></i></div><div class="val">${(d.oh + d.oh125).toFixed(1)}</div><div class="lbl">FÇ/FM</div>${cmp(d.oh + d.oh125, prev.oh + prev.oh125)}</div>
-    <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-wallet"></i></div><div class="val">${e ? fm(e.totalEarning) : '—'}</div><div class="lbl">Kazanç${e && e.isCurrentMonth ? ' (tahmini)' : ''}</div></div>
+    <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-wallet"></i></div><div class="val">${e ? fm((e.workedDays||0)*e.dailyRate+(e.overtimePay||0)+(e.overtimePay125||0)+(e.holidayPay||0)) : '—'}</div><div class="lbl">Kazanç</div></div>
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-calendar-check"></i></div><div class="val">${d.wd}/${d.dim}</div><div class="lbl">Çalışma Günü</div></div>
   `);
 
@@ -2679,9 +1841,9 @@ function renderDashReports(u, d, e) {
   const al = annualLeaveTotal(u), ar = Math.max(0, al - d.yau);
   const alPct = al > 0 ? Math.min(100, (d.yau / al) * 100) : 0;
   let leaveMini = `
-    <div class="dr-row"><span class="drk"><i class="fas fa-umbrella-beach" style="color:#60a5fa"></i>Y.İzin</span><span class="drv">${ar}/${al}g kalan</span></div>
+    <div class="dr-row"><span class="drk"><i class="fas fa-umbrella-beach" style="color:var(--leave-annual)"></i>Y.İzin</span><span class="drv">${ar}/${al}g kalan</span></div>
     <div class="dr-mini-bar"><div class="dr-fill" style="width:${alPct}%;background:linear-gradient(90deg,#3b82f6,#60a5fa)"></div></div>
-    <div class="dr-row" style="margin-top:4px"><span class="drk"><i class="fas fa-notes-medical" style="color:#fb923c"></i>Rapor</span><span class="drv">${d.ysd}g</span></div>
+    <div class="dr-row" style="margin-top:4px"><span class="drk"><i class="fas fa-notes-medical" style="color:var(--leave-sick)"></i>Rapor</span><span class="drv">${d.ysd}g</span></div>
     <div class="dr-row"><span class="drk"><i class="fas fa-couch" style="color:var(--p)"></i>H.Tatil (ay)</span><span class="drv">${d.weeklyRestDays || 0}g</span></div>
     <div class="dr-row"><span class="drk"><i class="fas fa-flag" style="color:var(--r)"></i>R.Tatil İzni</span><span class="drv">${(d.publicHolidayPaidDays || 0).toFixed(1)}g</span></div>
     <div class="dr-row"><span class="drk"><i class="fas fa-ban" style="color:var(--r)"></i>Ücretsiz</span><span class="drv ${d.ud > 0 ? 'neg' : ''}">${d.ud}g</span></div>`;
@@ -2757,9 +1919,9 @@ function renderMultiBar() {
     <span><i class="fas fa-check-circle"></i> ${S.selectedDates.length} gün</span>
     <div class="actions">
       <button class="btn btn-soft btn-xs" onclick="multiApplyShift()"><i class="fas fa-clock"></i>Vardiya</button>
-      <button class="btn btn-xs" style="background:rgba(96,165,250,.15);color:#60a5fa" onclick="multiApplyLeave('annual')">Y.İzin</button>
+      <button class="btn btn-xs" style="background:rgba(96,165,250,.15);color:var(--leave-annual)" onclick="multiApplyLeave('annual')">Y.İzin</button>
       <button class="btn btn-xs" style="background:var(--p4);color:var(--p)" onclick="multiApplyLeave('weekly')">H.Tatil</button>
-      <button class="btn btn-xs" style="background:rgba(251,146,60,.15);color:#fb923c" onclick="multiApplyLeave('sick')">Rapor</button>
+      <button class="btn btn-xs" style="background:rgba(251,146,60,.15);color:var(--leave-sick)" onclick="multiApplyLeave('sick')">Rapor</button>
       <button class="btn btn-danger btn-xs" onclick="multiClear()"><i class="fas fa-times"></i></button>
     </div>
   </div>`;
@@ -3510,6 +2672,24 @@ function saveEntry() {
       toast(`Uyarı (Md.68): ${hrs.toFixed(1)}s çalışma için en az ${_minBrk} dk mola girilmeli.`, 'warning');
     }
 
+    /* Gece vardiyası taşma bildirimi: önceki günün vardiyasının bu güne taşan parçası varsa bildir */
+    const _sdParsed = parseDS(S.sd);
+    if (_sdParsed) {
+      const _prevDate = new Date(_sdParsed.y, _sdParsed.m, _sdParsed.d - 1);
+      const _prevDs = dStr(_prevDate);
+      const _prevShift = u.shifts[_prevDs];
+      if (_prevShift) {
+        const _prevParts = getShiftDayParts(_prevDs, _prevShift);
+        const _spillPart = _prevParts.find(p2 => p2.ds === S.sd);
+        if (_spillPart) {
+          setTimeout(() => toast(
+            `Bilgi: ${_prevDs} gece vardiyasının ${_spillPart.hours.toFixed(2)}s'i bu güne taşıyor — saatler birlikte hesaplanacak.`,
+            'info'
+          ), 300);
+        }
+      }
+    }
+
     const doSave = () => {
       pushUndo('Vardiya');
       const snEl = $('iShiftNote');
@@ -3878,7 +3058,7 @@ function renderStatsProductivity(trendData) {
   return `<div class="card" style="margin-top:16px">
     <div class="card-head"><h3><i class="fas fa-tachometer-alt"></i>Verimlilik Analizi</h3></div>
     <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
-      <div style="font-size:10px;color:var(--t3)">Genel Ort: <b style="color:var(--t1)">${overallAvg.toFixed(1)}s/g</b></div>
+      <div style="font-size:10px;color:var(--t3)">Genel Ort: <b style="color:#fff">${overallAvg.toFixed(1)}s/g</b></div>
       <div style="font-size:10px;color:var(--t3)">En Verimli: <b style="color:var(--g)">${escHtml(bestMonth.label||'—')} (${(bestMonth.avg||0).toFixed(1)}s/g)</b></div>
       <div style="font-size:10px;color:var(--t3)">En Yoğun FM: <b style="color:var(--acc)">${escHtml(mostOT.label||'—')} (${(mostOT.ratio||0).toFixed(0)}%)</b></div>
     </div>
@@ -3912,13 +3092,13 @@ function renderLeaves() {
   setTxt('leaveYr', String(y));
 
   setHtml('leaveCards', `
-    <div class="card leave-c"><h4><i class="fas fa-umbrella-beach" style="color:#60a5fa"></i>Yıllık İzin</h4>
-      <div class="big" style="color:#60a5fa">${ar} <small>/ ${at}g</small></div>
+    <div class="card leave-c"><h4><i class="fas fa-umbrella-beach" style="color:var(--leave-annual)"></i>Yıllık İzin</h4>
+      <div class="big" style="color:var(--leave-annual)">${ar} <small>/ ${at}g</small></div>
       <div class="pbar"><div class="pf" style="width:${Math.min(100,at>0?(yau/at)*100:0)}%;background:linear-gradient(90deg,#3b82f6,#60a5fa)"></div></div>
       <div class="meta"><span>Kullanılan: ${yau}</span><span>Kalan: ${ar}</span></div>
     </div>
-    <div class="card leave-c"><h4><i class="fas fa-notes-medical" style="color:#fb923c"></i>Rapor</h4>
-      <div class="big" style="color:#fb923c">${ysd} <small>gün</small></div>
+    <div class="card leave-c"><h4><i class="fas fa-notes-medical" style="color:var(--leave-sick)"></i>Rapor</h4>
+      <div class="big" style="color:var(--leave-sick)">${ysd} <small>gün</small></div>
       <div class="pbar"><div class="pf" style="width:${Math.min(100,ysd/20*100)}%;background:linear-gradient(90deg,#f59e0b,#fbbf24)"></div></div>
       <div class="meta"><span>${y} yılı</span><span>${ysd}g</span></div>
     </div>
@@ -3999,6 +3179,139 @@ function delLv(k) {
 /* ============================================================
    EARNINGS
 ============================================================ */
+function calcCumulativeEarnings(u, upToY, upToM) {
+  if (!u || !u.netSalary) return { total: 0, months: 0 };
+  const seen = new Set();
+  [...Object.keys(u.shifts || {}), ...Object.keys(u.leaves || {})].forEach(d => {
+    const parts = d.split('-');
+    seen.add(parts[0] + '-' + parts[1]);
+  });
+  let total = 0, months = 0;
+  for (const ym of seen) {
+    const [ys, ms] = ym.split('-');
+    const y2 = +ys, m2 = +ms - 1;
+    if (y2 > upToY || (y2 === upToY && m2 > upToM)) continue;
+    const e2 = calcEarningForMonth(y2, m2, u.netSalary);
+    if (e2 && !e2.isFutureMonth && e2.totalEarning > 0) {
+      total += getPaidEarningBreakdown(u, y2, m2, e2).trackerTotal;
+      months++;
+    }
+  }
+  return { total, months };
+}
+
+function getPaidEarningBreakdown(u, y, m, e) {
+  const dailyRate = safeNum(e && e.dailyRate, 0);
+  const workDays = Math.max(0, safeNum(e && (e.workPaidDays !== undefined ? e.workPaidDays : e.workedDays), 0));
+  const leaveDays = { weekly:0, annual:0, sick:0, ot_comp:0 };
+  const standardDailyHours = Math.max(1, getMonthlyHours(u) / 30);
+
+  Object.entries((u && u.leaves) || {}).forEach(([ds, lv]) => {
+    const p = parseDS(ds);
+    if (!p || p.y !== y || p.m !== m || !lv || !lv.type) return;
+    if (u.shifts && u.shifts[ds]) return;
+    if (!Object.prototype.hasOwnProperty.call(leaveDays, lv.type)) return;
+
+    const dt = dsToDate(ds);
+    if (!dt || isNaN(dt.getTime())) return;
+    const naturalFreeDay = dt.getDay() === 0 || dt.getDay() === 6 || holidayWeight(ds) > 0;
+    if (naturalFreeDay) return;
+
+    if (lv.type === 'ot_comp') leaveDays.ot_comp += Math.min(1, getOTCompLeaveHours(u, lv) / standardDailyHours);
+    else leaveDays[lv.type] += 1;
+  });
+
+  const leaveTotal = leaveDays.weekly + leaveDays.annual + leaveDays.sick + leaveDays.ot_comp;
+  const workBase = workDays * dailyRate;
+  const leaveBase = leaveTotal * dailyRate;
+  const paidBase = workBase + leaveBase;
+  return {
+    workDays,
+    leaveDays,
+    leaveTotal,
+    workBase,
+    leaveBase,
+    paidDays: workDays + leaveTotal,
+    paidBase,
+    trackerTotal: paidBase + (safeNum(e && e.overtimePay, 0)) + (safeNum(e && e.overtimePay125, 0)) + (safeNum(e && e.holidayPay, 0))
+  };
+}
+
+function formatDayCount(v) {
+  const n = safeNum(v, 0);
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function renderDailyEarningsTracker(u, y, m, e) {
+  if (!u || !u.netSalary || e.isFutureMonth) return '';
+  const isCur  = e.isCurrentMonth;
+  const dim    = e.dim;
+  const evDays = e.evaluableDays || dim;
+  const pct    = Math.min(100, Math.round((evDays / dim) * 100));
+
+  const wd = e.workedDays || 0;
+  const wdPct = Math.min(100, dim > 0 ? Math.round((wd / dim) * 100) : 0);
+
+  const progressBar = isCur ? `
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t2);margin-bottom:5px">
+        <span>${wd} / ${dim} gün girildi</span>
+        <span style="font-weight:700;color:var(--p)">${wdPct}%</span>
+      </div>
+      <div style="background:var(--b2);border-radius:6px;height:7px;overflow:hidden">
+        <div style="background:linear-gradient(90deg,var(--p),var(--acc));width:${wdPct}%;height:100%;border-radius:6px;transition:.4s ease"></div>
+      </div>
+    </div>` : '';
+
+  const row = (icon, label, val, col) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--b2)">
+      <span style="font-size:13px;color:var(--t2)">${icon}&nbsp;${label}</span>
+      <span style="font-size:13px;font-weight:700;color:${col}">${val}</span>
+    </div>`;
+
+  const paidBreakdown = getPaidEarningBreakdown(u, y, m, e);
+  const trackerTotal = paidBreakdown.trackerTotal;
+
+  let rows = row('📅', `${paidBreakdown.workDays}g çalışma × ${fm(e.dailyRate)}`, fm(paidBreakdown.workBase), 'var(--t1)');
+  if (paidBreakdown.leaveTotal > 0) {
+    const leaveLabels = [];
+    if (paidBreakdown.leaveDays.weekly > 0) leaveLabels.push(`${formatDayCount(paidBreakdown.leaveDays.weekly)}g hafta tatili`);
+    if (paidBreakdown.leaveDays.annual > 0) leaveLabels.push(`${formatDayCount(paidBreakdown.leaveDays.annual)}g yıllık izin`);
+    if (paidBreakdown.leaveDays.sick > 0) leaveLabels.push(`${formatDayCount(paidBreakdown.leaveDays.sick)}g rapor`);
+    if (paidBreakdown.leaveDays.ot_comp > 0) leaveLabels.push(`${formatDayCount(paidBreakdown.leaveDays.ot_comp)}g FM izni`);
+    rows += row('🏖️', `Ücretli izin (${leaveLabels.join(', ')}) × ${fm(e.dailyRate)}`, fm(paidBreakdown.leaveBase), 'var(--p)');
+  }
+  if (e.overtimePay > 0)
+    rows += row('🔥', `${e.overtimeHours.toFixed(1)}s FM × ${getOTRate(u)}`, '+' + fm(e.overtimePay), '#f97316');
+  if ((e.overtimePay125||0) > 0)
+    rows += row('⚡', `${(e.overtimeHours125||0).toFixed(1)}s FÇ × ${e.partialRate||1.25}`, '+' + fm(e.overtimePay125), '#fb923c');
+  if (e.holidayPay > 0)
+    rows += row('🏛️', `${(e.holidayPayDays||e.holidayDays).toFixed(1)}g tatil ilave`, '+' + fm(e.holidayPay), 'var(--g)');
+
+  const cumul = calcCumulativeEarnings(u, y, m);
+  const cumulLine = cumul.months > 1 ? `
+    <div style="margin-top:10px;padding:10px 12px;background:linear-gradient(135deg,rgba(var(--p-rgb),.12),rgba(var(--acc-rgb),.08));border-radius:10px;border:1px solid rgba(var(--p-rgb),.2)">
+      <div style="font-size:10px;color:var(--t2);margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">
+        <i class="fas fa-layer-group"></i>&nbsp;Son takvim girişine kadar toplam (${cumul.months} ay)
+      </div>
+      <div style="font-weight:900;font-size:22px;color:var(--p)">${fm(cumul.total)}</div>
+    </div>` : '';
+
+  return `
+  <div class="earn-section">
+    <h3><i class="fas fa-chart-line"></i>GÜNLÜK KAZANÇ TAKİBİ
+      ${isCur ? '<span style="font-size:10px;background:var(--p);color:#fff;padding:2px 8px;border-radius:20px;margin-left:6px;font-weight:700">CANLI</span>' : ''}
+    </h3>
+    ${progressBar}
+    ${rows}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;margin-top:4px">
+        <span style="font-weight:800;font-size:13px;color:#fff"><i class="fas fa-wallet" style="color:var(--p)"></i>&nbsp;BU AY TOPLAM</span>
+        <span style="font-weight:900;font-size:20px;color:var(--p)">${fm(trackerTotal)}</span>
+    </div>
+    ${cumulLine}
+  </div>`;
+}
+
 function renderEarn() {
   const u = cu(); if (!u) return;
   const y = S.ey, m = S.em;
@@ -4011,20 +3324,24 @@ function renderEarn() {
   }
 
   const now = new Date();
-  const d = getMD(y, m, (y === now.getFullYear() && m === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
+  const isSelectedCurrentMonth = y === now.getFullYear() && m === now.getMonth();
+  const d = getMD(y, m);
   if (d.wd === 0 && d.wr === 0 && d.mau === 0 && d.msd === 0 && d.ud === 0) {
-    const e0 = calcEarningForMonth(y, m, u.netSalary);
+    const e0 = calcEarningForMonth(y, m, u.netSalary, isSelectedCurrentMonth ? { includeFutureRecords:true } : undefined);
     ec.innerHTML = '<div class="empty"><i class="fas fa-calendar-times"></i><p>Bu ay için veri yok</p></div>' + renderEmployeeRightsPanel(u, y, m, d, e0);
     return;
   }
 
-  const e = calcEarningForMonth(y, m, u.netSalary);
+  const e = calcEarningForMonth(y, m, u.netSalary, isSelectedCurrentMonth ? { includeFutureRecords:true } : undefined);
   if (!e) { ec.innerHTML = ''; return; }
+  const paidBreakdown = getPaidEarningBreakdown(u, y, m, e);
+  const trackerTotal = paidBreakdown.trackerTotal;
 
   let pm2 = m - 1, py2 = y;
   if (pm2 < 0) { pm2 = 11; py2--; }
   const prevE = calcEarningForMonth(py2, pm2, u.netSalary);
-  const diff = prevE && prevE.totalEarning > 0 && !prevE.isFutureMonth ? e.totalEarning - prevE.totalEarning : 0;
+  const prevBreakdown = prevE && !prevE.isFutureMonth ? getPaidEarningBreakdown(u, py2, pm2, prevE) : null;
+  const diff = prevBreakdown && prevBreakdown.trackerTotal > 0 ? trackerTotal - prevBreakdown.trackerTotal : 0;
 
   const dim = d.dim;
   const fd = new Date(y, m, 1);
@@ -4057,13 +3374,17 @@ function renderEarn() {
   });
   dgHtml += '</div></div>';
 
+  const _earnCfg = payrollCfg(y);
+  const _minNetWage = computeNetFromGross(_earnCfg.minWageGross, 'single', 0, 0, m, undefined, y).net;
+  const _belowMinWage = !e.isFutureMonth && trackerTotal > 0 && trackerTotal < _minNetWage;
   ec.innerHTML = `
+  ${_belowMinWage ? `<div class="hint" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35);margin-bottom:8px"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i><span style="color:#fbbf24">Gerçek kazanç (${fm(trackerTotal)}) ${y} asgari ücret netinin (${fm(_minNetWage)}) altında. Eksik gün veya kısmi çalışma kontrolü yapın.</span></div>` : ''}
   <div class="earn-hero">
     <div class="sub">KAZANÇ — ${MTR[m].toUpperCase()} ${y}${e.isCurrentMonth ? ' — DEVAM EDİYOR' : ''}</div>
-    <div class="amt">${fm(e.totalEarning)}${e.isCurrentMonth ? ' <small style="font-size:14px;opacity:.6">tahmini</small>' : ''}</div>
-    <div class="info">${e.isFullMonth ? 'Tam ay' : e.isCurrentMonth ? 'Devam ediyor' : e.absentDays > 0 ? e.absentDays + 'g eksik' : 'Tam'} • ${e.totalHours.toFixed(1)}s</div>
-    <div style="margin-top:8px;font-size:10.5px;opacity:.75;line-height:1.4"><i class="fas fa-info-circle"></i> Bu tahmini net (maaş ÷ 30 × ücretli gün) hesabıdır. SGK/vergi dilimli kesin net için aşağıdan <b>e-Bordro</b> oluşturun.</div>
-    ${prevE && prevE.totalEarning > 0 && !prevE.isFutureMonth ? `<div style="margin-top:8px"><span style="font-size:11px;opacity:.7">${diff>=0?'↑':'↓'} Önceki aya göre ${fm(Math.abs(diff))}</span></div>` : ''}
+    <div class="amt">${fm(trackerTotal)}</div>
+    <div class="info">${e.isFullMonth ? 'Tam ay' : e.isCurrentMonth ? (e.workedDays || 0) + 'g girildi' : e.absentDays > 0 ? e.absentDays + 'g eksik' : 'Tam'} • ${e.totalHours.toFixed(1)}s</div>
+    <div style="margin-top:6px;font-size:10.5px;opacity:.75;line-height:1.4"><i class="fas fa-info-circle"></i> Gün bazlı tahmini net. SGK/vergi dilimli kesin net için <b>e-Bordro</b> oluşturun.</div>
+    ${prevBreakdown && prevBreakdown.trackerTotal > 0 ? `<div style="margin-top:8px"><span style="font-size:11px;opacity:.7">${diff>=0?'↑':'↓'} Önceki aya göre ${fm(Math.abs(diff))}</span></div>` : ''}
     <div style="margin-top:14px">
       <button onclick="openEBordroModal(${y},${m})" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.45);color:#fff;padding:7px 16px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:600;backdrop-filter:blur(4px);transition:.2s" onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">
         <i class="fas fa-file-invoice"></i> e-Bordro Oluştur
@@ -4074,15 +3395,15 @@ function renderEarn() {
     <div class="esb-title"><i class="fas fa-calculator"></i>Detaylı Hesaplama</div>
     <div class="esb-grid">
       <div class="esb-item"><div class="esb-val" style="color:var(--p)">${e.workedDays}g</div><div class="esb-lbl">Çalışma</div></div>
-      <div class="esb-item"><div class="esb-val" style="color:var(--p)">${e.weeklyDays+e.annualDays+e.sickDays}g</div><div class="esb-lbl">Ücretli İzin</div></div>
+      <div class="esb-item"><div class="esb-val" style="color:var(--p)">${formatDayCount(paidBreakdown.leaveTotal)}g</div><div class="esb-lbl">Ücretli İzin</div></div>
       <div class="esb-item"><div class="esb-val" style="color:${e.absentDays>0?'var(--r)':'var(--g)'}"><small>${e.absentDays>0?'−'+e.absentDays+'g':'✓ Tam'}</small></div><div class="esb-lbl">Eksik</div></div>
       <div class="esb-item"><div class="esb-val">${fm(e.dailyRate)}</div><div class="esb-lbl">Günlük</div></div>
     </div>
     <div class="esb-detail">
-      <div class="esd-head">💰 NET TAHMİN (BAZ)</div>
+      <div class="esd-head">💰 NET KAZANÇ</div>
       <div class="esd"><span class="ek">Net Maaş</span><span class="ev">${fm(u.netSalary)}</span></div>
       <div class="esd"><span class="ek">Saatlik Ücret</span><span class="ev">${fm(e.hourlyRate)}/s</span></div>
-      <div class="esd" style="font-weight:600"><span class="ek">Baz Kazanç (${e.paidDays}g ücretli)</span><span class="ev">${fm(e.basePay)}</span></div>
+      <div class="esd" style="font-weight:600"><span class="ek">Ücretli Gün Kazancı (${formatDayCount(paidBreakdown.paidDays)}g ücretli)</span><span class="ev">${fm(paidBreakdown.paidBase)}</span></div>
       ${e.absentDays > 0 ? `
       <div class="esd-head" style="color:var(--r)">⛔ KESİNTİLER</div>
       ${e.unpaidDays > 0 ? `<div class="esd"><span class="ek">Ücretsiz İzin (${e.unpaidDays}g × ${fm(e.dailyRate)})</span><span class="ev neg">−${fm(e.unpaidDays*e.dailyRate)}</span></div>` : ''}
@@ -4093,17 +3414,18 @@ function renderEarn() {
       <div class="esd"><span class="ek">${e.overtimeHours.toFixed(1)}s × ${fm(e.hourlyRate)} × ${getOTRate(u)}</span><span class="ev pos">+${fm(e.overtimePay)}</span></div>
       ` : ''}
       ${(e.overtimePay125 || 0) > 0 ? `
-      <div class="esd-head" style="color:#fb923c">⚡ FAZLA SÜRELERLE ÇALIŞMA (${e.partialRate || 1.25}×)</div>
+      <div class="esd-head" style="color:var(--leave-sick)">⚡ FAZLA SÜRELERLE ÇALIŞMA (${e.partialRate || 1.25}×)</div>
       <div class="esd"><span class="ek">${(e.overtimeHours125||0).toFixed(1)}s × ${fm(e.hourlyRate)} × ${e.partialRate || 1.25}</span><span class="ev pos">+${fm(e.overtimePay125)}</span></div>
       ` : ''}
       ${e.holidayPay > 0 ? `
       <div class="esd-head" style="color:var(--g)">🏛️ TATİL PRİMLERİ</div>
-      <div class="esd"><span class="ek">${(e.holidayPayDays || e.holidayDays).toFixed(1)}g tatil × ${fm(e.dailyRate)} ilave (Md.47, brüt netleştirilmiş)</span><span class="ev pos">+${fm(e.holidayPay)}</span></div>
+      <div class="esd"><span class="ek">${(e.holidayPayDays || e.holidayDays).toFixed(1)}g tatil × ${fm(e.dailyRate)} ilave (Md.47)</span><span class="ev pos">+${fm(e.holidayPay)}</span></div>
       ${(e.hhOT||0) > 0 ? `<div class="esd" style="color:var(--acc);font-size:11px"><span class="ek" style="padding-left:8px">↳ ${e.hhOT.toFixed(1)}s tatil çalışması haftalık 45'i aşıyor; FM zammı ve Md.47 günlük ek ayrı satırlarda uygulanır.</span><span class="ev"></span></div>` : ''}
       ` : ''}
-      <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>TAHMİNİ NET</b></span><span class="ev">${fm(e.totalEarning)}</span></div>
+      <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>NET KAZANÇ</b></span><span class="ev">${fm(trackerTotal)}</span></div>
     </div>
   </div>
+  ${renderDailyEarningsTracker(u, y, m, e)}
   ${dgHtml}
   ${renderEarnWeekly(u, y, m, d, e)}
   ${renderEarnShiftTypes(u, y, m, e)}
@@ -4286,7 +3608,7 @@ function renderEmployeeRightsPanel(u, y, m, d, e) {
       if (entered > 0) cmp.push({ label, entered, expected, diff: entered - expected });
     });
   }
-  const input = (field, placeholder) => `<input type="number" min="0" step="0.01" value="${rec[field] ?? ''}" placeholder="${placeholder}" onchange="savePayrollCheckField('${field}',this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--b);border-radius:8px;background:var(--bg);color:var(--t1)">`;
+  const input = (field, placeholder) => `<input type="number" min="0" step="0.01" value="${rec[field] ?? ''}" placeholder="${placeholder}" onchange="savePayrollCheckField('${field}',this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--b);border-radius:8px;background:var(--bg);color:#fff">`;
   const warnHtml = warnings.map(w => `<div class="ai-suggestion ${w.level==='danger'?'warning':''}" style="margin-bottom:6px"><i class="fas ${w.level==='ok'?'fa-check-circle':'fa-triangle-exclamation'}"></i>${escHtml(w.text)}</div>`).join('');
   const holidayHtml = holidays.length ? holidays.map(h => `<div class="esd"><span class="ek">${h.ds} · ${escHtml(h.name)} · ${h.hours.toFixed(1)}s</span><span class="ev pos">${h.payDays.toFixed(1)}g</span></div>`).join('') : '<div class="ai-empty">Bu ay kayıtlı resmi tatil çalışması yok.</div>';
   return `<div class="card" style="margin-top:16px">
@@ -4431,10 +3753,11 @@ function renderEarnWeekly(u, y, m, d, e) {
 
   /* [FIX BUG-R1] totalWkEarn forEach dışında tanımsız kalıyordu → ReferenceError.
      Şimdi forEach içinde biriktirilip diffNote karşılaştırmasında kullanılıyor. */
+  const _wkTotal = (e.workedDays||0)*e.dailyRate + (e.overtimePay||0) + (e.overtimePay125||0) + (e.holidayPay||0);
   let rows = '', totalWkEarn = 0;
   weekData.forEach(({ h, totalW, isOT, weighted, idx }) => {
     const pct = maxH > 0 ? (h / maxH * 100).toFixed(1) : 0;
-    const wkEarn = totalWeighted > 0 ? (weighted / totalWeighted) * e.totalEarning : 0;
+    const wkEarn = totalWeighted > 0 ? (weighted / totalWeighted) * _wkTotal : 0;
     totalWkEarn += wkEarn;
     rows += `<div class="earn-wk-row">
       <span class="ewk-label">${idx+1}. Hafta</span>
@@ -4443,7 +3766,7 @@ function renderEarnWeekly(u, y, m, d, e) {
       <span class="ewk-val" style="color:var(--g)">${fm(wkEarn)}</span>
     </div>`;
   });
-  const diffNote = Math.abs(totalWkEarn - e.totalEarning) > 1 ? `<div style="font-size:10px;color:var(--t3);margin-top:6px;font-style:italic"><i class="fas fa-info-circle" style="margin-right:3px"></i>Haftalık kırılım tahminidir; kesin toplam yukarıdaki hesaplamadır.</div>` : '';
+  const diffNote = Math.abs(totalWkEarn - _wkTotal) > 1 ? `<div style="font-size:10px;color:var(--t3);margin-top:6px;font-style:italic"><i class="fas fa-info-circle" style="margin-right:3px"></i>Haftalık kırılım, girilmiş günlere dağıtılmıştır.</div>` : '';
   return `<div class="earn-section">
     <h3><i class="fas fa-calendar-week"></i>Haftalık Kazanç Dağılımı</h3>
     ${rows}${diffNote}
@@ -4465,10 +3788,11 @@ function renderEarnShiftTypes(u, y, m, e) {
      Toplam, e.totalEarning'e normalize edilir — aylık toplamla tutarlıdır. */
   const totalH = Object.values(types).reduce((a, v) => a + v.hours, 0);
   if (totalH > 0 && e && e.hourlyRate > 0) {
+    const _stTotal = (e.workedDays||0)*e.dailyRate + (e.overtimePay||0) + (e.overtimePay125||0) + (e.holidayPay||0);
     const rawTotal = Object.values(types).reduce((a, v) => a + v.hours * e.hourlyRate, 0);
     if (rawTotal > 0) {
       Object.values(types).forEach(v => {
-        v.earn = (v.hours * e.hourlyRate / rawTotal) * e.totalEarning;
+        v.earn = (v.hours * e.hourlyRate / rawTotal) * _stTotal;
       });
     }
   }
@@ -5830,7 +5154,7 @@ function renderDashWeekSummary() {
   const isOT = wkHrs > weeklyLimit;
   el.innerHTML = `<div class="card" style="margin-bottom:12px;padding:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <span style="font-size:12px;font-weight:800;color:var(--t1)"><i class="fas fa-calendar-week" style="color:var(--p);margin-right:6px"></i>Bu Hafta</span>
+      <span style="font-size:12px;font-weight:800;color:#fff"><i class="fas fa-calendar-week" style="color:var(--p);margin-right:6px"></i>Bu Hafta</span>
       <span style="font-size:11px;font-weight:700;color:${isOT ? 'var(--acc)' : 'var(--t2)'}">${wkHrs.toFixed(1)}s / ${weeklyLimit}s ${isOT ? '(FM!)' : ''}</span>
     </div>
     <div class="goal-bar"><div class="goal-fill ${isOT ? 'gf-over' : pct > 80 ? 'gf-ok' : 'gf-warn'}" style="width:${pct}%">${pct.toFixed(0)}%</div></div>
@@ -6741,7 +6065,7 @@ function showNotifications() {
     const color = n.type === 'warning' ? 'var(--acc)' : n.type === 'success' ? 'var(--g)' : 'var(--p)';
     h += `<div style="display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:6px;background:var(--bg3);border-radius:10px;border:1px solid var(--b1)">
       <i class="fas ${n.icon}" style="color:${color};font-size:14px"></i>
-      <span style="font-size:12px;color:var(--t1);font-weight:600">${escHtml(n.text)}</span>
+      <span style="font-size:12px;color:#fff;font-weight:600">${escHtml(n.text)}</span>
     </div>`;
   });
   h += '</div>';
@@ -6932,15 +6256,22 @@ if (isIOS && !isStandalone && !localStorage.getItem('st_install_dismissed')) {
 
 // ⚠️ Firebase yapılandırması — kendi Firebase projenizin bilgilerini girin!
 // https://console.firebase.google.com → Proje Ayarları → Web App → Config
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyClbILaI24aeB8yL-9Pdf6YWgrc7PRJGKo",
-  authDomain: "shift-a50d2.firebaseapp.com",
-  projectId: "shift-a50d2",
-  storageBucket: "shift-a50d2.firebasestorage.app",
-  messagingSenderId: "555190046824",
-  appId: "1:555190046824:web:d168bebfbe8866e4ea2bdd",
-  measurementId: "G-3REEMPWMP9"
-};
+
+// ⚠️ Firebase yapılandırması
+// Firebase API anahtarı gizli değil, genel bir tanımlayıcıdır.
+// Güvenlik Firestore kuralları ve Firebase Console'dan HTTP referrer kısıtlaması ile sağlanır:
+// Firebase Console → Proje Ayarları → API ve Hizmetler → Kimlik Bilgileri → Browser key → HTTP referans adresleri
+if (typeof FIREBASE_CONFIG === 'undefined') {
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyClbILaI24aeB8yL-9Pdf6YWgrc7PRJGKo",
+    authDomain: "shift-a50d2.firebaseapp.com",
+    projectId: "shift-a50d2",
+    storageBucket: "shift-a50d2.firebasestorage.app",
+    messagingSenderId: "555190046824",
+    appId: "1:555190046824:web:d168bebfbe8866e4ea2bdd",
+    measurementId: "G-3REEMPWMP9"
+  };
+}
 
 let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
 let syncInProgress = false, lastSyncTime = 0;
@@ -7761,7 +7092,7 @@ function updCloudAccountUI() {
   if (fbUser) {
     if (info) info.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:10px;background:var(--bg3);border-radius:10px;border:1px solid var(--b1)">
       <i class="fas fa-check-circle" style="color:var(--g);font-size:16px"></i>
-      <div><div style="font-size:12px;font-weight:700;color:var(--t1)">${escHtml(fbUser.email)}</div>
+      <div><div style="font-size:12px;font-weight:700;color:#fff">${escHtml(fbUser.email)}</div>
       <div style="font-size:10px;color:var(--t3)">Son senkron: ${lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString('tr-TR') : '—'}</div></div>
     </div>`;
     if (syncBtn) syncBtn.style.display = '';
@@ -8720,6 +8051,7 @@ if (!loadSet._hooked) {
 }
 
 init();
+setupKeyboardShortcuts();
 initSwipe();
 initDragDrop();
 initFirebase();
@@ -8741,7 +8073,6 @@ const payrollConfigByYear = {
       { upTo: Infinity,rate: 0.40 },
     ],
     stampTaxRate: 0.00759,
-    otMultiplier: 1.5,
     otPartialMultiplier: 1.25,
     weekendMultiplier: 1.0,
     monthlyStandardHours: 225,
@@ -8767,7 +8098,6 @@ const payrollConfigByYear = {
       { upTo: Infinity,rate: 0.40 },
     ],
     stampTaxRate: 0.00759,
-    otMultiplier: 1.5,
     otPartialMultiplier: 1.25,
     weekendMultiplier: 1.0,
     monthlyStandardHours: 225,
@@ -8793,7 +8123,6 @@ const payrollConfigByYear = {
       { upTo: Infinity,rate: 0.40 },
     ],
     stampTaxRate: 0.00759,
-    otMultiplier: 1.5,
     otPartialMultiplier: 1.25,
     weekendMultiplier: 1.0,
     monthlyStandardHours: 225,
@@ -8991,6 +8320,11 @@ function openEBordroModal(y, m) {
       calcTypeEl._ebHooked = true;
     }
   }
+  const earningModeEl = $('eb-earningMode');
+  if (earningModeEl && !earningModeEl._ebHooked) {
+    earningModeEl.addEventListener('change', _ebUpdateAmountLabel);
+    earningModeEl._ebHooked = true;
+  }
 
   // Önizlemeyi sıfırla
   const prev = $('bordroPreview');
@@ -9008,9 +8342,17 @@ function closeEBordroModal() {
 
 function _ebUpdateAmountLabel() {
   const typeEl = $('eb-calcType');
+  const modeEl = $('eb-earningMode');
   const labelEl = $('eb-amountLabel');
-  if (typeEl && labelEl) {
-    labelEl.textContent = typeEl.value === 'net2gross' ? 'Net Maaş (₺)' : 'Brüt Maaş (₺)';
+  const dailyGrossLabelEl = $('eb-dailyGrossLabel');
+  const officialNetDaily = modeEl && modeEl.value === 'officialNetDaily';
+  if (labelEl) {
+    labelEl.textContent = officialNetDaily
+      ? 'Günlük Net Ücret (₺)'
+      : ((typeEl && typeEl.value === 'net2gross') ? 'Net Maaş (₺)' : 'Brüt Maaş (₺)');
+  }
+  if (dailyGrossLabelEl) {
+    dailyGrossLabelEl.textContent = officialNetDaily ? 'Tatil Günlük Brüt (opsiyonel)' : 'Günlük Brüt (₺)';
   }
 }
 
@@ -9045,10 +8387,11 @@ function renderBordroPreview() {
   _eBordroSession.y = y;
   _eBordroSession.m = m;
 
-  const isManualEarnings = earningMode === 'manual';
+  const isOfficialNetDaily = earningMode === 'officialNetDaily';
+  const isManualEarnings = earningMode === 'manual' || isOfficialNetDaily;
   if (!amount || amount <= 0) {
-    if (!(isManualEarnings && manualDailyGross > 0)) {
-      toast('Geçerli bir tutar veya günlük brüt girin', 'error');
+    if (!(earningMode === 'manual' && manualDailyGross > 0)) {
+      toast(isOfficialNetDaily ? 'Geçerli günlük net ücret girin' : 'Geçerli bir tutar veya günlük brüt girin', 'error');
       return;
     }
   }
@@ -9083,7 +8426,42 @@ function renderBordroPreview() {
   let unpaidGross = 0;
   let weekendGross = 0;
 
-  if (isManualEarnings) {
+  if (isOfficialNetDaily) {
+    const officialNormalDays = _bordroRound2(manualNormalHours / cfg.dailyStandardHours);
+    const officialOtherDays = _bordroRound2(manualWeeklyRestDays + manualPublicHolidayDays + manualPublicHolidayWorkDays);
+    const officialPaidDays = _bordroRound2(officialNormalDays + officialOtherDays);
+    if (officialPaidDays <= 0) {
+      toast('G-Net bordro için normal saat veya tatil günü girin', 'error');
+      return;
+    }
+    const officialTotalNet = _bordroRound2(amount * officialPaidDays);
+    const officialNormalNet = _bordroRound2(amount * officialNormalDays);
+    const officialTotalGross = findGrossFromNet(officialTotalNet, marital, children, priorYTD, m, calcOpts, y);
+    const officialNormalGrossSeed = officialNormalDays > 0
+      ? findGrossFromNet(officialNormalNet, marital, children, priorYTD, m, calcOpts, y)
+      : 0;
+    const officialRestDailyGross = officialOtherDays > 0
+      ? (manualDailyGross > 0
+        ? _bordroRound2(manualDailyGross)
+        : _bordroRound2(Math.max(0, officialTotalGross - officialNormalGrossSeed) / officialOtherDays))
+      : 0;
+    drGross = officialRestDailyGross || _bordroRound2(officialTotalGross / officialPaidDays);
+    weeklyRestGross = _bordroRound2(manualWeeklyRestDays * drGross);
+    publicHolidayGross = _bordroRound2(manualPublicHolidayDays * drGross);
+    publicHolidayWorkGross = _bordroRound2(manualPublicHolidayWorkDays * drGross);
+    normalGross = _bordroRound2(Math.max(0, officialTotalGross - weeklyRestGross - publicHolidayGross - publicHolidayWorkGross));
+    hrGross = manualNormalHours > 0 ? _bordroRound2(normalGross / manualNormalHours) : _bordroRound2((drGross * 30) / payrollHourBasis);
+    baseGross = _bordroRound2(normalGross + weeklyRestGross + publicHolidayGross);
+    otHours = manualOTHours;
+    ot125Hours = manualOT125Hours;
+    nightHrs = manualNightHours;
+    holPayDays = manualPublicHolidayWorkDays;
+    otGross = compMode === 'pay' ? _bordroRound2(otHours * hrGross * compRate) : 0;
+    ot125Gross = compMode === 'pay' ? _bordroRound2(ot125Hours * hrGross * partialRate) : 0;
+    nightGross = _bordroRound2(nightHrs * hrGross * nightRate);
+    holGross = publicHolidayWorkGross;
+    totalGross = _bordroRound2(baseGross + otGross + ot125Gross + nightGross + holGross + weekendGross);
+  } else if (isManualEarnings) {
     drGross = manualDailyGross > 0 ? _bordroRound2(manualDailyGross) : _bordroRound2(seedGross / 30);
     hrGross = _bordroRound2((drGross * 30) / payrollHourBasis);
     normalGross = _bordroRound2(manualNormalHours * hrGross);
@@ -9106,9 +8484,7 @@ function renderBordroPreview() {
     baseGross = _bordroRound2(seedGross);
     drGross = _bordroRound2(baseGross / 30);
     hrGross = baseGross > 0 ? _bordroRound2(baseGross / payrollHourBasis) : _bordroRound2((drGross * 30) / payrollHourBasis);
-    /* [FIX] Temel brütü resmi bordro gibi kalemlere ayır: Normal Çalışma / Hafta Tatili / Genel Tatil.
-       Hafta tatili ve genel tatil günleri günlük brütle ücretlendirilir; normal çalışma kalanı kapsar.
-       Üçü toplamı baseGross'a eşittir (maaşlı çalışanda ayrım bilgilendirme amaçlıdır). */
+    /* [FIX] Resmi bordro düzeni: Temel Brüt'ü Normal Çalışma / Hafta Tatili / Genel Tatil kalemlerine ayır */
     weeklyRestGross = _bordroRound2(Math.max(0, d.wr || 0) * drGross);
     publicHolidayGross = _bordroRound2(Math.max(0, d.publicHolidayPaidDays || 0) * drGross);
     normalGross = _bordroRound2(Math.max(0, baseGross - weeklyRestGross - publicHolidayGross));
@@ -9212,6 +8588,9 @@ function renderBordroPreview() {
     otHours, ot125Hours, nightHours: nightHrs, holDays: isManualEarnings ? manualPublicHolidayWorkDays : d.hdw, holPayDays,
     hrGross, drGross, compRate, partialRate, nightRate,
     payrollHourBasis,
+    officialDailyNet: isOfficialNetDaily ? amount : 0,
+    officialPaidDays: isOfficialNetDaily ? _bordroRound2((manualNormalHours / cfg.dailyStandardHours) + manualWeeklyRestDays + manualPublicHolidayDays + manualPublicHolidayWorkDays) : 0,
+    officialNormalDays: isOfficialNetDaily ? _bordroRound2(manualNormalHours / cfg.dailyStandardHours) : 0,
     cfgYear: cfg.year,
     disability, besRate, besBase, besDeduct, icra, avans, otherDeduct, privateDeducts,
     annualLeaveDays: d.mau || 0, sickLeaveDays: d.msd || 0, unpaidDays: d.ud || 0, unpaidGross,
@@ -9236,6 +8615,7 @@ function renderBordroPreview() {
   const disabilityLabels = { 1: '1. Derece (≥%80)', 2: '2. Derece (%60–79)', 3: '3. Derece (%40–59)' };
   const hasPrivateDeducts = privateDeducts > 0;
   const baseRowsHtml = isManualEarnings ? `
+    ${isOfficialNetDaily ? `<div class="bordro-row info"><span class="bl">G-Net Günlük Ücret</span><span class="bv">${fmb(amount)} × ${fmr(_bordroRound2((manualNormalHours / cfg.dailyStandardHours) + manualWeeklyRestDays + manualPublicHolidayDays + manualPublicHolidayWorkDays))} gün</span></div>` : ''}
     ${normalGross > 0 ? `<div class="bordro-row add"><span class="bl">Normal Çalışma (${fmr(manualNormalHours)}s × ${fmr(hrGross)}₺)</span><span class="bv">${fmb(normalGross)}</span></div>` : ''}
     ${weeklyRestGross > 0 ? `<div class="bordro-row add"><span class="bl">Hafta Tatili (${fmr(manualWeeklyRestDays)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(weeklyRestGross)}</span></div>` : ''}
     ${publicHolidayGross > 0 ? `<div class="bordro-row add"><span class="bl">Genel Tatil (${fmr(manualPublicHolidayDays)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(publicHolidayGross)}</span></div>` : ''}
@@ -9334,7 +8714,8 @@ function downloadBordroPDF() {
 
   // Bordro tablosu
   const rows = [];
-  if (r.earningMode === 'manual') {
+  if (r.earningMode === 'manual' || r.earningMode === 'officialNetDaily') {
+    if (r.earningMode === 'officialNetDaily') rows.push([`G-Net Gunluk Ucret (${(r.officialPaidDays||0).toFixed(2)}g)`, fmb(r.officialDailyNet || 0), '']);
     if (r.normalGross > 0) rows.push([`Normal Calisma (${(r.normalHours||0).toFixed(2)}s)`, fmb(r.normalGross), '']);
     if (r.weeklyRestGross > 0) rows.push([`Hafta Tatili (${(r.weeklyRestDays||0).toFixed(2)}g)`, fmb(r.weeklyRestGross), '']);
     if (r.publicHolidayGross > 0) rows.push([`Genel Tatil (${(r.publicHolidayDays||0).toFixed(2)}g)`, fmb(r.publicHolidayGross), '']);
@@ -9425,6 +8806,9 @@ function exportBordroJSON() {
     period: { year: r.y, month: r.m + 1, monthName: MTR[r.m] },
     earnings: {
       earningMode:         r.earningMode || 'auto',
+      officialDailyNet:    +(r.officialDailyNet || 0).toFixed(2),
+      officialPaidDays:    +(r.officialPaidDays || 0).toFixed(2),
+      officialNormalDays:  +(r.officialNormalDays || 0).toFixed(2),
       baseGross:          +(r.baseGross || r.gross).toFixed(2),
       normalHours:        +(r.normalHours || 0).toFixed(2),
       normalGross:        +(r.normalGross || 0).toFixed(2),
@@ -9521,6 +8905,7 @@ function exportBordroXML() {
   </Calisan>
   <Kazanclar>
     <KazancModu>${xe(r.earningMode || 'auto')}</KazancModu>
+    <GNetGunlukUcret gun="${(r.officialPaidDays||0).toFixed(2)}" normalGun="${(r.officialNormalDays||0).toFixed(2)}">${fv(r.officialDailyNet||0)}</GNetGunlukUcret>
     <NormalCalisma saat="${(r.normalHours||0).toFixed(2)}">${fv(r.normalGross||0)}</NormalCalisma>
     <HaftaTatili gun="${(r.weeklyRestDays||0).toFixed(2)}">${fv(r.weeklyRestGross||0)}</HaftaTatili>
     <GenelTatil gun="${(r.publicHolidayDays||0).toFixed(2)}">${fv(r.publicHolidayGross||0)}</GenelTatil>
@@ -9571,187 +8956,269 @@ function exportBordroXML() {
   toast('XML indirildi', 'success');
 }
 
+// ===== CSV EXPORT =====
+function exportBordroCSV() {
+  if (!_eBordroSession || !_eBordroSession.result) { renderBordroPreview(); }
+  const r = _eBordroSession.result;
+  if (!r) { toast('Önce hesaplama yapın', 'warning'); return; }
+  const cfg = payrollCfg(r.y);
+  const fv = v => (+(v||0)).toFixed(2);
+  const headers = [
+    'Alan', 'Değer', 'Açıklama'
+  ];
+  const rows = [
+    ['Ad Soyad', r.empName || '', ''],
+    ['Dönem', `${MTR[r.m]} ${r.y}`, ''],
+    ['Hesaplama Türü', r.calcType === 'net2gross' ? 'Net→Brüt' : 'Brüt→Net', ''],
+    ['', '', ''],
+    ['BRÜT KAZANÇLAR', '', ''],
+    ['Brüt Maaş', fv(r.baseGross || 0), ''],
+    ['Fazla Mesai %50', fv(r.otGross || 0), `Oran: ${(cfg.otMultiplier||1.5).toFixed(2)}x`],
+    ['Fazla Çalışma %25', fv(r.ot125Gross || 0), `Oran: ${(cfg.otPartialMultiplier||1.25).toFixed(2)}x`],
+    ['Gece Zammı', fv(r.nightGross || 0), `Oran: ${((r.nightRate||0)*100).toFixed(1)}%`],
+    ['Resmi Tatil', fv(r.holGross || 0), ''],
+    ['Hafta Tatili', fv(r.weekendGross || 0), `Katsayı: ${(cfg.weekendMultiplier||1).toFixed(1)}x`],
+    ['Yemek Yardımı', fv(r.mealAmount || 0), `${r.mealDays||0} gün`],
+    ['Yol Yardımı', fv(r.transportAmount || 0), `${r.transportDays||0} gün`],
+    ['Toplam Brüt', fv(r.totalGross || 0), ''],
+    ['', '', ''],
+    ['KESİNTİLER', '', ''],
+    ['SGK Primi (%14)', fv(r.sgkDeduct || 0), ''],
+    ['İşsizlik Primi (%1)', fv(r.unempDeduct || 0), ''],
+    ['Gelir Vergisi', fv(r.taxDeduct || 0), `GV Matrahı: ${fv(r.taxBase||0)}`],
+    ['Damga Vergisi', fv(r.stampDeduct || 0), `Oran: ${((cfg.stampTaxRate||0)*100).toFixed(3)}%`],
+    ['BES Kesintisi', fv(r.besDeduct || 0), `Oran: ${((r.besRate||0)*100).toFixed(1)}%`],
+    ['İcra', fv(r.icra || 0), ''],
+    ['Avans', fv(r.avans || 0), ''],
+    ['Diğer Kesinti', fv(r.otherDeduct || 0), ''],
+    ['Toplam Kesinti', fv(r.totalDeducts || 0), ''],
+    ['', '', ''],
+    ['NET ÖDEMELER', '', ''],
+    ['Yasal Net', fv(r.calculatedLegalNet || r.net || 0), 'Resmi bordro neti'],
+    ['Ele Geçen Net', fv(r.finalNet || r.calculatedTakeHomeNet || 0), ''],
+    ['', '', ''],
+    ['Politika', '', ''],
+    ['Asgari Ücret', fv(cfg.minWageGross), `${r.y} yılı asgari brüt`],
+    ['Hesaplama Esası', `Aylık ${cfg.monthlyStandardHours || 225} saat`, ''],
+    ['Asgari Ücret Uyarısı', r.belowMinWage ? 'EVET - Asgari ücretin altında' : 'Hayır', ''],
+  ];
+  const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Bordro_${MTR[r.m]}_${r.y}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast('CSV indirildi (Excel uyumlu)', 'success');
+}
+
+// ===== KARANLIK MOD OTO-TESPİT =====
+(function() {
+  try {
+    const u = (typeof cu === 'function') ? cu() : null;
+    if (u && u.autoTheme) {
+      const mq = window.matchMedia('(prefers-color-scheme: light)');
+      const applyAuto = function() {
+        if (!u || !u.autoTheme) return;
+        u.theme = mq.matches ? 'light' : 'default';
+        applyTheme(u.theme);
+      };
+      applyAuto();
+      mq.addEventListener('change', applyAuto);
+    }
+  } catch(_) {}
+})();
+
+// ===== AYARLARA TEMA OTO SEÇENEĞİ EKLE =====
+(function() {
+  if (!renderSettings._hookedAutoTheme) {
+    const _orig = renderSettings;
+    renderSettings = function() {
+      _orig();
+      const toggle = $('autoThemeToggle');
+      if (toggle) {
+        const u = cu();
+        if (u) toggle.checked = !!u.autoTheme;
+      }
+    };
+    renderSettings._hookedAutoTheme = true;
+  }
+})();
+
+// ===== YILLIK İZİN HAK EDİŞ HESAPLAMA =====
+function calculateAnnualLeaveEntitlement(u) {
+  if (!u) return { entitled: 0, used: 0, remaining: 0, totalServiceYears: 0, entryDate: null };
+  const entry = u.startDate ? new Date(u.startDate) : null;
+  if (!entry) return { entitled: 0, used: 0, remaining: 0, totalServiceYears: 0, entryDate: null };
+  const now = new Date();
+  const totalDays = Math.floor((now - entry) / (1000 * 60 * 60 * 24));
+  const totalYears = totalDays / 365;
+  const sYears = Math.floor(totalYears);
+  let entitled = 0;
+  if (sYears >= 0 && sYears < 1) entitled = 0;
+  else if (sYears >= 1 && sYears < 5) entitled = Math.floor(14 + (totalYears - 1) * 0);
+  else if (sYears >= 5 && sYears < 15) entitled = 20;
+  else entitled = 26;
+  if (entitled < 14 && sYears >= 1) entitled = 14;
+  let used = 0;
+  if (u.leaves) {
+    Object.values(u.leaves).forEach(l => {
+      if (l && l.type === 'annual') used += (l.hours || 0) / 7.5;
+    });
+  }
+  const carryOver = u.annualLeaveCarryOver || 0;
+  const remaining = Math.max(0, entitled + carryOver - Math.floor(used));
+  return { entitled, used: Math.floor(used), remaining, totalServiceYears: sYears, entryDate: entry, carryOver };
+}
+
+// ===== İHBAR / KIDEM TAZMİNATI HESAPLAMA =====
+function calculateSeveranceAndNotice(u) {
+  if (!u) return null;
+  const entry = u.startDate ? new Date(u.startDate) : null;
+  if (!entry) return { severance: 0, noticePayGross: 0, noticeWeeks: 0, noticeDays: 0, totalServiceDays: 0, lastGrossWage: 0 };
+  const now = new Date();
+  const totalDays = Math.floor((now - entry) / (1000 * 60 * 60 * 24));
+  const totalYears = totalDays / 365;
+  const grossWage = u.monthlyGross || u.netSalary || 0;
+  const dailyGross = grossWage / 30;
+  const severance = Math.floor(totalYears) * 30 * dailyGross;
+  let noticeWeeks = 0;
+  const d = totalDays;
+  if (d < 180) noticeWeeks = 2;
+  else if (d < 547) noticeWeeks = 4;
+  else if (d < 1095) noticeWeeks = 6;
+  else noticeWeeks = 8;
+  const noticeDays = noticeWeeks * 7;
+  const noticePayGross = noticeDays * dailyGross;
+  return {
+    severance: Math.round(severance * 100) / 100,
+    noticePayGross: Math.round(noticePayGross * 100) / 100,
+    noticeWeeks,
+    noticeDays,
+    totalServiceDays: totalDays,
+    lastGrossWage: grossWage,
+    dailyGross: Math.round(dailyGross * 100) / 100,
+    serviceYears: totalYears.toFixed(1),
+    entryDate: entry
+  };
+}
+
+// ===== VERGİ DİLİMİ HESAPLAMA =====
+function calculateTaxBracketProgress(u, y) {
+  if (!u) return null;
+  y = y || payrollCfg().year;
+  const cfg = payrollCfg(y);
+  const now = new Date();
+  const curM = now.getMonth();
+  const curY = now.getFullYear();
+  let cumYTD = 0;
+  try {
+    const pc = typeof getPayrollCheck === 'function' ? getPayrollCheck(u, y, curM) : null;
+    if (pc) cumYTD = safeNum(pc.priorYTD, 0);
+    if (!cumYTD && u.netSalary) {
+      const monthGross = findGrossFromNet(u.netSalary, 'single', 0, 0, 0, undefined, y);
+      const monthsToCount = y < curY ? 12 : Math.max(1, curM);
+      cumYTD = monthGross * 0.85 * monthsToCount;
+    }
+  } catch(_) { cumYTD = 0; }
+  if (cumYTD <= 0) { cumYTD = (u.netSalary || 0) * 1.5; }
+  const brackets = (cfg.incomeTaxBrackets || []);
+  const results = [];
+  let remaining = cumYTD;
+  let totalTax = 0;
+  let currentBracket = 0;
+  let remainingToNextBracket = 0;
+  let highestRateReached = 0;
+  brackets.forEach((b, i) => {
+    const limit = b.upTo;
+    const rate = b.rate;
+    const bracketAmount = Math.min(remaining, limit - (i > 0 ? brackets[i-1].upTo : 0));
+    if (remaining > 0) {
+      const tax = bracketAmount * rate;
+      totalTax += tax;
+      remaining -= bracketAmount;
+      if (bracketAmount > 0) {
+        currentBracket = i + 1;
+        highestRateReached = rate;
+      }
+    }
+    const exhausted = cumYTD > limit;
+    results.push({ bracket: i + 1, upTo: limit, rate: rate * 100, amountInBracket: Math.max(0, bracketAmount), exhausted });
+  });
+  remainingToNextBracket = brackets[currentBracket] ? brackets[currentBracket].upTo - cumYTD : 0;
+  if (remainingToNextBracket < 0) remainingToNextBracket = 0;
+  return {
+    cumYTD,
+    totalTax: Math.round(totalTax * 100) / 100,
+    currentBracket,
+    remainingToNextBracket: Math.round(remainingToNextBracket * 100) / 100,
+    highestRateReached: highestRateReached * 100,
+    brackets: results,
+    year: y
+  };
+}
+
+// ===== TAZMİNAT VE İZİN MODAL AÇMA =====
+function openSeveranceModal() {
+  const u = cu(); if (!u) { toast('Önce kullanıcı profili oluşturun', 'warning'); return; }
+  const sv = calculateSeveranceAndNotice(u);
+  const lv = calculateAnnualLeaveEntitlement(u);
+  let h = '';
+  if (!sv || sv.totalServiceDays <= 0) {
+    h = '<p style="color:var(--t2);text-align:center;padding:20px">İşe giriş tarihi belirtilmedi. Lütfen Ayarlar → Profil → İşe Giriş Tarihi alanını doldurun.</p>';
+  } else {
+    h = `
+    <div class="card" style="margin-bottom:12px"><div class="card-head"><h3><i class="fas fa-briefcase"></i>İhbar Tazminatı</h3></div>
+    <div class="info-list">
+      <div class="info-row"><span class="k">İhbar Süresi</span><span class="v">${sv.noticeWeeks} hafta (${sv.noticeDays} gün)</span></div>
+      <div class="info-row"><span class="k">Günlük Brüt</span><span class="v">${fm(sv.dailyGross)}</span></div>
+      <div class="info-row"><span class="k">İhbar Tazminatı (Brüt)</span><span class="v">${fm(sv.severanceNotice || sv.noticePayGross)}</span></div>
+    </div></div>
+    <div class="card" style="margin-bottom:12px"><div class="card-head"><h3><i class="fas fa-coins"></i>Kıdem Tazminatı</h3></div>
+    <div class="info-list">
+      <div class="info-row"><span class="k">Hizmet Süresi</span><span class="v">${sv.serviceYears} yıl (${sv.totalServiceDays} gün)</span></div>
+      <div class="info-row"><span class="k">Son Brüt Maaş</span><span class="v">${fm(sv.lastGrossWage)}</span></div>
+      <div class="info-row"><span class="k">Kıdem Tazminatı</span><span class="v pos">${fm(sv.severance)}</span></div>
+      <div class="info-row"><span class="k">Kıdem Tavanı (2026)</span><span class="v">${fm(42860)}</span></div>
+    </div></div>
+    <div class="card" style="margin-bottom:12px"><div class="card-head"><h3><i class="fas fa-umbrella-beach"></i>Yıllık İzin</h3></div>
+    <div class="info-list">
+      <div class="info-row"><span class="k">Hizmet Yılı</span><span class="v">${lv.totalServiceYears} yıl</span></div>
+      <div class="info-row"><span class="k">Hak Edilen</span><span class="v">${lv.entitled} gün</span></div>
+      <div class="info-row"><span class="k">Kullanılan</span><span class="v warn">${lv.used} gün</span></div>
+      <div class="info-row"><span class="k">Devreden</span><span class="v">${lv.carryOver} gün</span></div>
+      <div class="info-row"><span class="k" style="font-weight:800">Kalan</span><span class="v pos">${lv.remaining} gün</span></div>
+    </div></div>
+    <div class="card"><div class="card-head"><h3><i class="fas fa-chart-bar"></i>Vergi Dilimi (${sv.noticePayGross > 0 ? '' : 'Cari Yıl'})</h3></div>
+    ${renderTaxBracketSummary(u)}
+    </div>`;
+  }
+  const modal = $('modal'); if (!modal) return;
+  const top = modal.querySelector('.modal-top');
+  const body = modal.querySelector('.modal-body');
+  const foot = modal.querySelector('.modal-foot');
+  if (top) top.innerHTML = '<h3><i class="fas fa-calculator"></i> İhbar / Kıdem / İzin / Vergi</h3><button class="modal-x" onclick="closeM()" aria-label="Kapat"><i class="fas fa-times"></i></button>';
+  if (body) body.innerHTML = h;
+  if (foot) foot.innerHTML = '<button class="btn btn-ghost btn-sm" onclick="closeM()">Kapat</button>';
+  modal.classList.add('show');
+}
+
+function renderTaxBracketSummary(u) {
+  const y = payrollCfg().year;
+  const tp = calculateTaxBracketProgress(u, y);
+  if (!tp) return '<p style="color:var(--t2);text-align:center">Veri yok</p>';
+  let h = `<div class="info-list"><div class="info-row"><span class="k">Kümülatif GV Matrahı</span><span class="v">${fm(tp.cumYTD)}</span></div>
+  <div class="info-row"><span class="k">Mevcut Dilim</span><span class="v">${tp.currentBracket}. Dilim (%${tp.highestRateReached})</span></div>
+  <div class="info-row"><span class="k">Sonraki Dilime Kalan</span><span class="v">${fm(tp.remainingToNextBracket)}</span></div></div>`;
+  h += '<div style="margin-top:10px"><table style="width:100%;font-size:11px;border-collapse:collapse"><tr style="color:var(--t2)"><th style="text-align:left;padding:4px">Dilim</th><th style="text-align:right;padding:4px">Üst Sınır</th><th style="text-align:right;padding:4px">Oran</th><th style="text-align:right;padding:4px">Kullanılan</th></tr>';
+  tp.brackets.forEach(b => {
+    const style = b.exhausted ? 'opacity:.4' : (b.bracket === tp.currentBracket ? 'font-weight:700;color:var(--p)' : '');
+    h += `<tr style="${style};border-bottom:1px solid var(--b1)"><td style="padding:4px">${b.bracket}. Dilim</td><td style="text-align:right;padding:4px">${fm(b.upTo)}</td><td style="text-align:right;padding:4px">%${b.rate}</td><td style="text-align:right;padding:4px">${b.amountInBracket > 0 ? fm(b.amountInBracket) : '-'}</td></tr>`;
+  });
+  h += '</table></div>';
+  return h;
+}
+
 // change listener, openEBordroModal() içinde _ebHooked guard ile eklenir
 // ===== eBORDRO MODULE END =====
-</script>
-=======
-<script defer src="app.js"></script>
->>>>>>> origin/main
-
-<!-- ===== eBORDRO MODULE START ===== -->
-<div id="eBordroModal" class="bordro-overlay" style="display:none" onclick="if(event.target===this)closeEBordroModal()">
-  <div class="bordro-box">
-    <div class="bordro-head">
-      <h2><i class="fas fa-file-invoice"></i> e-Bordro Oluştur</h2>
-      <button class="bordro-close" onclick="closeEBordroModal()" aria-label="Kapat">×</button>
-    </div>
-    <div class="bordro-body">
-
-      <!-- Dönem -->
-      <div class="bordro-section">
-        <div class="bordro-section-title"><i class="fas fa-calendar-alt"></i> Dönem</div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <span class="bordro-period-badge"><i class="fas fa-calendar"></i> <span id="eb-period">—</span></span>
-          <span style="font-size:11px;color:var(--t3)">Kazanç sayfasındaki aya göre</span>
-        </div>
-      </div>
-
-      <!-- Çalışan Bilgileri -->
-      <div class="bordro-section">
-        <div class="bordro-section-title"><i class="fas fa-user"></i> Çalışan Bilgileri</div>
-        <div class="bordro-form-grid">
-          <div class="bordro-form-group" style="grid-column:1/-1">
-            <label class="bordro-label" for="eb-empName">Ad Soyad</label>
-            <input id="eb-empName" class="bordro-input" type="text" placeholder="Çalışan adı soyadı">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-tcNo">TC Kimlik / SGK No (isteğe bağlı)</label>
-            <input id="eb-tcNo" class="bordro-input" type="text" placeholder="xxxxxxxxxx" maxlength="11">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-company">Şirket Adı (isteğe bağlı)</label>
-            <input id="eb-company" class="bordro-input" type="text" placeholder="Şirket adı">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-marital">Medeni Durum <small style="color:var(--t3);font-weight:400">(7349 sy. Kanun sonrası GV hesabını etkilemez)</small></label>
-            <select id="eb-marital" class="bordro-select" disabled style="opacity:.5;cursor:not-allowed">
-              <option value="single">Bekar (Hesaba dahil değil)</option>
-            </select>
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-children">Çocuk Sayısı <small style="color:var(--t3);font-weight:400">(2023 sonrası AGİ kaldırıldı, etkisiz)</small></label>
-            <select id="eb-children" class="bordro-select" disabled style="opacity:.5;cursor:not-allowed">
-              <option value="0">0 (Hesaba dahil değil)</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Hesaplama -->
-      <div class="bordro-section">
-        <div class="bordro-section-title"><i class="fas fa-calculator"></i> Hesaplama</div>
-        <div class="bordro-form-grid">
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-calcType">Hesaplama Türü</label>
-            <select id="eb-calcType" class="bordro-select">
-              <option value="net2gross">Net → Brüt (ters hesap)</option>
-              <option value="gross2net">Brüt → Net</option>
-            </select>
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" id="eb-amountLabel" for="eb-amount">Net Maaş (₺)</label>
-            <input id="eb-amount" class="bordro-input" type="number" min="0" step="0.01" placeholder="Örn: 35000">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-mealDays">Yemek Yardımı (Gün Sayısı)</label>
-            <input id="eb-mealDays" class="bordro-input" type="number" min="0" max="31" step="1" placeholder="0" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-transportDays">Yol Yardımı (Gün Sayısı)</label>
-            <input id="eb-transportDays" class="bordro-input" type="number" min="0" max="31" step="1" placeholder="0" value="0">
-          </div>
-          <div class="bordro-form-group" style="grid-column:1/-1">
-            <label class="bordro-label" for="eb-priorYTD">Önceki Ay Kümülatif GV Matrahı (₺) — Ocak için 0 bırakın</label>
-            <input id="eb-priorYTD" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
-          </div>
-          <div class="bordro-form-group" style="grid-column:1/-1">
-            <label class="bordro-label" for="eb-earningMode">Kazanç Kalemi Kaynağı</label>
-            <select id="eb-earningMode" class="bordro-select">
-              <option value="auto">Maaş + takvim ekleri</option>
-              <option value="manual">Kalem bazlı resmi bordro</option>
-              <option value="officialNetDaily">G-Net günlük resmi bordro</option>
-            </select>
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" id="eb-dailyGrossLabel" for="eb-dailyGross">Günlük Brüt (₺)</label>
-            <input id="eb-dailyGross" class="bordro-input" type="number" min="0" step="0.01" placeholder="Örn: 1930.31">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-normalHours">Normal Çalışma (saat)</label>
-            <input id="eb-normalHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="187.50" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-weeklyRestDays">Hafta Tatili (gün)</label>
-            <input id="eb-weeklyRestDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="5" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-publicHolidayDays">Genel Tatil (çalışılmayan gün)</label>
-            <input id="eb-publicHolidayDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="1" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-publicHolidayWorkDays">Genel Tatil Çalışması (gün)</label>
-            <input id="eb-publicHolidayWorkDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="1" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-manualOTHours">Fazla Mesai %50 (saat)</label>
-            <input id="eb-manualOTHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-manualOT125Hours">Fazla Çalışma %25 (saat)</label>
-            <input id="eb-manualOT125Hours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-manualNightHours">Gece Zammı Saati</label>
-            <input id="eb-manualNightHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
-          </div>
-        </div>
-      </div>
-
-      <!-- Ek hesap parametreleri -->
-      <div class="bordro-section">
-        <div class="bordro-section-title"><i class="fas fa-sliders-h"></i> Ek Parametreler &amp; Özel Kesintiler</div>
-        <div class="bordro-form-grid">
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-disability">Engellilik Derecesi <small style="color:var(--t3);font-weight:400">(GVK md.31)</small></label>
-            <select id="eb-disability" class="bordro-select">
-              <option value="0">Yok</option>
-              <option value="1">1. Derece (≥%80) — 9.900 ₺</option>
-              <option value="2">2. Derece (%60–79) — 5.700 ₺</option>
-              <option value="3">3. Derece (%40–59) — 2.400 ₺</option>
-            </select>
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-nightRate">Gece Zammı Oranı <small style="color:var(--t3);font-weight:400">(toplu sözleşme/işyeri; yasal zorunlu değil)</small></label>
-            <input id="eb-nightRate" class="bordro-input" type="number" min="0" max="1" step="0.05" placeholder="0.00" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-besRate">BES Kesintisi (%) <small style="color:var(--t3);font-weight:400">(otomatik katılım)</small></label>
-            <input id="eb-besRate" class="bordro-input" type="number" min="0" max="0.15" step="0.005" placeholder="0.03" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-icra">İcra Kesintisi (₺)</label>
-            <input id="eb-icra" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-avans">Avans Kesintisi (₺)</label>
-            <input id="eb-avans" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
-          </div>
-          <div class="bordro-form-group">
-            <label class="bordro-label" for="eb-otherDeduct">Diğer Özel Kesinti (₺)</label>
-            <input id="eb-otherDeduct" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
-          </div>
-        </div>
-      </div>
-
-      <!-- Önizleme -->
-      <div class="bordro-section">
-        <div class="bordro-section-title"><i class="fas fa-eye"></i> Bordro Önizleme</div>
-        <div id="bordroPreview" class="bordro-preview">
-          <div class="bordro-empty"><i class="fas fa-info-circle"></i> Bilgileri doldurup "Hesapla &amp; Önizle" butonuna basın</div>
-        </div>
-      </div>
-
-    </div><!-- /.bordro-body -->
-    <div class="bordro-actions">
-      <button class="bordro-btn bordro-btn-primary" onclick="renderBordroPreview()"><i class="fas fa-calculator"></i> Hesapla &amp; Önizle</button>
-      <button class="bordro-btn bordro-btn-success" onclick="downloadBordroPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
-      <button class="bordro-btn bordro-btn-info" onclick="exportBordroJSON()"><i class="fas fa-code"></i> JSON</button>
-      <button class="bordro-btn bordro-btn-warn" onclick="exportBordroXML()"><i class="fas fa-file-code"></i> XML</button>
-      <button class="bordro-btn" style="background:var(--g);color:#fff" onclick="exportBordroCSV()"><i class="fas fa-file-csv"></i> CSV</button>
-    </div>
-  </div>
-</div>
-<!-- ===== eBORDRO MODULE END ===== -->
-
-</body>
-</html>

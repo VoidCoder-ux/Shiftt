@@ -1,0 +1,10 @@
+# Shiftt .gitignore
+
+# Yerel yapılandırma override — app.js içinde varsayılan Firebase yapılandırması mevcut.
+# Kendi Firebase projeniz için buraya config.js ekleyebilirsiniz.
+# Önce config.example.js dosyasını config.js olarak kopyalayın,
+# sonra kendi değerlerinizi girin. config.js varsa app.js içindeki varsayılanı ezer.
+# Firebase Console → Proje Ayarları → API ve Hizmetler → Kimlik Bilgileri
+# → Browser key → Uygulama kısıtlamaları → HTTP referans adresleri
+# → kendi domaininizi ekleyin (örn: https://shiftapp.example.com/*)
+config.js
