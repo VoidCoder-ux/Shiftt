@@ -3324,16 +3324,14 @@ function renderEarn() {
     return;
   }
 
-  const now = new Date();
-  const isSelectedCurrentMonth = y === now.getFullYear() && m === now.getMonth();
   const d = getMD(y, m);
   if (d.wd === 0 && d.wr === 0 && d.mau === 0 && d.msd === 0 && d.ud === 0) {
-    const e0 = calcEarningForMonth(y, m, u.netSalary, isSelectedCurrentMonth ? { includeFutureRecords:true } : undefined);
+    const e0 = calcEarningForMonth(y, m, u.netSalary);
     ec.innerHTML = '<div class="empty"><i class="fas fa-calendar-times"></i><p>Bu ay için veri yok</p></div>' + renderEmployeeRightsPanel(u, y, m, d, e0);
     return;
   }
 
-  const e = calcEarningForMonth(y, m, u.netSalary, isSelectedCurrentMonth ? { includeFutureRecords:true } : undefined);
+  const e = calcEarningForMonth(y, m, u.netSalary);
   if (!e) { ec.innerHTML = ''; return; }
   const paidBreakdown = getPaidEarningBreakdown(u, y, m, e);
 
