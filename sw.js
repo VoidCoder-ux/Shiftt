@@ -10,7 +10,6 @@ const CDN_ASSETS = [
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE_NAME).then(cache =>
-      // Önce kritik dosyaları cache'le, sonra CDN'leri tek tek dene (başarısız olursa atla)
       cache.addAll(CORE_ASSETS).then(() =>
         Promise.allSettled(CDN_ASSETS.map(url => cache.add(url)))
       )
@@ -26,7 +25,6 @@ self.addEventListener('activate', e => {
   );
 });
 
-// [FIX ERR-HANDLE-13] Navigate fetch'i 8s timeout'a bağla — yavaş ağda cache fallback'a düş
 const NAV_TIMEOUT_MS = 8000;
 function fetchWithTimeout(req, ms) {
   const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
@@ -50,7 +48,6 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   const sameOrigin = url.origin === self.location.origin;
 
-  // Network-first for HTML pages, cache-first for assets
   if (sameOrigin && (e.request.mode === 'navigate' || url.pathname.endsWith('.html'))) {
     e.respondWith(
       fetchWithTimeout(e.request, NAV_TIMEOUT_MS).then(res => {

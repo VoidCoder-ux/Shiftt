@@ -1,0 +1,9 @@
+# Shiftt yerel yapılandırma dosyası — bu dosya git'e EKLENMEZ!
+
+# 1. config.example.js içeriğini config.js'ye kopyalayın
+# 2. Kendi Firebase proje bilgilerinizi girin
+# 3. Firebase Console → Proje Ayarları → API ve Hizmetler → Kimlik Bilgileri
+#    → Browser key → Uygulama kısıtlamaları → HTTP referans adresleri
+#    → kendi domaininizi ekleyin (örn: https://shiftapp.example.com/*)
+
+config.js
