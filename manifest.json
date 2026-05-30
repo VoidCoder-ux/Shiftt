@@ -8,16 +8,113 @@
   "theme_color": "#8b5cf6",
   "orientation": "portrait-primary",
   "lang": "tr",
+  "categories": ["productivity", "utilities", "finance"],
   "icons": [
+    {
+      "src": "./assets/icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icons/icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icons/icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "./assets/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./assets/icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "./assets/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "./assets/screenshots/dashboard.png",
+      "sizes": "1080x2340",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Panel — Vardiya özeti ve haftalık grafik"
+    },
+    {
+      "src": "./assets/screenshots/calendar.png",
+      "sizes": "1080x2340",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Takvim — Aylık vardiya planı"
+    },
+    {
+      "src": "./assets/screenshots/earnings.png",
+      "sizes": "1080x2340",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Kazanç — Bordro hesaplama ve dışa aktarım"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Yeni Vardiya",
+      "short_name": "Vardiya",
+      "description": "Hızlı vardiya girişi",
+      "url": "./index.html?action=newshift",
+      "icons": [{ "src": "./assets/icons/icon-96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Bordro",
+      "short_name": "Bordro",
+      "description": "Maaş bordrosu hesapla",
+      "url": "./index.html?action=payroll",
+      "icons": [{ "src": "./assets/icons/icon-96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "İzin Ekle",
+      "short_name": "İzin",
+      "description": "İzin kaydı oluştur",
+      "url": "./index.html?action=leave",
+      "icons": [{ "src": "./assets/icons/icon-96.png", "sizes": "96x96" }]
     }
   ]
 }
