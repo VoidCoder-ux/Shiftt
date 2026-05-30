@@ -1671,6 +1671,8 @@ function go(p, btn) {
   const pg = $('pg-' + p); if (pg) pg.classList.add('active');
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   if (btn) btn.classList.add('active');
+  /* [FIX] Panel↔Kazanç ay tutarlılığı: kazanç sayfasına girince takvim/panel ayına senkronla */
+  if (p === 'earnings') { S.em = S.cm; S.ey = S.cy; }
   renderActivePage();
 }
 
@@ -3381,6 +3383,7 @@ function renderEarn() {
     <div class="sub">KAZANÇ — ${MTR[m].toUpperCase()} ${y}${e.isCurrentMonth ? ' — DEVAM EDİYOR' : ''}</div>
     <div class="amt">${fm(trackerTotal)}</div>
     <div class="info">${e.isFullMonth ? 'Tam ay' : e.isCurrentMonth ? (e.workedDays || 0) + 'g girildi' : e.absentDays > 0 ? e.absentDays + 'g eksik' : 'Tam'} • ${e.totalHours.toFixed(1)}s</div>
+    <div style="margin-top:6px;font-size:10.5px;opacity:.75;line-height:1.4"><i class="fas fa-info-circle"></i> Gün bazlı tahmini net. SGK/vergi dilimli kesin net için <b>e-Bordro</b> oluşturun.</div>
     ${prevBreakdown && prevBreakdown.trackerTotal > 0 ? `<div style="margin-top:8px"><span style="font-size:11px;opacity:.7">${diff>=0?'↑':'↓'} Önceki aya göre ${fm(Math.abs(diff))}</span></div>` : ''}
     <div style="margin-top:14px">
       <button onclick="openEBordroModal(${y},${m})" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.45);color:#fff;padding:7px 16px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:600;backdrop-filter:blur(4px);transition:.2s" onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">
@@ -8481,6 +8484,10 @@ function renderBordroPreview() {
     baseGross = _bordroRound2(seedGross);
     drGross = _bordroRound2(baseGross / 30);
     hrGross = baseGross > 0 ? _bordroRound2(baseGross / payrollHourBasis) : _bordroRound2((drGross * 30) / payrollHourBasis);
+    /* [FIX] Resmi bordro düzeni: Temel Brüt'ü Normal Çalışma / Hafta Tatili / Genel Tatil kalemlerine ayır */
+    weeklyRestGross = _bordroRound2(Math.max(0, d.wr || 0) * drGross);
+    publicHolidayGross = _bordroRound2(Math.max(0, d.publicHolidayPaidDays || 0) * drGross);
+    normalGross = _bordroRound2(Math.max(0, baseGross - weeklyRestGross - publicHolidayGross));
     unpaidGross = _bordroRound2(Math.max(0, d.ud || 0) * drGross);
     otHours = d.oh || 0;
     ot125Hours = d.oh125 || 0;
@@ -8613,8 +8620,13 @@ function renderBordroPreview() {
     ${weeklyRestGross > 0 ? `<div class="bordro-row add"><span class="bl">Hafta Tatili (${fmr(manualWeeklyRestDays)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(weeklyRestGross)}</span></div>` : ''}
     ${publicHolidayGross > 0 ? `<div class="bordro-row add"><span class="bl">Genel Tatil (${fmr(manualPublicHolidayDays)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(publicHolidayGross)}</span></div>` : ''}
     ${baseGross > 0 ? `<div class="bordro-row sub"><span class="bl">TEMEL BRÜT</span><span class="bv">${fmb(baseGross)}</span></div>` : ''}
-  ` : `<div class="bordro-row"><span class="bl">Temel Brüt Maaş</span><span class="bv">${fmb(baseGross)}</span></div>
-    <div class="bordro-row info"><span class="bl">Yasal Saatlik Bordro Esası</span><span class="bv">${payrollHourBasis}s (${fmr(hrGross)}₺/s)</span></div>`;
+  ` : `
+    ${normalGross > 0 ? `<div class="bordro-row add"><span class="bl">Normal Çalışma (${fmr(d.wd || 0)}g · ${fmr(d.rh || 0)}s × ${fmr(hrGross)}₺)</span><span class="bv">${fmb(normalGross)}</span></div>` : ''}
+    ${weeklyRestGross > 0 ? `<div class="bordro-row add"><span class="bl">Hafta Tatili (${fmr(d.wr || 0)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(weeklyRestGross)}</span></div>` : ''}
+    ${publicHolidayGross > 0 ? `<div class="bordro-row add"><span class="bl">Genel Tatil (${fmr(d.publicHolidayPaidDays || 0)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(publicHolidayGross)}</span></div>` : ''}
+    <div class="bordro-row sub"><span class="bl">TEMEL BRÜT</span><span class="bv">${fmb(baseGross)}</span></div>
+    <div class="bordro-row info"><span class="bl">Yasal Saatlik Bordro Esası</span><span class="bv">${payrollHourBasis}s (${fmr(hrGross)}₺/s)</span></div>
+    <div class="bordro-row info"><span class="bl">Sigorta Günü (SGK üst sınır 30)</span><span class="bv">${Math.min(30, Math.round((d.workDayEquiv || d.wd || 0) + (d.wr || 0) + (d.publicHolidayPaidDays || 0) + (d.mau || 0) + (d.msd || 0)))} gün</span></div>`;
 
   const previewEl = $('bordroPreview');
   if (!previewEl) return;
@@ -8633,7 +8645,7 @@ function renderBordroPreview() {
     ${ot125Gross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Çalışma %25 (${ot125Hours.toFixed(1)}s × ${fmr(hrGross)}₺ × ${partialRate})</span><span class="bv">+ ${fmb(ot125Gross)}</span></div>` : ''}
     ${otGross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Mesai %50 (${otHours.toFixed(1)}s × ${fmr(hrGross)}₺ × ${compRate})</span><span class="bv">+ ${fmb(otGross)}</span></div>` : ''}
     ${nightGross > 0 ? `<div class="bordro-row add"><span class="bl">Gece Çalışma Zammı (${nightHrs.toFixed(1)}s × ${fmr(hrGross)}₺ × ${nightRate})</span><span class="bv">+ ${fmb(nightGross)}</span></div>` : ''}
-    ${holGross > 0 ? `<div class="bordro-row add"><span class="bl">Tatil Çalışması İlavesi — ${fmr(holPayDays)}g × ${fmr(drGross)}₺ (Md.47)</span><span class="bv">+ ${fmb(holGross)}</span></div>` : ''}
+    ${holGross > 0 ? `<div class="bordro-row add"><span class="bl">Genel Tatil (Çalıştı) — ${fmr(holPayDays)}g × ${fmr(drGross)}₺ ek ücret (Md.47)</span><span class="bv">+ ${fmb(holGross)}</span></div>` : ''}
     ${hasExtras ? `<div class="bordro-row sub"><span class="bl">TOPLAM BRÜT</span><span class="bv">${fmb(totalGross)}</span></div>` : ''}
     <div class="bordro-row deduct"><span class="bl">SGK İşçi Payı (%14)</span><span class="bv">− ${fmb(res.sgkDeduction)}</span></div>
     <div class="bordro-row deduct"><span class="bl">İşsizlik Sigortası (%1)</span><span class="bv">− ${fmb(res.unemployDeduct)}</span></div>
