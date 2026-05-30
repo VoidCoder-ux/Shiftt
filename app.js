@@ -1731,7 +1731,7 @@ function renderDash() {
   setHtml('statsEl', `
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-clock"></i></div><div class="val">${d.th.toFixed(1)}</div><div class="lbl">Toplam Saat</div>${cmp(d.th, prev.th)}</div>
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-fire"></i></div><div class="val">${(d.oh + d.oh125).toFixed(1)}</div><div class="lbl">FÇ/FM</div>${cmp(d.oh + d.oh125, prev.oh + prev.oh125)}</div>
-    <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-wallet"></i></div><div class="val">${e ? fm((e.workedDays||0)*e.dailyRate+(e.overtimePay||0)+(e.overtimePay125||0)+(e.holidayPay||0)) : '—'}</div><div class="lbl">Kazanç</div></div>
+    <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-wallet"></i></div><div class="val">${e ? fm(e.totalEarning) : '—'}</div><div class="lbl">Kazanç</div></div>
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-calendar-check"></i></div><div class="val">${d.wd}/${d.dim}</div><div class="lbl">Çalışma Günü</div></div>
   `);
 
@@ -3748,9 +3748,8 @@ function renderEarnWeekly(u, y, m, d, e) {
   });
   const totalWeighted = weekData.reduce((a, w) => a + w.weighted, 0);
 
-  /* [FIX BUG-R1] totalWkEarn forEach dışında tanımsız kalıyordu → ReferenceError.
-     Şimdi forEach içinde biriktirilip diffNote karşılaştırmasında kullanılıyor. */
-  const _wkTotal = (e.workedDays||0)*e.dailyRate + (e.overtimePay||0) + (e.overtimePay125||0) + (e.holidayPay||0);
+  /* [FIX] Dağıtım tabanı e.totalEarning (hafta sonu/tatil dahil) — hero ile tutarlı. */
+  const _wkTotal = safeNum(e.totalEarning, 0);
   let rows = '', totalWkEarn = 0;
   weekData.forEach(({ h, totalW, isOT, weighted, idx }) => {
     const pct = maxH > 0 ? (h / maxH * 100).toFixed(1) : 0;
@@ -3785,7 +3784,7 @@ function renderEarnShiftTypes(u, y, m, e) {
      Toplam, e.totalEarning'e normalize edilir — aylık toplamla tutarlıdır. */
   const totalH = Object.values(types).reduce((a, v) => a + v.hours, 0);
   if (totalH > 0 && e && e.hourlyRate > 0) {
-    const _stTotal = (e.workedDays||0)*e.dailyRate + (e.overtimePay||0) + (e.overtimePay125||0) + (e.holidayPay||0);
+    const _stTotal = safeNum(e.totalEarning, 0);
     const rawTotal = Object.values(types).reduce((a, v) => a + v.hours * e.hourlyRate, 0);
     if (rawTotal > 0) {
       Object.values(types).forEach(v => {
@@ -3818,24 +3817,41 @@ function renderEarnShiftTypes(u, y, m, e) {
 /* [FEAT F2] Kümülatif gelir vergisi dilimi takibi
    Model: brüt sabit (maaşlı çalışan varsayımı) — net vergi dilimleri nedeniyle ay ay düşer.
    YTD matrah = sabit brüt × (sgk/unemp kesintileri sonrası) × kümülatif ay sayısı. */
+/* Bir ay için GV matrahını döndürür: girilen veri varsa gerçek bordro,
+   yoksa tam maaş varsayımıyla sabit brüt matrahı. */
+function _monthGVMatrah(u, y, m, cfg) {
+  const payroll = estimatePayrollForMonth(u, y, m);
+  if (payroll) return Math.max(0, safeNum(payroll.gvMatrah, 0));
+  const fixedGross = findGrossFromNet(u.netSalary, 'single', 0, 0, m, undefined, y);
+  const sgkBase = Math.min(fixedGross, cfg.sgkCeiling);
+  return Math.max(0, fixedGross - sgkBase * (cfg.sgkEmployee + cfg.unemploymentEmployee));
+}
+
+/* Kümülatif (YTD) GV matrahı: manuel girilen priorYTD varsa onu temel alır,
+   yoksa Ocak'tan o aya kadar her ayın gerçek/tahmini matrahını TOPLAR.
+   Eski "cari ay × ay sayısı" yaklaşımı değişken kazançta hatalıydı. */
+function estimateCumulativeMatrah(u, y, m) {
+  const cfg = payrollCfg(y);
+  const monthMatrah = _monthGVMatrah(u, y, m, cfg);
+  const setPrior = (m === 0) ? 0 : safeNum(getPayrollCheck(u, y, m).priorYTD, -1);
+  let priorMatrah;
+  if (setPrior >= 0) {
+    priorMatrah = setPrior;
+  } else {
+    priorMatrah = 0;
+    for (let pm = 0; pm < m; pm++) priorMatrah += _monthGVMatrah(u, y, pm, cfg);
+  }
+  return { ytdMatrah: priorMatrah + monthMatrah, monthMatrah };
+}
+
 function renderTaxBracketCard(u, y, m) {
   if (!u.netSalary || u.netSalary <= 0) return '';
   try {
     const cfg = payrollCfg(y);
     const brackets = cfg.incomeTaxBrackets;
-    /* Gerçek YTD: kullanıcının girdiği priorYTD değeri varsa onu kullan,
-       yoksa sabit brüt × geçen ay sayısı hesabına dön. Ocak'ta YTD = 0. */
-    const priorYTD = (m === 0) ? 0 : safeNum(getPayrollCheck(u, y, m).priorYTD, -1);
-    const md = getMD(y, m);
-    const payroll = estimatePayrollForMonth(u, y, m, md);
-    let monthMatrah = payroll ? payroll.gvMatrah : 0;
-    let ytdMatrah = payroll ? payroll.ytdMatrah : 0;
-    if (!payroll) {
-      const fixedGross = findGrossFromNet(u.netSalary, 'single', 0, Math.max(0, priorYTD), m, undefined, y);
-      const sgkBase = Math.min(fixedGross, cfg.sgkCeiling);
-      monthMatrah = fixedGross - sgkBase * (cfg.sgkEmployee + cfg.unemploymentEmployee);
-      ytdMatrah = (priorYTD >= 0) ? (priorYTD + monthMatrah) : monthMatrah * (m + 1);
-    }
+    /* Gerçek YTD: manuel priorYTD varsa onu, yoksa Ocak'tan bu aya kümülatif
+       matrah toplamını kullan. Ocak'ta YTD = bu ayın matrahı. */
+    const { ytdMatrah, monthMatrah } = estimateCumulativeMatrah(u, y, m);
     let curIdx = 0, prevUp = 0;
     for (let i = 0; i < brackets.length; i++) {
       if (ytdMatrah <= brackets[i].upTo) { curIdx = i; break; }
@@ -5040,6 +5056,11 @@ function pdfStr(s) {
     .replace(/ı/g,'i').replace(/ş/g,'s').replace(/ğ/g,'g')
     .replace(/ü/g,'u').replace(/ö/g,'o').replace(/ç/g,'c');
 }
+/* Dosya adı için ASCII-güvenli slug: Türkçe karakter + boşluk + özel karakterleri temizler. */
+function fileSlug(s, fallback) {
+  const out = pdfStr(s).replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return out || (fallback || 'kayit');
+}
 function exportPDF() {
   const u = cu(); if (!u) { toast('Giriş yapın', 'error'); return; }
   if (typeof window.jspdf === 'undefined') { toast('PDF kütüphanesi yüklenemedi', 'error'); return; }
@@ -5118,7 +5139,7 @@ function exportPDF() {
     doc.setFontSize(7); doc.setTextColor(150, 150, 150);
     doc.text(pdfStr(`ShiftTrack Pro | ${new Date().toLocaleString('tr-TR')}`), 15, 290);
 
-    doc.save(`shifttrack_${u.name}_${mStr}.pdf`);
+    doc.save(`shifttrack_${fileSlug(u.name, 'calisan')}_${fileSlug(mStr)}.pdf`);
     toast('PDF indirildi!', 'success');
   } catch(e) { console.error(e); toast('PDF hatası: ' + e.message, 'error'); }
 }
@@ -7015,6 +7036,17 @@ window.addEventListener('offline', function() {
   setSyncState('offline');
 });
 
+/* [FIX] Çoklu sekme tutarlılığı: başka bir sekme st_data'yı güncellediğinde
+   bu sekmenin in-memory mdCache'i stale kalıyordu. storage olayı (yalnızca
+   diğer sekmelerde tetiklenir) ile durumu yeniden yükle, cache'i temizle ve
+   aktif kullanıcı varsa ekranı tazele. */
+window.addEventListener('storage', function(e) {
+  if (e.key !== 'st_data' || e.newValue == null) return;
+  invalidateMDCache();
+  try { loadLS(); } catch (err) { console.warn('Sekmeler arası senkron yükleme hatası:', err); }
+  if (cu()) { renderAll(); updTop(); }
+});
+
 /* ============================================================
    SYNC UI
 ============================================================ */
@@ -8524,10 +8556,11 @@ function renderBordroPreview() {
   }
 
   // [FIX] Kümülatif matrah otomatik aktarımı: sonraki ayın priorYTD alanı boşsa, bu ayın ytdMatrah'ını yaz.
-  // Kullanıcı manuel girdiği değerlerin üzerine yazmayız.
+  // Yalnızca kullanıcının MANUEL girdiği değerleri korur; 'empty' (alanı temizleme) kalıcı bloke etmez —
+  // yeni bordro oluşturulduğunda tekrar otomatik dolar.
   if (u && m < 11) {
     const nextRec = getPayrollCheck(u, y, m + 1);
-    const canAutoPrior = nextRec.priorYTDState !== 'manual' && (nextRec.priorYTDState !== 'empty');
+    const canAutoPrior = nextRec.priorYTDState !== 'manual';
     if (canAutoPrior && (!nextRec.priorYTD || nextRec.priorYTD <= 0 || nextRec.priorYTDAuto === true)) {
       nextRec.priorYTD = +res.ytdMatrah.toFixed(2);
       nextRec.priorYTDAuto = true;
@@ -8777,7 +8810,7 @@ function downloadBordroPDF() {
     105, footY, { align: 'center' }
   );
 
-  const fname = `Bordro_${pdfMTR[r.m]}_${r.y}${r.empName ? '_' + pdfStr(r.empName).replace(/\s+/g, '_') : ''}.pdf`;
+  const fname = `Bordro_${pdfMTR[r.m]}_${r.y}${r.empName ? '_' + fileSlug(r.empName, 'calisan') : ''}.pdf`;
   doc.save(fname);
   toast('PDF indirildi', 'success');
   } catch(e) {
