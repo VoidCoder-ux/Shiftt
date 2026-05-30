@@ -3193,7 +3193,7 @@ function calcCumulativeEarnings(u, upToY, upToM) {
     if (y2 > upToY || (y2 === upToY && m2 > upToM)) continue;
     const e2 = calcEarningForMonth(y2, m2, u.netSalary);
     if (e2 && !e2.isFutureMonth && e2.totalEarning > 0) {
-      total += getPaidEarningBreakdown(u, y2, m2, e2).trackerTotal;
+      total += e2.totalEarning;
       months++;
     }
   }
@@ -3270,7 +3270,6 @@ function renderDailyEarningsTracker(u, y, m, e) {
     </div>`;
 
   const paidBreakdown = getPaidEarningBreakdown(u, y, m, e);
-  const trackerTotal = paidBreakdown.trackerTotal;
 
   let rows = row('📅', `${paidBreakdown.workDays}g çalışma × ${fm(e.dailyRate)}`, fm(paidBreakdown.workBase), 'var(--t1)');
   if (paidBreakdown.leaveTotal > 0) {
@@ -3287,6 +3286,8 @@ function renderDailyEarningsTracker(u, y, m, e) {
     rows += row('⚡', `${(e.overtimeHours125||0).toFixed(1)}s FÇ × ${e.partialRate||1.25}`, '+' + fm(e.overtimePay125), '#fb923c');
   if (e.holidayPay > 0)
     rows += row('🏛️', `${(e.holidayPayDays||e.holidayDays).toFixed(1)}g tatil ilave`, '+' + fm(e.holidayPay), 'var(--g)');
+  if ((e.freePassDays || 0) > 0)
+    rows += row('📅', `${e.freePassDays}g hafta sonu/tatil (aylık ücrete dahil)`, fm(e.freePassDays * e.dailyRate), 'var(--t2)');
 
   const cumul = calcCumulativeEarnings(u, y, m);
   const cumulLine = cumul.months > 1 ? `
@@ -3306,7 +3307,7 @@ function renderDailyEarningsTracker(u, y, m, e) {
     ${rows}
       <div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;margin-top:4px">
         <span style="font-weight:800;font-size:13px;color:#fff"><i class="fas fa-wallet" style="color:var(--p)"></i>&nbsp;BU AY TOPLAM</span>
-        <span style="font-weight:900;font-size:20px;color:var(--p)">${fm(trackerTotal)}</span>
+        <span style="font-weight:900;font-size:20px;color:var(--p)">${fm(e.totalEarning)}</span>
     </div>
     ${cumulLine}
   </div>`;
@@ -3335,13 +3336,11 @@ function renderEarn() {
   const e = calcEarningForMonth(y, m, u.netSalary, isSelectedCurrentMonth ? { includeFutureRecords:true } : undefined);
   if (!e) { ec.innerHTML = ''; return; }
   const paidBreakdown = getPaidEarningBreakdown(u, y, m, e);
-  const trackerTotal = paidBreakdown.trackerTotal;
 
   let pm2 = m - 1, py2 = y;
   if (pm2 < 0) { pm2 = 11; py2--; }
   const prevE = calcEarningForMonth(py2, pm2, u.netSalary);
-  const prevBreakdown = prevE && !prevE.isFutureMonth ? getPaidEarningBreakdown(u, py2, pm2, prevE) : null;
-  const diff = prevBreakdown && prevBreakdown.trackerTotal > 0 ? trackerTotal - prevBreakdown.trackerTotal : 0;
+  const diff = prevE && !prevE.isFutureMonth && prevE.totalEarning > 0 ? e.totalEarning - prevE.totalEarning : 0;
 
   const dim = d.dim;
   const fd = new Date(y, m, 1);
@@ -3376,15 +3375,15 @@ function renderEarn() {
 
   const _earnCfg = payrollCfg(y);
   const _minNetWage = computeNetFromGross(_earnCfg.minWageGross, 'single', 0, 0, m, undefined, y).net;
-  const _belowMinWage = !e.isFutureMonth && trackerTotal > 0 && trackerTotal < _minNetWage;
+  const _belowMinWage = !e.isFutureMonth && e.totalEarning > 0 && e.totalEarning < _minNetWage;
   ec.innerHTML = `
-  ${_belowMinWage ? `<div class="hint" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35);margin-bottom:8px"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i><span style="color:#fbbf24">Gerçek kazanç (${fm(trackerTotal)}) ${y} asgari ücret netinin (${fm(_minNetWage)}) altında. Eksik gün veya kısmi çalışma kontrolü yapın.</span></div>` : ''}
+  ${_belowMinWage ? `<div class="hint" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35);margin-bottom:8px"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i><span style="color:#fbbf24">Hesaplanan kazanç (${fm(e.totalEarning)}) ${y} asgari ücret netinin (${fm(_minNetWage)}) altında. Eksik gün veya kısmi çalışma kontrolü yapın.</span></div>` : ''}
   <div class="earn-hero">
     <div class="sub">KAZANÇ — ${MTR[m].toUpperCase()} ${y}${e.isCurrentMonth ? ' — DEVAM EDİYOR' : ''}</div>
-    <div class="amt">${fm(trackerTotal)}</div>
+    <div class="amt">${fm(e.totalEarning)}</div>
     <div class="info">${e.isFullMonth ? 'Tam ay' : e.isCurrentMonth ? (e.workedDays || 0) + 'g girildi' : e.absentDays > 0 ? e.absentDays + 'g eksik' : 'Tam'} • ${e.totalHours.toFixed(1)}s</div>
-    <div style="margin-top:6px;font-size:10.5px;opacity:.75;line-height:1.4"><i class="fas fa-info-circle"></i> Gün bazlı tahmini net. SGK/vergi dilimli kesin net için <b>e-Bordro</b> oluşturun.</div>
-    ${prevBreakdown && prevBreakdown.trackerTotal > 0 ? `<div style="margin-top:8px"><span style="font-size:11px;opacity:.7">${diff>=0?'↑':'↓'} Önceki aya göre ${fm(Math.abs(diff))}</span></div>` : ''}
+    <div style="margin-top:6px;font-size:10.5px;opacity:.75;line-height:1.4"><i class="fas fa-info-circle"></i> Tahmini net kazanç (panel ile aynı hesaplama). SGK/vergi dilimli kesin net için <b>e-Bordro</b> oluşturun.</div>
+    ${prevE && !prevE.isFutureMonth && prevE.totalEarning > 0 ? `<div style="margin-top:8px"><span style="font-size:11px;opacity:.7">${diff>=0?'↑':'↓'} Önceki aya göre ${fm(Math.abs(diff))}</span></div>` : ''}
     <div style="margin-top:14px">
       <button onclick="openEBordroModal(${y},${m})" style="background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.45);color:#fff;padding:7px 16px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:600;backdrop-filter:blur(4px);transition:.2s" onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">
         <i class="fas fa-file-invoice"></i> e-Bordro Oluştur
@@ -3403,7 +3402,7 @@ function renderEarn() {
       <div class="esd-head">💰 NET KAZANÇ</div>
       <div class="esd"><span class="ek">Net Maaş</span><span class="ev">${fm(u.netSalary)}</span></div>
       <div class="esd"><span class="ek">Saatlik Ücret</span><span class="ev">${fm(e.hourlyRate)}/s</span></div>
-      <div class="esd" style="font-weight:600"><span class="ek">Ücretli Gün Kazancı (${formatDayCount(paidBreakdown.paidDays)}g ücretli)</span><span class="ev">${fm(paidBreakdown.paidBase)}</span></div>
+      <div class="esd" style="font-weight:600"><span class="ek">Baz Ücret (${e.dim}g ay${e.absentDays > 0 ? ' − ' + e.absentDays + 'g eksik' : ' · tam'})</span><span class="ev">${fm(e.basePay)}</span></div>
       ${e.absentDays > 0 ? `
       <div class="esd-head" style="color:var(--r)">⛔ KESİNTİLER</div>
       ${e.unpaidDays > 0 ? `<div class="esd"><span class="ek">Ücretsiz İzin (${e.unpaidDays}g × ${fm(e.dailyRate)})</span><span class="ev neg">−${fm(e.unpaidDays*e.dailyRate)}</span></div>` : ''}
@@ -3422,7 +3421,7 @@ function renderEarn() {
       <div class="esd"><span class="ek">${(e.holidayPayDays || e.holidayDays).toFixed(1)}g tatil × ${fm(e.dailyRate)} ilave (Md.47)</span><span class="ev pos">+${fm(e.holidayPay)}</span></div>
       ${(e.hhOT||0) > 0 ? `<div class="esd" style="color:var(--acc);font-size:11px"><span class="ek" style="padding-left:8px">↳ ${e.hhOT.toFixed(1)}s tatil çalışması haftalık 45'i aşıyor; FM zammı ve Md.47 günlük ek ayrı satırlarda uygulanır.</span><span class="ev"></span></div>` : ''}
       ` : ''}
-      <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>NET KAZANÇ</b></span><span class="ev">${fm(trackerTotal)}</span></div>
+      <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>NET KAZANÇ</b></span><span class="ev">${fm(e.totalEarning)}</span></div>
     </div>
   </div>
   ${renderDailyEarningsTracker(u, y, m, e)}
