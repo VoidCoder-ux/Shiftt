@@ -696,9 +696,11 @@ function invalidateMDCache(uid, y, m) {
     const prefix = `${uid}-${y}-${m}-`;
     Object.keys(mdCache).forEach(k => { if (k === `${uid}-${y}-${m}` || k.startsWith(prefix)) delete mdCache[k]; });
     delete yearlyOTCache[`${uid}-${y}`];
+    if (y !== undefined) delete _payrollCfgCache[String(y)];
   } else {
     mdCache = {};
     yearlyOTCache = {};
+    _payrollCfgCache = {};
   }
 }
 
@@ -1284,6 +1286,85 @@ async function askDeepSeek(question, ctx) {
   return (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) ? data.choices[0].message.content.trim() : null;
 }
 
+/* ============================================================
+   GÜNCEL BORDRO PARAMETRELERİ — AI DOĞRULAMA + GİRİŞ
+============================================================ */
+/* "190000:0.15, 230000:0.20, ..., inf:0.40" veya satır satır → bracket array */
+function parseBracketsInput(text) {
+  if (!text || typeof text !== 'string') return null;
+  const out = [];
+  text.split(/[\n,;]+/).forEach(tok => {
+    const t = tok.trim(); if (!t) return;
+    const parts = t.split(':');
+    if (parts.length !== 2) return;
+    const upRaw = parts[0].trim().toLowerCase();
+    const upTo = (upRaw === 'inf' || upRaw === 'infinity' || upRaw === '∞' || upRaw === 'sonsuz') ? Infinity : Number(upRaw.replace(/[^\d.]/g, ''));
+    let rate = Number(parts[1].trim().replace(',', '.'));
+    if (rate > 1) rate = rate / 100; // %15 girilirse 0.15'e çevir
+    if (!Number.isFinite(upTo) && upTo !== Infinity) return;
+    if (!Number.isFinite(rate) || rate < 0 || rate > 1) return;
+    out.push({ upTo, rate });
+  });
+  if (!out.length) return null;
+  out.sort((a, b) => a.upTo - b.upTo);
+  return out;
+}
+
+function bracketsToInput(brackets) {
+  if (!Array.isArray(brackets)) return '';
+  return brackets.map(b => `${b.upTo === Infinity ? 'inf' : b.upTo}:${(b.rate * 100)}`).join('\n');
+}
+
+/* DeepSeek'e girilen parametreleri akla yatkınlık/tutarlılık için doğrulatır.
+   AI yalnızca UYARI/ONAY metni döner — değeri kendisi UYGULAMAZ. */
+async function askDeepSeekValidatePayroll(year, params) {
+  const cfg = getDeepSeekSettings();
+  if (!cfg.apiKey) throw new Error('NO_KEY');
+  if (!cfg.consent) throw new Error('NO_CONSENT');
+  const sys = 'Sen bir Türk bordro mevzuatı kontrol asistanısın. Kullanıcının girdiği YIL için vergi/SGK parametrelerini akla yatkınlık ve iç tutarlılık açısından denetle. ' +
+    'Şunları kontrol et: asgari ücret brüt makul mü, SGK işçi payı 0.14 ve işsizlik 0.01 standart mı, gelir vergisi dilimleri artan sıralı ve oranlar 0.15-0.40 aralığında mı, damga vergisi ~0.00759 mu. ' +
+    'Resmî kaynağa erişimin yok; rakamları SEN UYDURMA. Yalnızca girilen değerlerin tutarlılığını değerlendir, şüpheli/eksik noktaları kısa madde madde Türkçe belirt. Sonunda "DURUM: TUTARLI" veya "DURUM: KONTROL EDİN" yaz.';
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + cfg.apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: cfg.model || 'deepseek-chat',
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: JSON.stringify({ year, params }) }
+      ],
+      temperature: 0.1,
+      max_tokens: 400
+    })
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return (data && data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content.trim() : null;
+}
+
+/* Girilen parametrelerin yerel (AI'sız) tutarlılık kontrolü — her zaman çalışır. */
+function validatePayrollParamsLocal(year, p) {
+  const issues = [];
+  if (!(p.minWageGross > 0)) issues.push('Asgari ücret brüt pozitif olmalı.');
+  else if (p.minWageGross < 10000 || p.minWageGross > 200000) issues.push(`Asgari ücret brüt (${p.minWageGross}) ${year} için sıra dışı görünüyor.`);
+  if (p.sgkEmployee !== undefined && (p.sgkEmployee < 0 || p.sgkEmployee > 0.3)) issues.push('SGK işçi payı 0–0.30 aralığında olmalı (std 0.14).');
+  if (p.unemploymentEmployee !== undefined && (p.unemploymentEmployee < 0 || p.unemploymentEmployee > 0.05)) issues.push('İşsizlik payı sıra dışı (std 0.01).');
+  if (p.stampTaxRate !== undefined && (p.stampTaxRate < 0 || p.stampTaxRate > 0.02)) issues.push('Damga vergisi oranı sıra dışı (std 0.00759).');
+  if (p.incomeTaxBrackets) {
+    if (!Array.isArray(p.incomeTaxBrackets) || !p.incomeTaxBrackets.length) issues.push('Gelir vergisi dilimleri okunamadı.');
+    else {
+      let prev = -1;
+      p.incomeTaxBrackets.forEach((b, i) => {
+        if (b.upTo <= prev) issues.push(`Dilim ${i + 1} artan sırada değil.`);
+        if (b.rate < 0.10 || b.rate > 0.45) issues.push(`Dilim ${i + 1} oranı (%${(b.rate * 100).toFixed(0)}) sıra dışı.`);
+        prev = b.upTo;
+      });
+      if (p.incomeTaxBrackets[p.incomeTaxBrackets.length - 1].upTo !== Infinity) issues.push('Son dilim "inf" (sonsuz) ile bitmeli.');
+    }
+  }
+  return issues;
+}
+
 function aiAsk(q) {
   const input = $('aiChatInput');
   if (input) input.value = q || input.value;
@@ -1319,6 +1400,143 @@ function renderAIItems(items) {
   return `<div class="ai-list">${items.map(it => `
     <div class="ai-item"><i class="fas ${escHtml(it.icon || 'fa-circle-info')}"></i><span>${escHtml(it.text || '')}</span></div>
   `).join('')}</div>`;
+}
+
+/* Güncel Bordro Parametreleri kartı — yıl seçimi, giriş alanları, AI doğrulama, onay/kaydet */
+let _payrollParamYear = new Date().getFullYear();
+function renderPayrollParamsCard() {
+  const y = _payrollParamYear;
+  const cfg = payrollCfg(y);
+  const ov = loadPayrollOverrides()[y];
+  const isOverridden = !!(cfg && cfg._override);
+  const metaTxt = isOverridden && cfg._overrideMeta
+    ? `Override aktif • ${new Date(cfg._overrideMeta.savedAt).toLocaleDateString('tr-TR')}${cfg._overrideMeta.aiValidated ? ' • AI doğrulandı' : ''}`
+    : 'Varsayılan (gömülü) değerler kullanılıyor';
+  const v = (n) => (n === undefined || n === null ? '' : n);
+  return `
+    <div class="ai-card" style="margin-bottom:16px">
+      <h3><i class="fas fa-scale-balanced"></i>Güncel Bordro Parametreleri</h3>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">
+        Vergi/SGK/asgari ücret değerleri her yıl değişir. Resmî değerleri girin, ${getDeepSeekSettings().apiKey ? 'DeepSeek ile doğrulayın' : 'yerel kontrol yapın'} ve onaylayın.
+        <span style="color:var(--acc)">${escHtml(metaTxt)}</span>
+      </div>
+      <div class="ai-api-grid">
+        <label style="font-size:11px;color:var(--t2)">Yıl
+          <input id="ppYear" type="number" min="2020" max="2099" value="${y}" oninput="payrollParamsChangeYear(this.value)" style="width:100%">
+        </label>
+        <label style="font-size:11px;color:var(--t2)">Asgari Ücret Brüt (₺)
+          <input id="ppMinWage" type="number" step="0.01" value="${v(cfg.minWageGross)}" style="width:100%">
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <label style="font-size:11px;color:var(--t2)">SGK İşçi (0.14)
+            <input id="ppSgk" type="number" step="0.0001" value="${v(cfg.sgkEmployee)}" style="width:100%">
+          </label>
+          <label style="font-size:11px;color:var(--t2)">İşsizlik (0.01)
+            <input id="ppUnemp" type="number" step="0.0001" value="${v(cfg.unemploymentEmployee)}" style="width:100%">
+          </label>
+        </div>
+        <label style="font-size:11px;color:var(--t2)">Damga Vergisi Oranı (0.00759)
+          <input id="ppStamp" type="number" step="0.00001" value="${v(cfg.stampTaxRate)}" style="width:100%">
+        </label>
+        <label style="font-size:11px;color:var(--t2)">Gelir Vergisi Dilimleri (her satır: <code>üstSınır:oran%</code>, son satır <code>inf:40</code>)
+          <textarea id="ppBrackets" rows="5" style="width:100%;font-family:monospace;font-size:11px">${escHtml(bracketsToInput(cfg.incomeTaxBrackets))}</textarea>
+        </label>
+        <div class="ai-api-actions" style="flex-wrap:wrap;gap:6px">
+          <button class="btn btn-outline btn-sm" type="button" onclick="payrollParamsValidate()"><i class="fas fa-robot"></i>Doğrula</button>
+          <button class="btn btn-primary btn-sm" type="button" onclick="payrollParamsSave()"><i class="fas fa-check"></i>Onayla & Kaydet</button>
+          ${ov ? `<button class="btn btn-outline btn-sm" type="button" onclick="payrollParamsReset()"><i class="fas fa-rotate-left"></i>Varsayılana Dön</button>` : ''}
+        </div>
+      </div>
+      <div id="ppValidateOut" class="ai-api-status" style="margin-top:10px"></div>
+    </div>`;
+}
+
+function payrollParamsChangeYear(val) {
+  const yr = safeInt(val, NaN);
+  if (Number.isFinite(yr) && yr >= 2020 && yr <= 2099) {
+    _payrollParamYear = yr;
+    renderAIAssistantPage();
+  }
+}
+
+function payrollParamsCollect() {
+  const num = (id) => { const el = $(id); const n = el ? Number(el.value) : NaN; return Number.isFinite(n) ? n : undefined; };
+  const year = safeInt(($('ppYear') || {}).value, _payrollParamYear);
+  const params = {
+    minWageGross: num('ppMinWage'),
+    sgkEmployee: num('ppSgk'),
+    unemploymentEmployee: num('ppUnemp'),
+    stampTaxRate: num('ppStamp'),
+    incomeTaxBrackets: parseBracketsInput(($('ppBrackets') || {}).value) || undefined
+  };
+  return { year, params };
+}
+
+async function payrollParamsValidate() {
+  const out = $('ppValidateOut'); if (!out) return;
+  const { year, params } = payrollParamsCollect();
+  const localIssues = validatePayrollParamsLocal(year, params);
+  let html = '';
+  if (localIssues.length) {
+    html += `<div style="color:var(--r)"><b><i class="fas fa-triangle-exclamation"></i> Yerel kontrol (${localIssues.length}):</b><ul style="margin:4px 0 0 16px">${localIssues.map(i => `<li>${escHtml(i)}</li>`).join('')}</ul></div>`;
+  } else {
+    html += `<div style="color:var(--g)"><i class="fas fa-check-circle"></i> Yerel tutarlılık kontrolü temiz.</div>`;
+  }
+  out.innerHTML = html;
+  const aiCfg = getDeepSeekSettings();
+  if (aiCfg.apiKey && aiCfg.consent) {
+    out.innerHTML = html + `<div style="margin-top:6px;color:var(--t2)"><i class="fas fa-spinner fa-spin"></i> DeepSeek doğruluyor...</div>`;
+    try {
+      const ai = await askDeepSeekValidatePayroll(year, params);
+      out.innerHTML = html + `<div style="margin-top:8px;padding:8px;background:var(--b2);border-radius:8px;white-space:pre-wrap;font-size:11.5px"><b><i class="fas fa-robot"></i> DeepSeek:</b>\n${escHtml(ai || 'Yanıt alınamadı.')}</div>`;
+    } catch (e) {
+      const msg = e.message === 'NO_CONSENT' ? 'AI sayfasındaki onay kutusunu işaretleyin.' : e.message === 'NO_KEY' ? 'DeepSeek API key girilmemiş.' : 'DeepSeek çağrısı başarısız: ' + e.message;
+      out.innerHTML = html + `<div style="margin-top:6px;color:var(--acc)"><i class="fas fa-info-circle"></i> ${escHtml(msg)} (Yerel kontrol geçerli.)</div>`;
+    }
+  } else {
+    out.innerHTML = html + `<div style="margin-top:6px;color:var(--t3);font-size:11px"><i class="fas fa-info-circle"></i> DeepSeek doğrulaması için AI key + onay gerekir; yerel kontrol her zaman çalışır.</div>`;
+  }
+}
+
+function payrollParamsSave() {
+  const { year, params } = payrollParamsCollect();
+  const issues = validatePayrollParamsLocal(year, params);
+  if (issues.length) {
+    showConfirm('Tutarsızlık Uyarısı', `${issues.length} uyarı var:\n\n• ${issues.join('\n• ')}\n\nYine de kaydetmek istiyor musunuz?`, () => {
+      _payrollParamsCommit(year, params, false);
+    });
+    return;
+  }
+  _payrollParamsCommit(year, params, false);
+}
+
+function _payrollParamsCommit(year, params, aiValidated) {
+  const cur = payrollCfg(year);
+  const diff = [];
+  const cmp = (label, oldV, newV) => { if (newV !== undefined && Math.abs(safeNum(oldV, 0) - safeNum(newV, 0)) > 1e-9) diff.push(`${label}: ${oldV} → ${newV}`); };
+  cmp('Asgari ücret brüt', cur.minWageGross, params.minWageGross);
+  cmp('SGK işçi', cur.sgkEmployee, params.sgkEmployee);
+  cmp('İşsizlik', cur.unemploymentEmployee, params.unemploymentEmployee);
+  cmp('Damga', cur.stampTaxRate, params.stampTaxRate);
+  if (params.incomeTaxBrackets && bracketsToInput(cur.incomeTaxBrackets) !== bracketsToInput(params.incomeTaxBrackets)) diff.push('Gelir vergisi dilimleri güncellendi');
+  const ok = savePayrollOverride(year, params, { source: 'manual', aiValidated: !!aiValidated });
+  if (ok) {
+    invalidateMDCache();
+    toast(`${year} bordro parametreleri kaydedildi${diff.length ? ' (' + diff.length + ' değişiklik)' : ''}`, 'success');
+    renderAIAssistantPage();
+  } else {
+    toast('Kaydetme başarısız', 'error');
+  }
+}
+
+function payrollParamsReset() {
+  const year = safeInt(($('ppYear') || {}).value, _payrollParamYear);
+  showConfirm('Varsayılana Dön', `${year} yılı için girdiğiniz override silinecek ve gömülü varsayılan değerlere dönülecek. Onaylıyor musunuz?`, () => {
+    clearPayrollOverride(year);
+    invalidateMDCache();
+    toast(`${year} override kaldırıldı`, 'info');
+    renderAIAssistantPage();
+  });
 }
 
 function renderAIAssistantPage() {
@@ -1377,6 +1595,7 @@ function renderAIAssistantPage() {
           </div>
           <div class="ai-api-status" id="aiApiStatus">${apiCfg.apiKey ? (apiCfg.consent ? `DeepSeek API aktif. Key bu oturumda saklanır.` : 'API key hazır; dış servise veri gönderimi için onay kutusunu işaretleyin.') : 'API key girilmezse sohbet yerel MVP cevaplarını kullanır.'}</div>
         </div>
+        ${renderPayrollParamsCard()}
         <div class="ai-card" style="margin-bottom:16px">
           <h3><i class="fas fa-comments"></i>Takvim Sohbeti</h3>
           <div class="ai-chat">
@@ -8166,6 +8385,51 @@ const payrollConfigByYear = {
   },
 };
 const _payrollWarnedYears = new Set();
+
+/* ============================================================
+   GÜNCEL BORDRO PARAMETRELERİ — KULLANICI OVERRIDE'I
+   Vergi/SGK/asgari ücret değerleri her yıl değişir. Sabit varsayılanların
+   üzerine, kullanıcının (AI doğrulamalı + onaylı) girdiği güncel değerler
+   bindirilir. Evrensel oldukları için global localStorage'da saklanır.
+============================================================ */
+const PAYROLL_OVERRIDE_KEY = 'st_payroll_overrides';
+const PAYROLL_OVERRIDE_FIELDS = ['minWageGross','sgkEmployee','unemploymentEmployee','stampTaxRate','incomeTaxBrackets','disabilityDeductions','mealDailyTaxFree','transportDailyTaxFree','otPartialMultiplier','weekendMultiplier'];
+let _payrollOverrides = null;
+let _payrollCfgCache = {};
+
+function loadPayrollOverrides() {
+  if (_payrollOverrides) return _payrollOverrides;
+  try {
+    const raw = localStorage.getItem(PAYROLL_OVERRIDE_KEY);
+    const p = raw ? JSON.parse(raw) : {};
+    _payrollOverrides = (p && typeof p === 'object' && !Array.isArray(p)) ? p : {};
+  } catch (e) { _payrollOverrides = {}; }
+  return _payrollOverrides;
+}
+
+function savePayrollOverride(year, params, meta) {
+  const yr = safeInt(year, NaN);
+  if (!Number.isFinite(yr)) return false;
+  const all = loadPayrollOverrides();
+  const clean = {};
+  PAYROLL_OVERRIDE_FIELDS.forEach(f => { if (params[f] !== undefined && params[f] !== null) clean[f] = params[f]; });
+  clean._meta = Object.assign({ savedAt: new Date().toISOString(), source: 'manual' }, meta || {});
+  all[yr] = clean;
+  _payrollOverrides = all;
+  try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(all)); } catch (e) { return false; }
+  _payrollCfgCache = {};
+  return true;
+}
+
+function clearPayrollOverride(year) {
+  const yr = safeInt(year, NaN);
+  const all = loadPayrollOverrides();
+  if (Number.isFinite(yr)) delete all[yr]; else Object.keys(all).forEach(k => delete all[k]);
+  _payrollOverrides = all;
+  try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(all)); } catch (e) {}
+  _payrollCfgCache = {};
+}
+
 function _withSgkCeiling(cfg) {
   if (!cfg || cfg._withCeiling) return cfg;
   Object.defineProperty(cfg, 'sgkCeiling', { get(){ return this.minWageGross * 9; }, configurable:true });
@@ -8174,13 +8438,30 @@ function _withSgkCeiling(cfg) {
 }
 function payrollCfg(y) {
   const yr = safeInt(y, NaN);
-  if (Number.isFinite(yr) && payrollConfigByYear[yr]) return _withSgkCeiling(payrollConfigByYear[yr]);
-  const fallbackYear = Object.keys(payrollConfigByYear).map(Number).sort((a,b)=>b-a)[0];
-  if (Number.isFinite(yr) && !_payrollWarnedYears.has(yr)) {
-    _payrollWarnedYears.add(yr);
-    setTimeout(() => toast(`⚠️ ${yr} yılı bordro parametreleri tanımlı değil — ${fallbackYear} değerleri kullanılıyor.`, 'warning'), 200);
+  const cacheKey = String(yr);
+  if (_payrollCfgCache[cacheKey]) return _payrollCfgCache[cacheKey];
+
+  let base = (Number.isFinite(yr) && payrollConfigByYear[yr]) ? payrollConfigByYear[yr] : null;
+  if (!base) {
+    const fallbackYear = Object.keys(payrollConfigByYear).map(Number).sort((a,b)=>b-a)[0];
+    if (Number.isFinite(yr) && !_payrollWarnedYears.has(yr) && !loadPayrollOverrides()[yr]) {
+      _payrollWarnedYears.add(yr);
+      setTimeout(() => toast(`⚠️ ${yr} yılı bordro parametreleri tanımlı değil — ${fallbackYear} değerleri kullanılıyor.`, 'warning'), 200);
+    }
+    base = payrollConfigByYear[fallbackYear];
   }
-  return _withSgkCeiling(payrollConfigByYear[fallbackYear]);
+
+  const ov = (Number.isFinite(yr) && loadPayrollOverrides()[yr]) ? loadPayrollOverrides()[yr] : null;
+  let merged = base;
+  if (ov) {
+    merged = Object.assign({}, base, { year: yr });
+    PAYROLL_OVERRIDE_FIELDS.forEach(f => { if (ov[f] !== undefined && ov[f] !== null) merged[f] = ov[f]; });
+    merged._override = true;
+    merged._overrideMeta = ov._meta || null;
+  }
+  merged = _withSgkCeiling(merged);
+  _payrollCfgCache[cacheKey] = merged;
+  return merged;
 }
 function _bracketRateFor(ytd, y) {
   const cfg = payrollCfg(y);
