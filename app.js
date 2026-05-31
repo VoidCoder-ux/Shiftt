@@ -1380,18 +1380,29 @@ async function payrollParamsAutoFill() {
   out.innerHTML = `<div style="color:var(--t2)"><i class="fas fa-spinner fa-spin"></i> DeepSeek ${year} parametrelerini getiriyor...</div>`;
   try {
     const p = await askDeepSeekFetchPayroll(year);
-    const set = (id, val) => { const el = $(id); if (el && val != null) el.value = val; };
-    set('ppMinWage', p.minWageGross != null ? p.minWageGross : '');
-    set('ppSgk',     p.sgkEmployee != null ? p.sgkEmployee : '');
-    set('ppUnemp',   p.unemploymentEmployee != null ? p.unemploymentEmployee : '');
-    set('ppStamp',   p.stampTaxRate != null ? p.stampTaxRate : '');
-    if (p.incomeTaxBrackets && Array.isArray(p.incomeTaxBrackets)) {
+    const filled = [], missing = [];
+    // Yalnızca AI gerçek bir değer döndürdüyse alanı doldur; bilmiyorsa (null) mevcut değeri KORU.
+    const setNum = (id, val, label) => {
+      const n = Number(val);
+      if (val != null && Number.isFinite(n)) { const el = $(id); if (el) el.value = n; filled.push(label); }
+      else missing.push(label);
+    };
+    setNum('ppMinWage', p.minWageGross, 'Asgari ücret');
+    setNum('ppSgk',     p.sgkEmployee, 'SGK');
+    setNum('ppUnemp',   p.unemploymentEmployee, 'İşsizlik');
+    setNum('ppStamp',   p.stampTaxRate, 'Damga');
+    if (p.incomeTaxBrackets && Array.isArray(p.incomeTaxBrackets) && p.incomeTaxBrackets.length) {
       const ta = $('ppBrackets');
       if (ta) ta.value = bracketsToInput(p.incomeTaxBrackets);
-    }
+      filled.push('GV dilimleri');
+    } else missing.push('GV dilimleri');
     const note = p.note ? escHtml(p.note) : 'DeepSeek eğitim verisine dayalı.';
-    out.innerHTML = `<div style="color:var(--g)"><i class="fas fa-check-circle"></i> AI değerleri doldurdu. Resmî kaynakla doğrulayıp <b>Onayla &amp; Kaydet</b>'e basın.</div>
-      <div style="font-size:10.5px;color:var(--t3);margin-top:4px"><i class="fas fa-info-circle"></i> ${note} Resmî Gazete / GİB / ÇSGB ile teyit edin.</div>`;
+    if (!filled.length) {
+      out.innerHTML = `<div style="color:var(--acc)"><i class="fas fa-circle-info"></i> DeepSeek ${year} için doğrulanmış değer döndürmedi (canlı internet erişimi yok). Mevcut/varsayılan değerler korundu; resmî kaynaktan elle girip onaylayın.</div>`;
+    } else {
+      out.innerHTML = `<div style="color:var(--g)"><i class="fas fa-check-circle"></i> AI doldurdu: <b>${filled.join(', ')}</b>.${missing.length ? ` <span style="color:var(--acc)">Korunan (AI bilmiyor): ${missing.join(', ')}.</span>` : ''} Resmî kaynakla doğrulayıp <b>Onayla &amp; Kaydet</b>'e basın.</div>
+        <div style="font-size:10.5px;color:var(--t3);margin-top:4px"><i class="fas fa-info-circle"></i> ${note} Resmî Gazete / GİB / ÇSGB ile teyit edin.</div>`;
+    }
   } catch (e) {
     const msg = e.message === 'NO_CONSENT' ? 'Onay kutusunu işaretleyin.' :
                 e.message === 'NO_KEY'     ? 'API key girilmemiş.' :
