@@ -1293,7 +1293,8 @@ async function askDeepSeek(question, ctx) {
 function parseBracketsInput(text) {
   if (!text || typeof text !== 'string') return null;
   const out = [];
-  text.split(/[\n,;]+/).forEach(tok => {
+  // Satır ayracı olarak yalnızca yeni satır ve ';' kullan — ',' ondalık ayracı olabilir (15,5 gibi).
+  text.split(/[\n;]+/).forEach(tok => {
     const t = tok.trim(); if (!t) return;
     const parts = t.split(':');
     if (parts.length !== 2) return;
@@ -1312,7 +1313,9 @@ function parseBracketsInput(text) {
 
 function bracketsToInput(brackets) {
   if (!Array.isArray(brackets)) return '';
-  return brackets.map(b => `${b.upTo === Infinity ? 'inf' : b.upTo}:${(b.rate * 100)}`).join('\n');
+  // rate*100 float artefaktını (0.275*100=27.500000000000004) önlemek için yuvarla.
+  const pct = (r) => Math.round(r * 100 * 1e6) / 1e6;
+  return brackets.map(b => `${b.upTo === Infinity ? 'inf' : b.upTo}:${pct(b.rate)}`).join('\n');
 }
 
 /* DeepSeek'ten yıla ait resmî Türkiye bordro parametrelerini JSON olarak ister.
@@ -1623,6 +1626,7 @@ function _payrollParamsCommit(year, params, aiValidated) {
   const ok = savePayrollOverride(year, params, { source: 'manual', aiValidated: !!aiValidated });
   if (ok) {
     invalidateMDCache();
+    if (typeof debouncedPush === 'function') debouncedPush(); // bulut senkronu tetikle
     toast(`${year} bordro parametreleri kaydedildi${diff.length ? ' (' + diff.length + ' değişiklik)' : ''}`, 'success');
     renderAIAssistantPage();
   } else {
@@ -1635,6 +1639,7 @@ function payrollParamsReset() {
   showConfirm('Varsayılana Dön', `${year} yılı için girdiğiniz override silinecek ve gömülü varsayılan değerlere dönülecek. Onaylıyor musunuz?`, () => {
     clearPayrollOverride(year);
     invalidateMDCache();
+    if (typeof debouncedPush === 'function') debouncedPush(); // bulut senkronu tetikle
     toast(`${year} override kaldırıldı`, 'info');
     renderAIAssistantPage();
   });
@@ -3720,7 +3725,7 @@ function renderEarn() {
       <div class="esd-head">💰 NET KAZANÇ</div>
       <div class="esd"><span class="ek">Net Maaş</span><span class="ev">${fm(u.netSalary)}</span></div>
       <div class="esd"><span class="ek">Saatlik Ücret</span><span class="ev">${fm(e.hourlyRate)}/s</span></div>
-      <div class="esd" style="font-weight:600"><span class="ek">Baz Ücret (${e.dim}g ay${e.absentDays > 0 ? ' − ' + e.absentDays + 'g eksik' : ' · tam'})</span><span class="ev">${fm(e.basePay)}</span></div>
+      <div class="esd" style="font-weight:600"><span class="ek">${e.absentDays > 0 ? `Tam Ay Tabanı (${e.dim}g × ${fm(e.dailyRate)})` : `Baz Ücret (${e.dim}g ay · tam)`}</span><span class="ev">${fm(e.absentDays > 0 ? e.dim * e.dailyRate : e.basePay)}</span></div>
       ${e.absentDays > 0 ? `
       <div class="esd-head" style="color:var(--r)">⛔ KESİNTİLER</div>
       ${e.unpaidDays > 0 ? `<div class="esd"><span class="ek">Ücretsiz İzin (${e.unpaidDays}g × ${fm(e.dailyRate)})</span><span class="ev neg">−${fm(e.unpaidDays*e.dailyRate)}</span></div>` : ''}
@@ -3797,9 +3802,13 @@ function estimatePayrollForMonth(u, y, m, d) {
   const cfg = payrollCfg(y);
   const payrollHourBasis = getPayrollHourBasis(u, y);
   const fullGross = _bordroRound2(findGrossFromNet(u.netSalary, marital, children, priorYTD, m, undefined, y));
-  /* baseGross'u doğru oranla pro-rate et: paid/30 üzerinden ay-bazlı brüt */
-  const paidDays = Math.max(0, safeNum(earning.paidDays, 30));
-  const baseGross = _bordroRound2(fullGross * (paidDays / 30));
+  /* baseGross'u 30 günlük yasal taban üzerinden pro-rate et.
+     Türk bordrosu aylık ücreti 30 gün kabul eder; eksik günler 30'dan düşülür.
+     paidDays = dim − absentDays olduğundan 31 günlük aylarda paidDays/30 > 1 olup
+     brütü şişiriyordu. Doğru oran: (30 − eksikGün)/30. */
+  const absentDays = Math.max(0, safeNum(earning.absentDays, 0));
+  const proRate = Math.max(0, Math.min(1, (30 - absentDays) / 30));
+  const baseGross = _bordroRound2(fullGross * proRate);
   const hrGross = fullGross > 0 ? _bordroRound2(fullGross / getMonthlyHours(u)) : 0;
   const drGross = _bordroRound2(fullGross / 30);
   const compMode = u.otCompMode || 'pay';
@@ -4139,10 +4148,14 @@ function renderEarnShiftTypes(u, y, m, e) {
    YTD matrah = sabit brüt × (sgk/unemp kesintileri sonrası) × kümülatif ay sayısı. */
 /* Bir ay için GV matrahını döndürür: girilen veri varsa gerçek bordro,
    yoksa tam maaş varsayımıyla sabit brüt matrahı. */
-function _monthGVMatrah(u, y, m, cfg) {
+function _monthGVMatrah(u, y, m, cfg, priorYTDForGross) {
   const payroll = estimatePayrollForMonth(u, y, m);
   if (payroll) return Math.max(0, safeNum(payroll.gvMatrah, 0));
-  const fixedGross = findGrossFromNet(u.netSalary, 'single', 0, 0, m, undefined, y);
+  /* Fallback: sabit-net çalışanın brütü yıl içinde dilimler yükseldikçe artar.
+     Brütü o ana dek birikmiş matrah (priorYTDForGross) ile bul; 0 verilirse
+     her ay Ocak gibi hesaplanıp yüksek dilim çalışanlarında matrah düşük çıkardı. */
+  const priorYTD = Math.max(0, safeNum(priorYTDForGross, 0));
+  const fixedGross = findGrossFromNet(u.netSalary, 'single', 0, priorYTD, m, undefined, y);
   const sgkBase = Math.min(fixedGross, cfg.sgkCeiling);
   return Math.max(0, fixedGross - sgkBase * (cfg.sgkEmployee + cfg.unemploymentEmployee));
 }
@@ -4152,15 +4165,17 @@ function _monthGVMatrah(u, y, m, cfg) {
    Eski "cari ay × ay sayısı" yaklaşımı değişken kazançta hatalıydı. */
 function estimateCumulativeMatrah(u, y, m) {
   const cfg = payrollCfg(y);
-  const monthMatrah = _monthGVMatrah(u, y, m, cfg);
   const setPrior = (m === 0) ? 0 : safeNum(getPayrollCheck(u, y, m).priorYTD, -1);
   let priorMatrah;
   if (setPrior >= 0) {
     priorMatrah = setPrior;
   } else {
+    // Önceki ayları sırayla topla; her ayın brütünü o ana dek birikmiş
+    // matrahla hesapla ki dilim yükselmeleri doğru yansısın.
     priorMatrah = 0;
-    for (let pm = 0; pm < m; pm++) priorMatrah += _monthGVMatrah(u, y, pm, cfg);
+    for (let pm = 0; pm < m; pm++) priorMatrah += _monthGVMatrah(u, y, pm, cfg, priorMatrah);
   }
+  const monthMatrah = _monthGVMatrah(u, y, m, cfg, priorMatrah);
   return { ytdMatrah: priorMatrah + monthMatrah, monthMatrah };
 }
 
@@ -6953,6 +6968,7 @@ function pushToCloud(callback) {
       deletedUsers,
       version: DATA_VERSION,
       nextUid: Math.max(S.nextUid || 0, cloud.nextUid || 0),
+      payrollOverrides: mergePayrollOverridesForCloud(cloud.payrollOverrides),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       deviceId: getDeviceId()
     };
@@ -7199,6 +7215,8 @@ function pullFromCloud(callback) {
           saveLS();
           invalidateMDCache();
         }
+        // Bordro override'larını (vergi/SGK parametreleri) da birleştir
+        if (data && data.payrollOverrides) mergePayrollOverridesFromCloud(data.payrollOverrides);
       }
       clearTimeout(pullTimeout);
       lastSyncTime = Date.now();
@@ -7245,7 +7263,7 @@ function startRealtimeSync() {
          !data.deviceId kontrolü eklenerek deviceId'siz veriler de işlenir. */
       if (!data.deviceId || data.deviceId !== getDeviceId()) {
         // Veri değişmiş mi kontrol et (gereksiz render'ı engelle)
-        const newJson = JSON.stringify({ users:data.users, deletedUsers:data.deletedUsers || {} });
+        const newJson = JSON.stringify({ users:data.users, deletedUsers:data.deletedUsers || {}, payrollOverrides:data.payrollOverrides || {} });
         if (newJson === lastSnapshotJson) return;
         lastSnapshotJson = newJson;
 
@@ -7264,6 +7282,9 @@ function startRealtimeSync() {
             S.u[i] = deepMergeUser(S.u[i] || null, data.users[i]);
           }
         });
+
+        // Bordro override'larını (vergi/SGK parametreleri) de birleştir
+        if (data.payrollOverrides) mergePayrollOverridesFromCloud(data.payrollOverrides);
 
         // Cloud'dan gelen veriyi geri push etme — bekleyen timer'ı da iptal et
         if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
@@ -7361,6 +7382,15 @@ window.addEventListener('offline', function() {
    diğer sekmelerde tetiklenir) ile durumu yeniden yükle, cache'i temizle ve
    aktif kullanıcı varsa ekranı tazele. */
 window.addEventListener('storage', function(e) {
+  // Bordro override'ları (vergi/SGK/asgari ücret) başka sekmede değişirse,
+  // bu sekmenin in-memory override + cfg cache'i stale kalır. Sıfırla, tazele.
+  if (e.key === PAYROLL_OVERRIDE_KEY) {
+    _payrollOverrides = null;
+    _payrollCfgCache = {};
+    invalidateMDCache();
+    if (cu()) renderAll();
+    return;
+  }
   if (e.key !== 'st_data' || e.newValue == null) return;
   invalidateMDCache();
   try { loadLS(); } catch (err) { console.warn('Sekmeler arası senkron yükleme hatası:', err); }
@@ -8531,6 +8561,34 @@ function clearPayrollOverride(year) {
   _payrollCfgCache = {};
 }
 
+/* Bulut senkronu: bordro override'ları yıl-bazında "son yazan kazanır" ile birleştir.
+   Her yılın _meta.savedAt zaman damgası karşılaştırılır. cloud daha yeniyse uygulanır.
+   Değişiklik olduysa localStorage'a yazar, cache'leri temizler ve true döner. */
+function mergePayrollOverridesFromCloud(cloudOverrides) {
+  if (!cloudOverrides || typeof cloudOverrides !== 'object' || Array.isArray(cloudOverrides)) return false;
+  const local = loadPayrollOverrides();
+  let changed = false;
+  const ts = (o) => { const t = o && o._meta && o._meta.savedAt ? Date.parse(o._meta.savedAt) : NaN; return Number.isFinite(t) ? t : 0; };
+  Object.keys(cloudOverrides).forEach(yr => {
+    const cv = cloudOverrides[yr];
+    if (!cv || typeof cv !== 'object') return;
+    if (!local[yr] || ts(cv) > ts(local[yr])) { local[yr] = cv; changed = true; }
+  });
+  if (changed) {
+    _payrollOverrides = local;
+    try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(local)); } catch (e) {}
+    _payrollCfgCache = {};
+  }
+  return changed;
+}
+
+/* Push için: cloud override'larını local ile birleştir (yeni olan kazanır) ve
+   birleşik haritayı döndür — böylece başka cihazın override'ları push'ta silinmez. */
+function mergePayrollOverridesForCloud(cloudOverrides) {
+  mergePayrollOverridesFromCloud(cloudOverrides);
+  return loadPayrollOverrides();
+}
+
 function _withSgkCeiling(cfg) {
   if (!cfg || cfg._withCeiling) return cfg;
   Object.defineProperty(cfg, 'sgkCeiling', { get(){ return this.minWageGross * 9; }, configurable:true });
@@ -9033,12 +9091,12 @@ function renderBordroPreview() {
     ${publicHolidayGross > 0 ? `<div class="bordro-row add"><span class="bl">Genel Tatil (${fmr(manualPublicHolidayDays)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(publicHolidayGross)}</span></div>` : ''}
     ${baseGross > 0 ? `<div class="bordro-row sub"><span class="bl">TEMEL BRÜT</span><span class="bv">${fmb(baseGross)}</span></div>` : ''}
   ` : `
-    ${normalGross > 0 ? `<div class="bordro-row add"><span class="bl">Normal Çalışma (${fmr(d.wd || 0)}g · ${fmr(d.rh || 0)}s × ${fmr(hrGross)}₺)</span><span class="bv">${fmb(normalGross)}</span></div>` : ''}
+    ${normalGross > 0 ? `<div class="bordro-row add"><span class="bl">Normal Çalışma (${fmr(d.wd || 0)}g · ${fmr(d.rh || 0)}s)</span><span class="bv">${fmb(normalGross)}</span></div>` : ''}
     ${weeklyRestGross > 0 ? `<div class="bordro-row add"><span class="bl">Hafta Tatili (${fmr(d.wr || 0)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(weeklyRestGross)}</span></div>` : ''}
     ${publicHolidayGross > 0 ? `<div class="bordro-row add"><span class="bl">Genel Tatil (${fmr(d.publicHolidayPaidDays || 0)}g × ${fmr(drGross)}₺)</span><span class="bv">${fmb(publicHolidayGross)}</span></div>` : ''}
     <div class="bordro-row sub"><span class="bl">TEMEL BRÜT</span><span class="bv">${fmb(baseGross)}</span></div>
     <div class="bordro-row info"><span class="bl">Yasal Saatlik Bordro Esası</span><span class="bv">${payrollHourBasis}s (${fmr(hrGross)}₺/s)</span></div>
-    <div class="bordro-row info"><span class="bl">Sigorta Günü (SGK üst sınır 30)</span><span class="bv">${Math.min(30, Math.round((d.workDayEquiv || d.wd || 0) + (d.wr || 0) + (d.publicHolidayPaidDays || 0) + (d.mau || 0) + (d.msd || 0)))} gün</span></div>`;
+    <div class="bordro-row info"><span class="bl">Sigorta Günü (SGK üst sınır 30)</span><span class="bv">${Math.min(30, Math.round((d.workDayEquiv || d.wd || 0) + (d.wr || 0) + (d.publicHolidayPaidDays || 0) + (d.mau || 0) + (d.msd || 0) + (d.otcm || 0)))} gün</span></div>`;
 
   const previewEl = $('bordroPreview');
   if (!previewEl) return;
@@ -9063,12 +9121,12 @@ function renderBordroPreview() {
     <div class="bordro-row deduct"><span class="bl">İşsizlik Sigortası (%1)</span><span class="bv">− ${fmb(res.unemployDeduct)}</span></div>
     ${res.disabilityDeduction > 0 ? `<div class="bordro-row add"><span class="bl">Engellilik İndirimi — ${disabilityLabels[res.disabilityDegree]||''} (GVK md.31)</span><span class="bv">− ${fmb(res.disabilityDeduction)}</span></div>` : ''}
     <div class="bordro-row sub"><span class="bl">GV Matrahı</span><span class="bv">${fmb(res.gvMatrah)}</span></div>
-    <div class="bordro-row deduct"><span class="bl">Gelir Vergisi (hesaplanan)</span><span class="bv">− ${fmb(res.thisMonthRawGV)}</span></div>
+    <div class="bordro-row deduct"><span class="bl">Gelir Vergisi (brüt, hesaplanan)</span><span class="bv">− ${fmb(res.thisMonthRawGV)}</span></div>
     <div class="bordro-row add"><span class="bl">Asgari Ücret GV İstisnası</span><span class="bv">+ ${fmb(res.incomeTaxExemption)}</span></div>
-    <div class="bordro-row deduct"><span class="bl">Net Gelir Vergisi</span><span class="bv">− ${fmb(res.netGV)}</span></div>
-    <div class="bordro-row deduct"><span class="bl">Damga Vergisi (%0.759)</span><span class="bv">− ${fmb(res.grossStampTax)}</span></div>
+    <div class="bordro-row info"><span class="bl">= Net Gelir Vergisi (kesilen)</span><span class="bv">${fmb(res.netGV)}</span></div>
+    <div class="bordro-row deduct"><span class="bl">Damga Vergisi (brüt, %0.759)</span><span class="bv">− ${fmb(res.grossStampTax)}</span></div>
     <div class="bordro-row add"><span class="bl">Asgari Ücret DV İstisnası</span><span class="bv">+ ${fmb(res.stampTaxExemption)}</span></div>
-    <div class="bordro-row deduct"><span class="bl">Net Damga Vergisi</span><span class="bv">− ${fmb(res.stampTax)}</span></div>
+    <div class="bordro-row info"><span class="bl">= Net Damga Vergisi (kesilen)</span><span class="bv">${fmb(res.stampTax)}</span></div>
     ${mealTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yemek Yardımı (${effectiveMealDays}g × ${cfg.mealDailyTaxFree}₺)</span><span class="bv">+ ${fmb(mealTotal)}</span></div>` : ''}
     ${transportTotal > 0 ? `<div class="bordro-row add"><span class="bl">Yol Yardımı (${effectiveTransportDays}g × ${cfg.transportDailyTaxFree}₺)</span><span class="bv">+ ${fmb(transportTotal)}</span></div>` : ''}
     ${hasPrivateDeducts ? `<div class="bordro-row sub"><span class="bl">YASAL NET</span><span class="bv">${fmb(yasalNet)}</span></div>` : ''}
@@ -9147,14 +9205,15 @@ function downloadBordroPDF() {
     ['Issizlik Sigortasi (%1)','',                     fmb(r.unemployDeduct)],
   );
   if (r.disabilityDeduction > 0) rows.push([`Engellilik Indirimi (Derece ${r.disabilityDegree}) GVK m.31`, fmb(r.disabilityDeduction), '']);
+  // Gelir/Damga vergisi: brüt vergi (kesinti) + asgari ücret istisnası (ekleme).
+  // Sütun toplamı net'e ulaşsın diye ayrı "Net" satırı yazılmaz (resmî bordro düzeni;
+  // aksi halde brüt + net iki kez kesinti sütununda görünüp çift sayılırdı).
   rows.push(
     ['GV Matrahi',             fmb(r.gvMatrah),        ''],
-    ['Gelir Vergisi',          '',                     fmb(r.thisMonthRawGV)],
+    ['Gelir Vergisi (Brut)',   '',                     fmb(r.thisMonthRawGV)],
     ['Asgari Ucret GV Ist.',   fmb(r.incomeTaxExemption || 0), ''],
-    ['Net Gelir Vergisi',      '',                     fmb(r.netGV)],
     ['Damga Vergisi (%0.759)', '',                     fmb(r.grossStampTax || r.stampTax)],
     ['Asgari Ucret DV Ist.',   fmb(r.stampTaxExemption || 0), ''],
-    ['Net Damga Vergisi',      '',                     fmb(r.stampTax)],
   );
   if (r.mealTotal > 0)      rows.push(['Yemek Yardimi',     fmb(r.mealTotal),      '']);
   if (r.transportTotal > 0) rows.push(['Yol Yardimi',       fmb(r.transportTotal), '']);
