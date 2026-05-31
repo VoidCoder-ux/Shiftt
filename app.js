@@ -154,9 +154,13 @@ function updUndoBtn() {
 ============================================================ */
 function escHtml(s) {
   if (s === null || s === undefined) return '';
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
+  // Attribute-injection güvenli kaçış: tırnaklar dahil. (textContent→innerHTML " ve ' kaçırmaz.)
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 function $(id) { return document.getElementById(id); }
 function setHtml(id, h) { const e = $(id); if (e) e.innerHTML = h; }
@@ -184,6 +188,13 @@ function safeNum(v, fallback = 0) {
   }
   const n = Number(s);
   return Number.isFinite(n) ? n : fallback;
+}
+// [FIX K1-logic] Belirsiz sayı tespiti: tek nokta + tam 3 hane (virgülsüz) → "1.500"/"2.999" gibi
+// binlik mi ondalık mı belirsiz girdiler. safeNum'un sonucunu DEĞİŞTİRMEZ; yalnızca UI uyarısı için.
+function isAmbiguousNumStr(raw) {
+  if (raw === null || raw === undefined) return false;
+  let s = String(raw).trim().replace(/\s+/g, '').replace(/[\u20ba\u20bc$\u20ac\u00a3]|TL|tl|TRY|try/g, '');
+  return /^[+-]?\d{1,3}\.\d{3}$/.test(s);
 }
 function safeInt(v, fallback = 0) {
   const n = safeNum(v, fallback);
@@ -3330,7 +3341,7 @@ function renderStatsShiftDist(trendData) {
       const cnt = mt[tn] || 0;
       if (cnt === 0) return;
       const pct = (cnt / total * 100).toFixed(1);
-      segs += `<div style="width:${pct}%;background:${colors[ti % colors.length]};height:100%;border-radius:3px" title="${tn}: ${cnt}g (${pct}%)"></div>`;
+      segs += `<div style="width:${pct}%;background:${colors[ti % colors.length]};height:100%;border-radius:3px" title="${escHtml(tn)}: ${cnt}g (${pct}%)"></div>`;
     });
     rows += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <span style="min-width:40px;font-size:11px;font-weight:700;color:var(--t2)">${escHtml(td.label)}</span>
@@ -4745,8 +4756,9 @@ function resolveDayConflicts(u) {
     if (!u.leaves[ds]) return;
       const shTime = safeTimestamp(u.shifts[ds] && u.shifts[ds].updatedAt, 0);
       const lvTime = safeTimestamp(u.leaves[ds] && u.leaves[ds].updatedAt, 0);
-    if (lvTime > shTime) {
-      logConflict(ds, 'shift_leave_conflict', 'Aynı gün vardiya ve izin vardı; daha güncel izin korundu, vardiya kaldırıldı.');
+    // [FIX K2] Eşit/0 (legacy) timestamp: izni koru (>=) — bulut merge'inde sessiz izin kaybını önle.
+    if (lvTime >= shTime) {
+      logConflict(ds, 'shift_leave_conflict', 'Aynı gün vardiya ve izin vardı; izin korundu, vardiya kaldırıldı.');
       if (!u.deletedShifts) u.deletedShifts = {};
       u.deletedShifts[ds] = Date.now();
       delete u.shifts[ds];
@@ -7039,7 +7051,7 @@ function deepMergeUser(local, cloud) {
     else if (ls && cs) {
       // İkisi de var — daha yeni olanı al (updatedAt varsa), yoksa cloud kazanır
       const lTime = safeTimestamp(ls.updatedAt, 0), cTime = safeTimestamp(cs.updatedAt, 0);
-      if (cTime >= lTime) merged.shifts[k] = cs;
+      if (cTime > lTime) merged.shifts[k] = cs; // [FIX K4] eşit/0'da yerel korunur
     }
   });
 
@@ -7065,7 +7077,7 @@ function deepMergeUser(local, cloud) {
     else if (cloud.leaves && cloud.leaves[k]) {
       const lTime = safeTimestamp((merged.leaves[k] || {}).updatedAt, 0);
       const cTime = safeTimestamp((cloud.leaves[k] || {}).updatedAt, 0);
-      if (cTime >= lTime) merged.leaves[k] = cloud.leaves[k];
+      if (cTime > lTime) merged.leaves[k] = cloud.leaves[k]; // [FIX K4] eşit/0'da yerel korunur
     }
   });
 
@@ -7095,7 +7107,7 @@ function deepMergeUser(local, cloud) {
 
   const localNT = safeTimestamp(merged.notesUpdatedAt, 0);
   const cloudNT = safeTimestamp(cloud.notesUpdatedAt, 0);
-  if (cloudNT >= localNT && typeof cloud.notes === 'string') {
+  if (cloudNT > localNT && typeof cloud.notes === 'string') { // [FIX K4] eşit/0'da yerel korunur
     merged.notes = cloud.notes;
     merged.notesUpdatedAt = cloudNT;
   }
@@ -7132,15 +7144,15 @@ function deepMergeUser(local, cloud) {
   allPayrollCheckKeys.forEach(k => {
     const lr = merged.payrollChecks[k], cr = cloud.payrollChecks ? cloud.payrollChecks[k] : null;
     if (!lr && cr) merged.payrollChecks[k] = cr;
-    else if (lr && cr && (safeTimestamp(cr.updatedAt, 0) >= safeTimestamp(lr.updatedAt, 0))) merged.payrollChecks[k] = cr;
+    else if (lr && cr && (safeTimestamp(cr.updatedAt, 0) > safeTimestamp(lr.updatedAt, 0))) merged.payrollChecks[k] = cr; // [FIX K4] eşit/0'da yerel korunur
   });
 
   /* [FIX BUG-R3] Ayarlar için zaman damgası çakışma çözümü.
-     settingsUpdatedAt yoksa her iki taraf da 0 kabul edilir — cloud kazanır (geriye uyumlu).
+     settingsUpdatedAt eşit/0 ise yerel korunur (>) — çevrimdışı yerel düzenleme bulut tarafından ezilmez. [FIX K4]
      Yerel daha yeni ise (çevrimdışı değişiklik) yerel korunur. */
   const localST = safeTimestamp(merged.settingsUpdatedAt, 0);
   const cloudST = safeTimestamp(cloud.settingsUpdatedAt, 0);
-  if (cloudST >= localST) {
+  if (cloudST > localST) { // [FIX K4] eşit/0'da yerel korunur
     if (cloud.netSalary !== undefined) merged.netSalary = cloud.netSalary;
     if (cloud.annualLeave !== undefined) merged.annualLeave = cloud.annualLeave;
     if (cloud.pin !== undefined) merged.pin = cloud.pin;
@@ -7343,8 +7355,20 @@ let syncTimer = null;
 function debouncedPush() {
   if (!fbDb || !fbUser) return;
   if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => { if (!syncInProgress) pushToCloud(); }, SYNC_DEBOUNCE);
+  syncTimer = setTimeout(() => { if (syncInProgress) { debouncedPush(); return; } pushToCloud(); }, SYNC_DEBOUNCE); // [FIX K3] sync sürerken düşürme, yeniden planla
 }
+
+// [FIX K1-logic] Belirsiz sayı girişinde kullanıcıyı uyar (reddet/uyar). safeNum'a dokunmaz.
+document.addEventListener('blur', function(e) {
+  const t = e.target;
+  if (!t || t.tagName !== 'INPUT') return;
+  const ty = (t.type || '').toLowerCase();
+  if (ty !== 'text' && ty !== 'tel' && ty !== 'number') return;
+  if (t.dataset && t.dataset.noNumGuard !== undefined) return;
+  if (isAmbiguousNumStr(t.value)) {
+    toast('Belirsiz sayı formatı: "' + t.value + '". Binlik için ayraçsız (1500), ondalık için virgül kullanın (1500,75).', 'warning', 5000);
+  }
+}, true);
 
 // Sekme aktif olunca veya online olunca sync yap
 document.addEventListener('visibilitychange', function() {
@@ -8227,12 +8251,12 @@ function renderTeamView() {
         weekLeaves++;
         const icons = { annual:'🏖', weekly:'🛋', public_holiday:'🏛', sick:'🤒', unpaid:'⛔' };
         const labels = { annual:'Yıllık', weekly:'Tatil', public_holiday:'R.Tatil', sick:'Rapor', unpaid:'Ücretsiz' };
-        gridHtml += `<div class="tg-cell tg-leave" title="${labels[lv.type]||lv.type}">
+        gridHtml += `<div class="tg-cell tg-leave" title="${escHtml(labels[lv.type]||lv.type)}">
           <span>${icons[lv.type]||'📋'}</span>
           <span class="tg-time">${labels[lv.type]||''}</span>
         </div>`;
       } else if (hol) {
-        gridHtml += `<div class="tg-cell tg-holiday" title="${getH(ds) || 'Tatil'}"><span>🏛️</span></div>`;
+        gridHtml += `<div class="tg-cell tg-holiday" title="${escHtml(getH(ds) || 'Tatil')}"><span>🏛️</span></div>`;
       } else {
         gridHtml += '<div class="tg-cell">—</div>';
       }
