@@ -1315,6 +1315,92 @@ function bracketsToInput(brackets) {
   return brackets.map(b => `${b.upTo === Infinity ? 'inf' : b.upTo}:${(b.rate * 100)}`).join('\n');
 }
 
+/* DeepSeek'ten yıla ait resmî Türkiye bordro parametrelerini JSON olarak ister.
+   AI eğitim verisine dayalı değerleri döner; resmî onay kullanıcıdan beklenir. */
+async function askDeepSeekFetchPayroll(year) {
+  const cfg = getDeepSeekSettings();
+  if (!cfg.apiKey) throw new Error('NO_KEY');
+  if (!cfg.consent) throw new Error('NO_CONSENT');
+  const sys = `Sen Türk bordro mevzuatı veri asistanısın. Kullanıcı ${year} yılı için Türkiye resmî bordro parametrelerini soruyor.
+Eğitim verilerindeki en doğru bilgileri kullanarak YALNIZCA aşağıdaki JSON formatında yanıt ver, başka metin ekleme:
+{
+  "minWageGross": <brüt asgari ücret ₺, sayı>,
+  "sgkEmployee": <SGK işçi payı ondalık, örn 0.14>,
+  "unemploymentEmployee": <işsizlik işçi payı ondalık, örn 0.01>,
+  "stampTaxRate": <damga vergisi oranı ondalık, örn 0.00759>,
+  "incomeTaxBrackets": [
+    {"upTo": <kümülatif matrah sınırı ₺, sayı>, "rate": <oran ondalık, örn 0.15>},
+    {"upTo": 99999999, "rate": <son dilim oranı, örn 0.40>}
+  ],
+  "note": "<kısa kaynak notu>"
+}
+Kurallar: değerleri UYDURMA; bilmiyorsan null ver. SGK işçi 0.14 ve işsizlik 0.01 yasayla sabit. Son dilim upTo her zaman 99999999. Yalnızca JSON döndür.`;
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + cfg.apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: cfg.model || 'deepseek-chat',
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: `${year} yılı Türkiye resmî bordro parametrelerini JSON olarak ver.` }
+      ],
+      temperature: 0.1,
+      max_tokens: 700
+    })
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  const text = (data && data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content.trim() : null;
+  if (!text) throw new Error('Boş yanıt');
+  let jsonStr = text;
+  const m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (m) jsonStr = m[1].trim();
+  const parsed = JSON.parse(jsonStr);
+  if (parsed.incomeTaxBrackets) {
+    parsed.incomeTaxBrackets = parsed.incomeTaxBrackets.map(b => ({
+      upTo: (b.upTo >= 99999990) ? Infinity : b.upTo,
+      rate: b.rate > 1 ? b.rate / 100 : b.rate
+    }));
+  }
+  return parsed;
+}
+
+async function payrollParamsAutoFill() {
+  const out = $('ppValidateOut'); if (!out) return;
+  const aiCfg = getDeepSeekSettings();
+  if (!aiCfg.apiKey) {
+    out.innerHTML = `<div style="color:var(--r)"><i class="fas fa-key"></i> Önce DeepSeek API key girip kaydedin.</div>`;
+    return;
+  }
+  if (!aiCfg.consent) {
+    out.innerHTML = `<div style="color:var(--r)"><i class="fas fa-triangle-exclamation"></i> Veri gönderimi için onay kutusunu işaretleyin.</div>`;
+    return;
+  }
+  const year = safeInt(($('ppYear') || {}).value, _payrollParamYear);
+  out.innerHTML = `<div style="color:var(--t2)"><i class="fas fa-spinner fa-spin"></i> DeepSeek ${year} parametrelerini getiriyor...</div>`;
+  try {
+    const p = await askDeepSeekFetchPayroll(year);
+    const set = (id, val) => { const el = $(id); if (el && val != null) el.value = val; };
+    set('ppMinWage', p.minWageGross != null ? p.minWageGross : '');
+    set('ppSgk',     p.sgkEmployee != null ? p.sgkEmployee : '');
+    set('ppUnemp',   p.unemploymentEmployee != null ? p.unemploymentEmployee : '');
+    set('ppStamp',   p.stampTaxRate != null ? p.stampTaxRate : '');
+    if (p.incomeTaxBrackets && Array.isArray(p.incomeTaxBrackets)) {
+      const ta = $('ppBrackets');
+      if (ta) ta.value = bracketsToInput(p.incomeTaxBrackets);
+    }
+    const note = p.note ? escHtml(p.note) : 'DeepSeek eğitim verisine dayalı.';
+    out.innerHTML = `<div style="color:var(--g)"><i class="fas fa-check-circle"></i> AI değerleri doldurdu. Resmî kaynakla doğrulayıp <b>Onayla &amp; Kaydet</b>'e basın.</div>
+      <div style="font-size:10.5px;color:var(--t3);margin-top:4px"><i class="fas fa-info-circle"></i> ${note} Resmî Gazete / GİB / ÇSGB ile teyit edin.</div>`;
+  } catch (e) {
+    const msg = e.message === 'NO_CONSENT' ? 'Onay kutusunu işaretleyin.' :
+                e.message === 'NO_KEY'     ? 'API key girilmemiş.' :
+                e.message.startsWith('HTTP') ? 'DeepSeek API hatası: ' + e.message :
+                'JSON ayrıştırılamadı: ' + e.message;
+    out.innerHTML = `<div style="color:var(--r)"><i class="fas fa-triangle-exclamation"></i> ${escHtml(msg)}</div>`;
+  }
+}
+
 /* DeepSeek'e girilen parametreleri akla yatkınlık/tutarlılık için doğrulatır.
    AI yalnızca UYARI/ONAY metni döner — değeri kendisi UYGULAMAZ. */
 async function askDeepSeekValidatePayroll(year, params) {
@@ -1417,8 +1503,11 @@ function renderPayrollParamsCard() {
     <div class="ai-card" style="margin-bottom:16px">
       <h3><i class="fas fa-scale-balanced"></i>Güncel Bordro Parametreleri</h3>
       <div style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">
-        Vergi/SGK/asgari ücret değerleri her yıl değişir. Resmî değerleri girin, ${getDeepSeekSettings().apiKey ? 'DeepSeek ile doğrulayın' : 'yerel kontrol yapın'} ve onaylayın.
-        <span style="color:var(--acc)">${escHtml(metaTxt)}</span>
+        Vergi/SGK/asgari ücret değerleri her yıl değişir.
+        ${getDeepSeekSettings().apiKey && getDeepSeekSettings().consent
+          ? '<b style="color:var(--acc)"><i class="fas fa-wand-magic-sparkles"></i> AI ile Doldur</b> düğmesiyle DeepSeek değerleri otomatik getirir; siz sadece onaylarsınız.'
+          : 'API key + onay ile <b>AI değerleri otomatik getirir</b>; yoksa manuel girin.'}
+        <br><span style="color:var(--acc)">${escHtml(metaTxt)}</span>
       </div>
       <div class="ai-api-grid">
         <label style="font-size:11px;color:var(--t2)">Yıl
@@ -1442,6 +1531,7 @@ function renderPayrollParamsCard() {
           <textarea id="ppBrackets" rows="5" style="width:100%;font-family:monospace;font-size:11px">${escHtml(bracketsToInput(cfg.incomeTaxBrackets))}</textarea>
         </label>
         <div class="ai-api-actions" style="flex-wrap:wrap;gap:6px">
+          ${getDeepSeekSettings().apiKey && getDeepSeekSettings().consent ? `<button class="btn btn-outline btn-sm" type="button" onclick="payrollParamsAutoFill()" style="color:var(--acc);border-color:var(--acc)"><i class="fas fa-wand-magic-sparkles"></i>AI ile Doldur</button>` : ''}
           <button class="btn btn-outline btn-sm" type="button" onclick="payrollParamsValidate()"><i class="fas fa-robot"></i>Doğrula</button>
           <button class="btn btn-primary btn-sm" type="button" onclick="payrollParamsSave()"><i class="fas fa-check"></i>Onayla & Kaydet</button>
           ${ov ? `<button class="btn btn-outline btn-sm" type="button" onclick="payrollParamsReset()"><i class="fas fa-rotate-left"></i>Varsayılana Dön</button>` : ''}
