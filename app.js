@@ -345,7 +345,9 @@ function toast(msg, type = 'info') {
   const ic = { success:'fa-check-circle', error:'fa-times-circle', info:'fa-info-circle', warning:'fa-exclamation-triangle' };
   const t = document.createElement('div');
   t.className = `toast t-${type}`;
-  t.innerHTML = `<i class="fas ${ic[type] || ic.info}"></i><span>${escHtml(msg)}</span>`;
+  // [A11Y] Dekoratif ikonu ekran okuyuculardan gizle; hata/uyarıyı anında duyur.
+  t.setAttribute('role', (type === 'error' || type === 'warning') ? 'alert' : 'status');
+  t.innerHTML = `<i class="fas ${ic[type] || ic.info}" aria-hidden="true"></i><span>${escHtml(msg)}</span>`;
   c.appendChild(t);
   setTimeout(() => {
     t.classList.add('toast-out');
@@ -1831,6 +1833,105 @@ function chgYear(d) {
 /* ============================================================
    INIT
 ============================================================ */
+/* ============================================================
+   [A11Y] Erişilebilirlik katmanı — merkezi, iş mantığına dokunmaz.
+   Modal dialog semantiği + focus trap + focus geri dönüşü,
+   ikon-yalnız düğmelere otomatik ad, dekoratif ikon gizleme,
+   tıklanabilir div/span'a klavye erişimi.
+============================================================ */
+// .show class'ı ile açılan modal/overlay kapsayıcıları ve başlık eşlemesi.
+const A11Y_MODALS = {
+  modal: 'mTitle', wtModal: 'wtModalTitle', cpModal: null, newUserModal: null,
+  confirmOverlay: 'confirmTitle', pinOverlay: 'pinTitle', qrOverlay: null,
+  docUploadModal: null, docViewer: null, calcOverlay: null, employerOverlay: null,
+  eBordroModal: null,
+};
+let _a11yLastFocus = null;
+
+function _a11yFocusable(container) {
+  return Array.from(container.querySelectorAll(
+    'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+  )).filter(el => el.offsetParent !== null || el === document.activeElement);
+}
+
+function _a11yTrap(e, container) {
+  if (e.key !== 'Tab') return;
+  const f = _a11yFocusable(container);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+
+function _a11yOnModalOpen(el, titleId) {
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-modal', 'true');
+  if (titleId && document.getElementById(titleId)) el.setAttribute('aria-labelledby', titleId);
+  _a11yLastFocus = document.activeElement;
+  // İçerikteki ilk odaklanabilir öğeye odak ver.
+  const f = _a11yFocusable(el);
+  setTimeout(() => { (f[0] || el).focus({ preventScroll: true }); }, 30);
+  if (!el._a11yTrapBound) {
+    el._a11yTrapBound = (e) => _a11yTrap(e, el);
+    el.addEventListener('keydown', el._a11yTrapBound);
+  }
+}
+
+function _a11yOnModalClose(el) {
+  // Tetikleyen öğeye odağı geri ver.
+  if (_a11yLastFocus && typeof _a11yLastFocus.focus === 'function') {
+    try { _a11yLastFocus.focus({ preventScroll: true }); } catch (_) {}
+  }
+  _a11yLastFocus = null;
+}
+
+// Tek seferlik: modal açılış/kapanışını .show class değişiminden izle.
+function setupA11yModals() {
+  Object.keys(A11Y_MODALS).forEach(id => {
+    const el = document.getElementById(id);
+    if (!el || el._a11yObserved) return;
+    el._a11yObserved = true;
+    // dialog kapsayıcının kendisi odaklanabilir olsun (içerik boşsa fallback).
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    let wasShown = el.classList.contains('show');
+    const obs = new MutationObserver(() => {
+      const shown = el.classList.contains('show');
+      if (shown === wasShown) return;
+      wasShown = shown;
+      if (shown) _a11yOnModalOpen(el, A11Y_MODALS[id]); else _a11yOnModalClose(el);
+    });
+    obs.observe(el, { attributes: true, attributeFilter: ['class'] });
+  });
+}
+
+// İkon-yalnız düğmelere otomatik erişilebilir ad; dekoratif ikonları gizle.
+// title varsa onu aria-label'a kopyalar; klavyeyle erişilebilir div/span'a rol/tabindex verir.
+function enhanceA11y(root) {
+  root = root || document;
+  // 1) Dekoratif Font Awesome ikonlarını ekran okuyuculardan gizle.
+  root.querySelectorAll('i.fas:not([aria-hidden]),i.far:not([aria-hidden]),i.fab:not([aria-hidden])')
+    .forEach(ic => ic.setAttribute('aria-hidden', 'true'));
+  // 2) Metinsiz (ikon-yalnız) butonlara ad ver.
+  root.querySelectorAll('button:not([aria-label])').forEach(btn => {
+    const txt = (btn.textContent || '').trim();
+    if (txt) return; // metni olan butona dokunma
+    const t = btn.getAttribute('title');
+    if (t) { btn.setAttribute('aria-label', t); }
+  });
+  // 3) Tıklanabilir div/span'lara klavye erişimi (role=button + tabindex + Enter/Space).
+  root.querySelectorAll('[onclick]').forEach(el => {
+    const tag = el.tagName;
+    if (tag === 'BUTTON' || tag === 'A' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'LABEL') return;
+    if (el._a11yKbd) return;
+    el._a11yKbd = true;
+    if (!el.hasAttribute('role')) el.setAttribute('role', 'button');
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); }
+    });
+  });
+}
+
 function init() {
   loadLS();
   applyTheme('default');
@@ -1880,6 +1981,14 @@ function init() {
   const cpModalEl = $('cpModal'); if (cpModalEl) cpModalEl.addEventListener('click', function(e) { if (e.target === this) closeCPModal(); });
   const nuModalEl = $('newUserModal'); if (nuModalEl) nuModalEl.addEventListener('click', function(e) { if (e.target === this) closeNewUserModal(); });
   const nuInput = $('newUserName'); if (nuInput) nuInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') confirmNewUser(); });
+
+  // [A11Y] Modal dialog semantiği/focus yönetimi + statik içeriğe erişilebilirlik geçişi.
+  setupA11yModals();
+  enhanceA11y(document);
+  // Dinamik render sonrası yeni eklenen ikon-buton/div'leri de iyileştir (hafif throttle).
+  let _a11yT;
+  new MutationObserver(() => { clearTimeout(_a11yT); _a11yT = setTimeout(() => enhanceA11y(document), 300); })
+    .observe(document.body, { childList: true, subtree: true });
 }
 
 function setupKeyboardShortcuts() {
