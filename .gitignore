@@ -8,3 +8,9 @@
 # → Browser key → Uygulama kısıtlamaları → HTTP referans adresleri
 # → kendi domaininizi ekleyin (örn: https://shiftapp.example.com/*)
 config.js
+
+# Build & bağımlılık çıktıları (Vite)
+node_modules/
+dist/
+dev-dist/
+*.local

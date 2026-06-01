@@ -340,7 +340,7 @@ function cu() {
   return S.u[S.cu];
 }
 
-function toast(msg, type = 'info') {
+function toast(msg, type = 'info', duration = 2500) {
   const c = $('toastContainer'); if (!c) return;
   const ic = { success:'fa-check-circle', error:'fa-times-circle', info:'fa-info-circle', warning:'fa-exclamation-triangle' };
   const t = document.createElement('div');
@@ -352,7 +352,7 @@ function toast(msg, type = 'info') {
   setTimeout(() => {
     t.classList.add('toast-out');
     setTimeout(() => { if (t.parentNode) t.remove(); }, 350);
-  }, 2500);
+  }, Math.max(800, safeNum(duration, 2500)));
 }
 
 function showConfirm(title, msg, cb) {
@@ -6875,6 +6875,16 @@ function firebaseRegister() {
 
   fbAuth.createUserWithEmailAndPassword(email, pass)
     .then(cred => {
+      // [FIX O1] Kayıt sonrası e-posta doğrulama bağlantısı gönder (bloke etmez — mevcut
+      // kullanıcıları kilitlememek için akış sürdürülür, kullanıcı bilgilendirilir).
+      try {
+        const u = cred && cred.user;
+        if (u && typeof u.sendEmailVerification === 'function' && !u.emailVerified) {
+          u.sendEmailVerification()
+            .then(() => toast('Doğrulama e-postası gönderildi — lütfen gelen kutunuzu kontrol edin.', 'info'))
+            .catch(e => console.warn('E-posta doğrulama gönderilemedi:', e));
+        }
+      } catch (e) { console.warn('sendEmailVerification hatası:', e); }
       // İlk kayıtta mevcut lokal veriyi buluta yükle
       try { const existing = localStorage.getItem('st_data'); if (existing) pushToCloud(); } catch(e) { console.warn('İlk kayıt push hatası:', e); }
       // Direkt uygulamaya geç
@@ -6903,7 +6913,14 @@ function firebaseLogin() {
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Giriş yapılıyor...';
 
   fbAuth.signInWithEmailAndPassword(email, pass)
-    .then(() => {
+    .then(cred => {
+      // [FIX O1] Doğrulanmamış hesap için nazik hatırlatma (bloke etmez).
+      try {
+        const u = cred && cred.user;
+        if (u && u.emailVerified === false) {
+          setTimeout(() => toast('E-posta adresiniz henüz doğrulanmadı. Hesap güvenliği için doğrulamanızı öneririz.', 'warning', 5000), 600);
+        }
+      } catch (e) {}
       enterAppAfterAuth();
     })
     .catch(err => {
@@ -6925,10 +6942,26 @@ function firebaseResetPass() {
     .catch(err => { showAuthError(fbErrMsg(err)); if (link) { link.style.pointerEvents = ''; link.style.opacity = ''; link.textContent = 'Şifremi Unuttum'; } });
 }
 
+// [FIX O2] Bu cihazdaki hassas yerel veriyi temizle (paylaşımlı cihaz koruması).
+// Vardiya/maaş verisi (st_data), DeepSeek anahtarı ve oturum işaretleri silinir.
+function wipeLocalSensitiveData() {
+  try {
+    localStorage.removeItem('st_data');
+    localStorage.removeItem('st_auth_skipped');
+    localStorage.removeItem('st_deepseek_api_key');
+    localStorage.removeItem('st_deepseek_model');
+    localStorage.removeItem('st_deepseek_remote_consent');
+    localStorage.removeItem('st_deepseek_storage');
+    sessionStorage.removeItem('st_deepseek_api_key');
+  } catch (e) { console.warn('Yerel veri temizleme hatası:', e); }
+  // Bellekteki kullanıcı durumunu sıfırla.
+  S.u = {}; S.cu = null;
+}
+
 // Logout from Firebase
 function firebaseLogout() {
   if (!fbAuth) return;
-  showConfirm('Bulut Çıkış', 'Bulut hesabından çıkış yapılacak. Lokal veriler kalır ama senkronizasyon durur.', () => {
+  showConfirm('Bulut Çıkış', 'Bulut hesabından çıkış yapılacak. Senkronizasyon durur.', () => {
     // Bekleyen sync timer'ı temizle
     if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
     stopRealtimeSync();
@@ -6937,7 +6970,15 @@ function firebaseLogout() {
       syncInProgress = false;
       updSyncUI();
       updCloudAccountUI();
-      toast('Bulut hesabından çıkış yapıldı', 'info');
+      // [FIX O2] Paylaşımlı cihaz: yerel veriyi de silmeyi teklif et.
+      showConfirm('Bu Cihazdaki Veriler',
+        'Çıkış yapıldı. Bu cihazda kayıtlı vardiya/maaş verilerini ve DeepSeek anahtarını da silmek ister misiniz? (Paylaşımlı/ortak cihazda önerilir.)',
+        () => {
+          wipeLocalSensitiveData();
+          updLogin();
+          toast('Bu cihazdaki yerel veriler silindi', 'info');
+          setTimeout(() => { try { location.reload(); } catch (e) {} }, 800);
+        });
     }).catch(err => {
       console.error('Çıkış hatası:', err);
       toast('Çıkış yapılamadı. Tekrar deneyin.', 'error');
@@ -9830,3 +9871,35 @@ function renderTaxBracketSummary(u) {
 
 // change listener, openEBordroModal() içinde _ebHooked guard ile eklenir
 // ===== eBORDRO MODULE END =====
+/* ============================================================
+   [MODÜL KÖPRÜSÜ] Vite/bundler altında ES module kapsamına alındığında
+   inline on* handler'ları (index.html ve app.js template'lerinde ~129 adet)
+   global fonksiyon arar. Bundle scope'unda fonksiyonlar global olmaktan çıkar;
+   bu blok onları window'a yeniden expose ederek handler'ların çalışmaya devam
+   etmesini sağlar. Plain <script> ile servis edildiğinde zaten globaldirler —
+   bu durumda blok zararsız (idempotent) tekrar atamadır.
+   NOT: Yeni bir inline handler eklerken fonksiyonu bu listeye de ekleyin.
+============================================================ */
+(function exposeGlobals() {
+  if (typeof window === 'undefined') return;
+  const _fns = [
+  addNewUser, aiAsk, applyPreset, applyWeeklyTemplate, authTab, autoLoadHolidays, chgE, chgLeaveYear,
+  chgM, chgTeamWeek, chgYear, clearClipboard, clearD, clearDeepSeekSettings, clearWeeklyTemplate, closeCPModal,
+  closeCalc, closeDocUpload, closeDocViewer, closeEBordroModal, closeEmployer, closeIOSInstall, closeM, closeNewUserModal,
+  closeQR, closeWTModal, confirmCancel, confirmNewUser, confirmOk, copyShareLink, copyShift, copyThisWeekToNext,
+  copyTplLink, delEntry, delPreset, deleteCurrentUser, dismissInstall, docDragLeave, docDragOver, docDrop,
+  docFileSelected, downloadBordroPDF, downloadDoc, exportBordroCSV, exportBordroJSON, exportBordroXML, exportCSV, exportD,
+  exportEmployeeMonthExcel, exportEmployeeMonthPDF, exportPDF, filterDocs, firebaseLogin, firebaseLogout, firebaseRegister, firebaseResetPass,
+  forceSyncNow, go, goToday, importD, importFromQR, importTpl, installPWA, loginAttempt,
+  logout, mMode, manualSync, multiApplyLeave, multiApplyShift, multiClear, openCPModal, openCalc,
+  openDocUpload, openEBordroModal, openEmployer, openQR, openSeveranceModal, openWTModal, pasteAndClose, payrollParamsAutoFill,
+  payrollParamsChangeYear, payrollParamsReset, payrollParamsSave, payrollParamsValidate, pinCancel, pinClear, pinInput, qrMode,
+  quickAddToday, removePIN, renderAIAssistantPage, renderBordroPreview, renderLeaveTable, renderLeaves, renderRaiseSim, repeatLastWeek,
+  requestNotifPermission, rsSwitch, runCalc, sSet, saveCPModal, saveDeepSeekSettings, saveDocument, saveEntry,
+  saveNotes, savePayrollCheckField, saveWTDay, selLT, selectEmoji, setTheme, setupPIN, shareDocWA,
+  shareMonthReport, shareTplQR, showAuthScreen, showIOSInstall, showNotifications, showShortcuts, skipAuth, submitAIQuestion,
+  switchSSTab, teamGoThisWeek, toggleAutoTheme, toggleMultiSelect, toggleNoteEmoji, triggerInstall, undo, wtSetOff,
+  wtSetPreset,
+  ];
+  _fns.forEach(fn => { if (typeof fn === 'function' && fn.name) window[fn.name] = fn; });
+})();
