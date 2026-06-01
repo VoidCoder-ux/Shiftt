@@ -1982,6 +1982,14 @@ function init() {
   const nuModalEl = $('newUserModal'); if (nuModalEl) nuModalEl.addEventListener('click', function(e) { if (e.target === this) closeNewUserModal(); });
   const nuInput = $('newUserName'); if (nuInput) nuInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') confirmNewUser(); });
 
+  // [SÜRÜM] Görünür sürüm etiketini gerçek APP_VERSION'a bağla — her güncellemede otomatik değişir.
+  try {
+    const _vl = $('appVersionLabel');
+    if (_vl && typeof APP_VERSION !== 'undefined') {
+      _vl.textContent = String(APP_VERSION).replace(/^shifttrack-/, '') + ' Cloud';
+    }
+  } catch (e) {}
+
   // [A11Y] Modal dialog semantiği/focus yönetimi + statik içeriğe erişilebilirlik geçişi.
   setupA11yModals();
   enhanceA11y(document);
