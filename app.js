@@ -3820,7 +3820,10 @@ function estimatePayrollForMonth(u, y, m, d) {
   const absentDays = Math.max(0, safeNum(earning.absentDays, 0));
   const proRate = Math.max(0, Math.min(1, (30 - absentDays) / 30));
   const baseGross = _bordroRound2(fullGross * proRate);
-  const hrGross = fullGross > 0 ? _bordroRound2(fullGross / getMonthlyHours(u)) : 0;
+  // [FIX O7] FM saat ücreti yasal saat tabanından (payrollHourBasis) — e-Bordro ile tutarlı.
+  // Önceden getMonthlyHours(u) kullanılıyordu; monthlyHours≠225 olan kullanıcılarda bu ekran
+  // ile e-Bordro farklı fazla mesai ücreti gösteriyordu.
+  const hrGross = (fullGross > 0 && payrollHourBasis > 0) ? _bordroRound2(fullGross / payrollHourBasis) : 0;
   const drGross = _bordroRound2(fullGross / 30);
   const compMode = u.otCompMode || 'pay';
   const compRate = getOTRate(u);
@@ -9139,6 +9142,7 @@ function renderBordroPreview() {
     ${ot125Gross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Çalışma %25 (${ot125Hours.toFixed(1)}s × ${fmr(hrGross)}₺ × ${partialRate})</span><span class="bv">+ ${fmb(ot125Gross)}</span></div>` : ''}
     ${otGross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Mesai %50 (${otHours.toFixed(1)}s × ${fmr(hrGross)}₺ × ${compRate})</span><span class="bv">+ ${fmb(otGross)}</span></div>` : ''}
     ${nightGross > 0 ? `<div class="bordro-row add"><span class="bl">Gece Çalışma Zammı (${nightHrs.toFixed(1)}s × ${fmr(hrGross)}₺ × ${nightRate})</span><span class="bv">+ ${fmb(nightGross)}</span></div>` : ''}
+    ${(nightHrs > 0 && nightRate <= 0) ? `<div class="bordro-row info"><span class="bl"><i class="fas fa-info-circle" style="color:#fbbf24"></i> Gece Primi</span><span class="bv">${nightHrs.toFixed(1)}s var, oran tanımsız (hesaba katılmadı)</span></div>` : ''}
     ${holGross > 0 ? `<div class="bordro-row add"><span class="bl">Genel Tatil (Çalıştı) — ${fmr(holPayDays)}g × ${fmr(drGross)}₺ ek ücret (Md.47)</span><span class="bv">+ ${fmb(holGross)}</span></div>` : ''}
     ${hasExtras ? `<div class="bordro-row sub"><span class="bl">TOPLAM BRÜT</span><span class="bv">${fmb(totalGross)}</span></div>` : ''}
     <div class="bordro-row deduct"><span class="bl">SGK İşçi Payı (%14)</span><span class="bv">− ${fmb(res.sgkDeduction)}</span></div>
