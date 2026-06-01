@@ -45,7 +45,7 @@
 </head>
 <body>
 
-<div class="toast-container" id="toastContainer"></div>
+<div class="toast-container" id="toastContainer" role="status" aria-live="polite" aria-atomic="false"></div>
 
 <!-- CONFIRM -->
 <div class="confirm-overlay" id="confirmOverlay">
@@ -68,7 +68,7 @@
       <button class="modal-x" onclick="closeNewUserModal()" aria-label="Kapat"><i class="fas fa-times"></i></button>
     </div>
     <div class="modal-body">
-      <div class="fg"><label>Kullanıcı Adı</label><input type="text" id="newUserName" placeholder="İsim girin..." maxlength="30" autocomplete="off"></div>
+      <div class="fg"><label for="newUserName">Kullanıcı Adı</label><input type="text" id="newUserName" placeholder="İsim girin..." maxlength="30" autocomplete="off"></div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost btn-sm" onclick="closeNewUserModal()">İptal</button>
@@ -90,9 +90,9 @@
         <button class="btn btn-danger btn-sm" onclick="wtSetOff()"><i class="fas fa-times"></i>İzin</button>
       </div>
       <div class="time-inputs">
-        <div class="ti"><label>Giriş</label><input type="time" id="wtStart" value="08:00"></div>
-        <div class="ti"><label>Çıkış</label><input type="time" id="wtEnd" value="16:00"></div>
-        <div class="ti"><label>Mola</label>
+        <div class="ti"><label for="wtStart">Giriş</label><input type="time" id="wtStart" value="08:00"></div>
+        <div class="ti"><label for="wtEnd">Çıkış</label><input type="time" id="wtEnd" value="16:00"></div>
+        <div class="ti"><label for="wtBreak">Mola</label>
           <select id="wtBreak">
             <option value="0">Yok</option><option value="15">15dk</option>
             <option value="30" selected>30dk</option><option value="45">45dk</option><option value="60">1s</option>
@@ -113,15 +113,15 @@
   <div class="cp-modal">
     <div class="cp-modal-top"><h3>Yeni Vardiya Şablonu</h3><button class="modal-x" onclick="closeCPModal()" aria-label="Kapat"><i class="fas fa-times"></i></button></div>
     <div class="cp-modal-body">
-      <div class="fg"><label>Şablon Adı</label><input type="text" id="cpName" placeholder="Gece vardiyası..." maxlength="30"></div>
+      <div class="fg"><label for="cpName">Şablon Adı</label><input type="text" id="cpName" placeholder="Gece vardiyası..." maxlength="30"></div>
       <div class="fg">
         <label>İkon</label>
         <div class="emoji-grid" id="emojiGrid"></div>
       </div>
       <div class="time-inputs">
-        <div class="ti"><label>Giriş</label><input type="time" id="cpStart" value="22:00"></div>
-        <div class="ti"><label>Çıkış</label><input type="time" id="cpEnd" value="06:00"></div>
-        <div class="ti"><label>Mola</label>
+        <div class="ti"><label for="cpStart">Giriş</label><input type="time" id="cpStart" value="22:00"></div>
+        <div class="ti"><label for="cpEnd">Çıkış</label><input type="time" id="cpEnd" value="06:00"></div>
+        <div class="ti"><label for="cpBreak">Mola</label>
           <select id="cpBreak">
             <option value="0">Yok</option><option value="15">15dk</option>
             <option value="30" selected>30dk</option><option value="45">45dk</option><option value="60">1s</option>
@@ -147,8 +147,8 @@
       <button class="pin-key" onclick="pinInput(1)">1</button><button class="pin-key" onclick="pinInput(2)">2</button><button class="pin-key" onclick="pinInput(3)">3</button>
       <button class="pin-key" onclick="pinInput(4)">4</button><button class="pin-key" onclick="pinInput(5)">5</button><button class="pin-key" onclick="pinInput(6)">6</button>
       <button class="pin-key" onclick="pinInput(7)">7</button><button class="pin-key" onclick="pinInput(8)">8</button><button class="pin-key" onclick="pinInput(9)">9</button>
-      <button class="pin-key pk-action" onclick="pinClear()"><i class="fas fa-backspace"></i></button><button class="pin-key" onclick="pinInput(0)">0</button>
-      <button class="pin-key pk-action" onclick="pinCancel()"><i class="fas fa-times"></i></button>
+      <button class="pin-key pk-action" onclick="pinClear()" aria-label="Sil"><i class="fas fa-backspace" aria-hidden="true"></i></button><button class="pin-key" onclick="pinInput(0)">0</button>
+      <button class="pin-key pk-action" onclick="pinCancel()" aria-label="İptal"><i class="fas fa-times" aria-hidden="true"></i></button>
     </div>
   </div>
 </div>
@@ -192,11 +192,11 @@
     </div>
     <div class="upload-progress" id="uploadProgress"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
     <div class="fg" style="margin-bottom:10px">
-      <label class="fl">Belge Adı</label>
+      <label class="fl" for="docNameInput">Belge Adı</label>
       <input type="text" id="docNameInput" placeholder="örn. Hijyen Sertifikası 2025" maxlength="60">
     </div>
     <div class="fg" style="margin-bottom:14px">
-      <label class="fl">Kategori</label>
+      <label class="fl" for="docCatSelect">Kategori</label>
       <select id="docCatSelect">
         <option value="hygiene">🧼 Hijyen Belgesi</option>
         <option value="mastery">🏆 Ustalık Belgesi</option>
@@ -224,7 +224,7 @@
   <div class="dv-bar" onclick="event.stopPropagation()">
     <span class="dv-name" id="dvName"></span>
     <button class="btn btn-soft btn-xs" id="dvWaBtn" onclick="shareDocWA(currentViewDoc)"><i class="fab fa-whatsapp"></i>WhatsApp</button>
-    <button class="btn btn-outline btn-xs" onclick="closeDocViewer()"><i class="fas fa-times"></i></button>
+    <button class="btn btn-outline btn-xs" onclick="closeDocViewer()" aria-label="Kapat"><i class="fas fa-times" aria-hidden="true"></i></button>
   </div>
   <div id="dvContent" onclick="event.stopPropagation()"></div>
 </div>
@@ -237,12 +237,12 @@
       <button class="modal-x" onclick="closeCalc()" aria-label="Kapat"><i class="fas fa-times"></i></button>
     </div>
     <p style="font-size:11px;color:var(--t2);margin-bottom:14px">"X tarihten Y tarihine kadar çalışırsam ne kadar kazanırım?" simülasyonu</p>
-    <div class="fg"><label>Başlangıç Tarihi</label><input type="date" id="calcDateFrom"></div>
-    <div class="fg"><label>Bitiş Tarihi</label><input type="date" id="calcDateTo"></div>
+    <div class="fg"><label for="calcDateFrom">Başlangıç Tarihi</label><input type="date" id="calcDateFrom"></div>
+    <div class="fg"><label for="calcDateTo">Bitiş Tarihi</label><input type="date" id="calcDateTo"></div>
     <div class="time-inputs" style="margin-top:8px">
-      <div class="ti"><label>Giriş</label><input type="time" id="calcStart" value="08:00"></div>
-      <div class="ti"><label>Çıkış</label><input type="time" id="calcEnd" value="16:00"></div>
-      <div class="ti"><label>Mola</label>
+      <div class="ti"><label for="calcStart">Giriş</label><input type="time" id="calcStart" value="08:00"></div>
+      <div class="ti"><label for="calcEnd">Çıkış</label><input type="time" id="calcEnd" value="16:00"></div>
+      <div class="ti"><label for="calcBreak">Mola</label>
         <select id="calcBreak">
           <option value="0">Yok</option><option value="15">15dk</option>
           <option value="30" selected>30dk</option><option value="45">45dk</option><option value="60">1s</option>
@@ -271,9 +271,9 @@
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <div class="cal-nav">
-        <button class="cal-nav-btn" onclick="chgTeamWeek(-1)"><i class="fas fa-chevron-left"></i></button>
+        <button class="cal-nav-btn" onclick="chgTeamWeek(-1)" aria-label="Önceki hafta"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
         <span class="cal-month-title" id="teamWeekTitle" style="font-size:14px;min-width:200px"></span>
-        <button class="cal-nav-btn" onclick="chgTeamWeek(1)"><i class="fas fa-chevron-right"></i></button>
+        <button class="cal-nav-btn" onclick="chgTeamWeek(1)" aria-label="Sonraki hafta"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
       </div>
       <button class="btn btn-soft btn-sm" onclick="teamGoThisWeek()"><i class="fas fa-crosshairs"></i>Bu Hafta</button>
     </div>
@@ -339,14 +339,14 @@
       <button class="auth-tab" onclick="authTab('register',this)">Kayıt Ol</button>
     </div>
     <div id="authLoginPane">
-      <div class="auth-fg"><label>E-posta</label><input type="email" id="authEmail" placeholder="ornek@mail.com" autocomplete="email"></div>
-      <div class="auth-fg"><label>Şifre</label><input type="password" id="authPass" placeholder="••••••" autocomplete="current-password"></div>
+      <div class="auth-fg"><label for="authEmail">E-posta</label><input type="email" id="authEmail" placeholder="ornek@mail.com" autocomplete="email"></div>
+      <div class="auth-fg"><label for="authPass">Şifre</label><input type="password" id="authPass" placeholder="••••••" autocomplete="current-password"></div>
       <button class="auth-btn" id="authLoginBtn" onclick="firebaseLogin()"><i class="fas fa-sign-in-alt" style="margin-right:6px"></i>Giriş Yap</button>
     </div>
     <div id="authRegisterPane" style="display:none">
-      <div class="auth-fg"><label>E-posta</label><input type="email" id="authRegEmail" placeholder="ornek@mail.com" autocomplete="email"></div>
-      <div class="auth-fg"><label>Şifre (min 6 karakter)</label><input type="password" id="authRegPass" placeholder="••••••" autocomplete="new-password"></div>
-      <div class="auth-fg"><label>Şifre Tekrar</label><input type="password" id="authRegPass2" placeholder="••••••" autocomplete="new-password"></div>
+      <div class="auth-fg"><label for="authRegEmail">E-posta</label><input type="email" id="authRegEmail" placeholder="ornek@mail.com" autocomplete="email"></div>
+      <div class="auth-fg"><label for="authRegPass">Şifre (min 6 karakter)</label><input type="password" id="authRegPass" placeholder="••••••" autocomplete="new-password"></div>
+      <div class="auth-fg"><label for="authRegPass2">Şifre Tekrar</label><input type="password" id="authRegPass2" placeholder="••••••" autocomplete="new-password"></div>
       <button class="auth-btn" id="authRegBtn" onclick="firebaseRegister()"><i class="fas fa-user-plus" style="margin-right:6px"></i>Kayıt Ol</button>
     </div>
     <div class="auth-divider">veya</div>
@@ -466,9 +466,9 @@
       <div class="card">
         <div class="cal-controls">
           <div class="cal-nav">
-            <button class="cal-nav-btn" onclick="chgM(-1)"><i class="fas fa-chevron-left"></i></button>
+            <button class="cal-nav-btn" onclick="chgM(-1)" aria-label="Önceki ay"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
             <span class="cal-month-title" id="calTitle"></span>
-            <button class="cal-nav-btn" onclick="chgM(1)"><i class="fas fa-chevron-right"></i></button>
+            <button class="cal-nav-btn" onclick="chgM(1)" aria-label="Sonraki ay"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
           </div>
           <span style="font-size:11px;color:var(--t3);font-weight:600" id="calSummary"></span>
         </div>
@@ -502,8 +502,8 @@
           <h3><i class="fas fa-history"></i>Geçmiş — <span id="leaveYr"></span></h3>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <div class="leave-year-nav">
-              <button onclick="chgLeaveYear(-1)"><i class="fas fa-chevron-left"></i></button>
-              <button onclick="chgLeaveYear(1)"><i class="fas fa-chevron-right"></i></button>
+              <button onclick="chgLeaveYear(-1)" aria-label="Önceki yıl"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+              <button onclick="chgLeaveYear(1)" aria-label="Sonraki yıl"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
             </div>
             <select id="leaveFilter" onchange="renderLeaves()" style="padding:4px 8px;font-size:11px;width:auto">
               <option value="all">Tümü</option>
@@ -524,9 +524,9 @@
       <div class="page-head"><div><h1>Kazanç Raporu</h1><p>Aylık gelir detayları</p></div></div>
       <div class="cal-controls" style="margin-bottom:16px">
         <div class="cal-nav">
-          <button class="cal-nav-btn" onclick="chgE(-1)"><i class="fas fa-chevron-left"></i></button>
+          <button class="cal-nav-btn" onclick="chgE(-1)" aria-label="Önceki ay"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
           <span class="cal-month-title" id="earnTitle"></span>
-          <button class="cal-nav-btn" onclick="chgE(1)"><i class="fas fa-chevron-right"></i></button>
+          <button class="cal-nav-btn" onclick="chgE(1)" aria-label="Sonraki ay"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
         </div>
       </div>
       <div id="earnContent"></div>
@@ -572,16 +572,16 @@
 
       <div class="card s-card">
         <h3><i class="fas fa-user"></i>Kişisel Bilgiler</h3>
-        <div class="fg"><label>Ad Soyad</label><input type="text" id="sName" placeholder="Adınız" onchange="sSet('name',this.value)"></div>
-        <div class="fg"><label>İşe Başlama</label><input type="date" id="sStart" onchange="sSet('startDate',this.value)"></div>
-        <div class="fg"><label>Doğum Tarihi</label><input type="date" id="sBirth" onchange="sSet('birthDate',this.value)"></div>
+        <div class="fg"><label for="sName">Ad Soyad</label><input type="text" id="sName" placeholder="Adınız" onchange="sSet('name',this.value)"></div>
+        <div class="fg"><label for="sStart">İşe Başlama</label><input type="date" id="sStart" onchange="sSet('startDate',this.value)"></div>
+        <div class="fg"><label for="sBirth">Doğum Tarihi</label><input type="date" id="sBirth" onchange="sSet('birthDate',this.value)"></div>
         <div id="seniorityInfo"></div>
       </div>
 
       <div class="card s-card">
         <h3><i class="fas fa-money-bill-wave"></i>Maaş</h3>
         <div class="hint"><i class="fas fa-lightbulb"></i><span>Net maaş girin. Günlük = maaş ÷ 30. Tam ay çalışınca tam maaş alınır.</span></div>
-        <div class="fg"><label>Aylık Net (₺)</label><input type="number" id="sSalary" placeholder="25000" min="0" step="100" onchange="sSet('netSalary',this.value)"></div>
+        <div class="fg"><label for="sSalary">Aylık Net (₺)</label><input type="number" id="sSalary" placeholder="25000" min="0" step="100" onchange="sSet('netSalary',this.value)"></div>
         <div class="salary-preview" id="salPrev" style="display:none">
           <div class="amt" id="salAmt">₺0</div>
           <div class="det" id="salDet"></div>
@@ -598,7 +598,7 @@
           <button class="rst-tab" type="button" onclick="rsSwitch('gross')">Hedef Brüt</button>
         </div>
         <div class="fg" id="rsInputWrap">
-          <label id="rsLabel">Zam Oranı (%)</label>
+          <label id="rsLabel" for="rsInput">Zam Oranı (%)</label>
           <input type="number" id="rsInput" placeholder="25" min="0" step="0.5" oninput="renderRaiseSim()">
         </div>
         <div id="rsResult" class="raise-sim-result"></div>
@@ -606,14 +606,14 @@
 
       <div class="card s-card">
         <h3><i class="fas fa-calendar-check"></i>Yıllık İzin</h3>
-        <div class="fg"><label>İzin Hakkı (gün)</label><input type="number" id="sLeave" placeholder="14" min="0" max="40" onchange="sSet('annualLeave',this.value)"></div>
+        <div class="fg"><label for="sLeave">İzin Hakkı (gün)</label><input type="number" id="sLeave" placeholder="14" min="0" max="40" onchange="sSet('annualLeave',this.value)"></div>
       </div>
 
       <div class="card s-card">
         <h3><i class="fas fa-bullseye"></i>Aylık Saat Hedefi</h3>
         <div class="hint"><i class="fas fa-lightbulb"></i><span>Saatlik ücret hesaplaması için aylık toplam çalışma saati. Varsayılan: 225 (Yargıtay 9.HD: 30 gün × 7,5s). Tercihe göre 195 (45×52,18÷12) da kullanılabilir.</span></div>
-        <div class="fg"><label>Aylık Saat</label><input type="number" id="sMH" placeholder="225" min="100" max="400" step="5" onchange="sSet('monthlyHours',this.value)"></div>
-        <div class="fg" style="margin-top:8px"><label>Haftalık Sözleşme Saati</label><input type="number" id="sWCH" placeholder="45" min="15" max="45" step="1" onchange="sSet('weeklyContractHours',this.value)">
+        <div class="fg"><label for="sMH">Aylık Saat</label><input type="number" id="sMH" placeholder="225" min="100" max="400" step="5" onchange="sSet('monthlyHours',this.value)"></div>
+        <div class="fg" style="margin-top:8px"><label for="sWCH">Haftalık Sözleşme Saati</label><input type="number" id="sWCH" placeholder="45" min="15" max="45" step="1" onchange="sSet('weeklyContractHours',this.value)">
           <small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">Sözleşme 45'ten az ise (örn. 40s), aradaki saatler %25 zamlı (fazla sürelerle çalışma) ödenir.</small>
         </div>
       </div>
@@ -629,7 +629,7 @@
             <label class="radio-opt"><input type="radio" name="otMode" data-ot-mode="1" value="leave" onchange="sSet('otCompMode',this.value)"> 🏖️ İzin biriktir</label>
           </div>
         </div>
-        <div class="fg"><label>FM Katsayısı</label><input type="number" id="sOTRate" placeholder="1.5" min="1.5" max="3" step="0.5" onchange="sSet('otCompRate',this.value)"><small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">TR İş Kanunu gereği minimum 1.5×</small></div>
+        <div class="fg"><label for="sOTRate">FM Katsayısı</label><input type="number" id="sOTRate" placeholder="1.5" min="1.5" max="3" step="0.5" onchange="sSet('otCompRate',this.value)"><small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">TR İş Kanunu gereği minimum 1.5×</small></div>
         <div class="fg" style="margin-top:10px">
           <label>FM Hesap Modu</label>
           <div class="radio-row" id="otCalcModeRow">
@@ -657,8 +657,8 @@
       <div class="card s-card">
         <h3><i class="fas fa-bullseye"></i>Hedefler</h3>
         <div class="hint"><i class="fas fa-lightbulb"></i><span>Aylık saat ve kazanç hedefi belirleyin. Dashboard'da ilerleme gösterilir.</span></div>
-        <div class="fg"><label>Aylık Saat Hedefi</label><input type="number" id="sGoalHours" placeholder="180" min="0" max="400" step="5" onchange="sSet('goalHours',this.value)"></div>
-        <div class="fg"><label>Aylık Kazanç Hedefi (₺)</label><input type="number" id="sGoalEarning" placeholder="30000" min="0" step="500" onchange="sSet('goalEarning',this.value)"></div>
+        <div class="fg"><label for="sGoalHours">Aylık Saat Hedefi</label><input type="number" id="sGoalHours" placeholder="180" min="0" max="400" step="5" onchange="sSet('goalHours',this.value)"></div>
+        <div class="fg"><label for="sGoalEarning">Aylık Kazanç Hedefi (₺)</label><input type="number" id="sGoalEarning" placeholder="30000" min="0" step="500" onchange="sSet('goalEarning',this.value)"></div>
       </div>
 
       <div class="card s-card">
@@ -782,9 +782,9 @@
       <div id="mShift">
         <div class="preset-row" id="presetRow"></div>
         <div class="time-inputs">
-          <div class="ti"><label>Giriş</label><input type="time" id="iStart" value="08:00"></div>
-          <div class="ti"><label>Çıkış</label><input type="time" id="iEnd" value="16:00"></div>
-          <div class="ti"><label>Mola</label>
+          <div class="ti"><label for="iStart">Giriş</label><input type="time" id="iStart" value="08:00"></div>
+          <div class="ti"><label for="iEnd">Çıkış</label><input type="time" id="iEnd" value="16:00"></div>
+          <div class="ti"><label for="iBreak">Mola</label>
             <select id="iBreak">
               <option value="0">Yok</option><option value="15">15dk</option>
               <option value="30" selected>30dk</option><option value="45">45dk</option>
@@ -818,7 +818,7 @@
     </div>
     <div class="modal-foot">
       <button class="btn btn-outline btn-sm" id="mPaste" onclick="pasteAndClose()" style="display:none;margin-right:auto"><i class="fas fa-paste"></i>Yapıştır</button>
-      <button class="btn btn-outline btn-sm" id="mCopy" onclick="copyShift()" style="display:none"><i class="fas fa-copy"></i></button>
+      <button class="btn btn-outline btn-sm" id="mCopy" onclick="copyShift()" style="display:none" aria-label="Vardiyayı kopyala"><i class="fas fa-copy" aria-hidden="true"></i></button>
       <button class="btn btn-danger btn-sm" id="mDel" onclick="delEntry()" style="display:none"><i class="fas fa-trash"></i>Sil</button>
       <button class="btn btn-ghost btn-sm" onclick="closeM()">İptal</button>
       <button class="btn btn-primary btn-sm" onclick="saveEntry()"><i class="fas fa-check"></i>Kaydet</button>
