@@ -125,7 +125,17 @@ test('günlük-net bordro — Ocak 2026 mutabakatı (golden)', () => {
   assert.ok(near(r.stampTax, 170.76, 0.5), 'damga');
 });
 
-// === SGK-muaf ek kazanç (alış-veriş kartı) — Mayıs 2026 (gerçek bordro) ===
+// === FM marjinal saatlik baz — asgari ücret istisnasından arınmış (Mayıs 2026) ===
+// 4857/41: fazla mesai, vergi istisnasıyla düşmüş "ortalama" değil, marjinal saat
+// ücreti üzerinden. Bir ek günün marjinal brütü / 7.5 = tatil saatlik brüt 285,54.
+test('FM marjinal saatlik — istisnadan arınmış (Mayıs 2026, %20 dilim)', () => {
+  const W = 1440, prior = 190000;
+  const marginalDay = f.findGrossFromNet(W * 31, 'single', 0, prior, 4, undefined, 2026)
+                    - f.findGrossFromNet(W * 30, 'single', 0, prior, 4, undefined, 2026);
+  const hourly = marginalDay / 7.5;
+  assert.ok(near(hourly, 285.54, 0.1), `marjinal saatlik ${hourly} ≈ 285,54`);
+  assert.ok(near(19 * hourly * 1.5, 8137.89, 2), 'FM %50 = 19s × 285,54 × 1,5 ≈ 8.137,89');
+});
 // Brüt 86.449,81 (5.710,42 SGK-muaf dahil); SGK matrahı 80.739,39; SGK 11.303,51;
 // GV matrahı 74.338,91; damga 405,45; net (yasal) 63.277.
 test('computeNetFromGross — SGK-muaf ek kazanç: SGK tabanı düşer, GV/damga tam brüt', () => {
