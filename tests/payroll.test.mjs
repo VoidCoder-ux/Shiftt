@@ -109,3 +109,34 @@ test('findGrossFromNet — monotonik ve golden (±0.02)', () => {
     prev = g;
   }
 });
+
+// === Günlük-net (yevmiye) bordro mutabakatı — Ocak 2026 (gerçek bordro, golden) ===
+// Günlük net 1.380 × 32 ödenen gün-eşdeğeri (25 normal + 5 hafta + 1 genel + 1 genel-çalıştı)
+// → brüt 55.528,63 ; SGK 7.774,01 ; GV 2.868,57 ; damga 170,76 ; net 44.160,00.
+test('günlük-net bordro — Ocak 2026 mutabakatı (golden)', () => {
+  const W = 1380, paidDays = 32;
+  const targetNet = W * paidDays;                       // 44.160
+  const gross = f.findGrossFromNet(targetNet, 'single', 0, 0, 0, undefined, 2026);
+  assert.ok(near(gross, 55528.63, 0.1), `brüt ${gross} ≈ 55528.63`);
+  const r = f.computeNetFromGross(gross, 'single', 0, 0, 0, undefined, 2026);
+  assert.ok(near(r.net, 44160, 0.1), `net ${r.net} ≈ 44160`);
+  assert.ok(near(r.sgkDeduction, 7774.01, 0.5), 'SGK %14');
+  assert.ok(near(r.unemployDeduct, 555.29, 0.5), 'işsizlik %1');
+  assert.ok(near(r.stampTax, 170.76, 0.5), 'damga');
+});
+
+// === SGK-muaf ek kazanç (alış-veriş kartı) — Mayıs 2026 (gerçek bordro) ===
+// Brüt 86.449,81 (5.710,42 SGK-muaf dahil); SGK matrahı 80.739,39; SGK 11.303,51;
+// GV matrahı 74.338,91; damga 405,45; net (yasal) 63.277.
+test('computeNetFromGross — SGK-muaf ek kazanç: SGK tabanı düşer, GV/damga tam brüt', () => {
+  const r = f.computeNetFromGross(86449.81, 'single', 0, 190000, 4, { sgkExemptGross: 5710.42 }, 2026);
+  assert.ok(near(r.sgkBase, 80739.39, 0.1), `SGK matrahı ${r.sgkBase}`);
+  assert.ok(near(r.sgkDeduction, 11303.51, 0.1), 'SGK %14');
+  assert.ok(near(r.gvMatrah, 74338.91, 0.1), 'GV matrahı tam brütten');
+  assert.ok(near(r.stampTax, 405.45, 0.1), 'damga tam brütten');
+  assert.ok(near(r.net, 63277.00, 0.5), `net ${r.net}`);
+  // opts olmadan eski davranış korunur (SGK tüm brütten)
+  const r0 = f.computeNetFromGross(86449.81, 'single', 0, 190000, 4, undefined, 2026);
+  assert.equal(r0.sgkExemptGross, 0);
+  assert.ok(r0.sgkDeduction > r.sgkDeduction, 'muaf yokken SGK daha yüksek');
+});
