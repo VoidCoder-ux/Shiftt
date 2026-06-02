@@ -90,6 +90,9 @@ function mkUser(i) {
        bordro mantığıyla birebir. Varsayılan 'net' (geriye dönük uyumluluk). */
     salaryInputMode: 'net', // 'net' | 'gross'
     grossSalary: 0,         // Aylık brüt taban ücret (brüt modda kullanılır)
+    /* [FEAT EK-KAZANÇ] SGK'dan istisna, gelir+damga vergisine tabi aylık ek
+       kazanç (örn. alış-veriş/yemek kartı). Brüte eklenir, SGK matrahı dışı. */
+    sgkExemptEarn: 0,
     goalHours: 0,
     goalEarning: 0,
     pin: null,
@@ -605,6 +608,7 @@ function normalizeUserCalculations(u) {
   /* [FEAT BRÜT-TABAN] Brüt taban modu — brüt kanonik, net türetilir. */
   u.salaryInputMode = (u.salaryInputMode === 'gross') ? 'gross' : 'net';
   u.grossSalary = Math.max(0, safeNum(u.grossSalary, 0));
+  u.sgkExemptEarn = Math.max(0, safeNum(u.sgkExemptEarn, 0));
   syncDerivedNetFromGross(u);
   u.annualLeave = clampInt(u.annualLeave, 0, 40, 0);
   u.monthlyHours = clampInt(u.monthlyHours || 225, 100, 400, 225);
@@ -3988,9 +3992,11 @@ function estimatePayrollForMonth(u, y, m, d) {
   const holGross = _bordroRound2(holPayDays * drGross);
   const unpaidGross = _bordroRound2(Math.max(0, d.ud || 0) * drGross);
   const weekendGross = _bordroRound2((d.weekendHours || 0) * hrGross * Math.max(0, (cfg.weekendMultiplier || 1) - 1));
-  const totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross) + otGross + ot125Gross + holGross + weekendGross);
-  const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, undefined, y);
-  return { ...res, baseNet, fullGross, baseGross, otGross, ot125Gross, holGross, weekendGross, unpaidGross, totalGross, holPayDays, payrollHourBasis, cfgYear: cfg.year, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
+  /* [FEAT EK-KAZANÇ] SGK-muaf, vergiye tabi ek kazanç — brüte eklenir, SGK matrahı dışı. */
+  const sgkExemptEarn = _bordroRound2(Math.max(0, safeNum(u.sgkExemptEarn, 0)));
+  const totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross) + otGross + ot125Gross + holGross + weekendGross + sgkExemptEarn);
+  const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, { sgkExemptGross: sgkExemptEarn }, y);
+  return { ...res, baseNet, fullGross, baseGross, otGross, ot125Gross, holGross, weekendGross, unpaidGross, sgkExemptEarn, totalGross, holPayDays, payrollHourBasis, cfgYear: cfg.year, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
 }
 function diffBadge(diff) {
   const abs = Math.abs(diff || 0);
@@ -4489,6 +4495,7 @@ function loadSet() {
   /* [FEAT BRÜT-TABAN] Maaş giriş türü ve brüt alanı */
   const sG = $('sGross'); if (sG) sG.value = u.grossSalary || '';
   const sSM = $('sSalaryMode'); if (sSM) sSM.value = u.salaryInputMode || 'net';
+  const sSGX = $('sSgkExempt'); if (sSGX) sSGX.value = u.sgkExemptEarn || '';
   _toggleSalaryInputs(u.salaryInputMode || 'net');
   if (sSt) sSt.value = u.startDate || '';
   if (sB) sB.value = u.birthDate || '';
@@ -4526,6 +4533,7 @@ function sSet(k, v) {
   const u = cu(); if (!u) return;
   if (k === 'netSalary') { v = Math.max(0, safeNum(v, 0)); }
   if (k === 'grossSalary') { v = Math.max(0, safeNum(v, 0)); }
+  if (k === 'sgkExemptEarn') { v = Math.max(0, safeNum(v, 0)); }
   if (k === 'salaryInputMode') { v = (v === 'gross') ? 'gross' : 'net'; }
   if (k === 'annualLeave') { v = clampInt(v, 0, 40, 0); }
   if (k === 'monthlyHours') { v = clampInt(v, 100, 400, 225); }
@@ -4583,7 +4591,7 @@ function sSet(k, v) {
   }
   /* [FIX L-04] BUG-R3 ile eklenen settingsUpdatedAt: ayar değişikliklerini zaman damgasıyla işaretle.
      deepMergeUser bu zaman damgasını kullanarak daha yeni değişikliği (yerel/cloud) korur. */
-  const settingsKeys = ['netSalary','grossSalary','salaryInputMode','annualLeave','pin','weeklyTemplate','customPresets',
+  const settingsKeys = ['netSalary','grossSalary','salaryInputMode','sgkExemptEarn','annualLeave','pin','weeklyTemplate','customPresets',
     'goalHours','goalEarning','theme','autoTheme','monthlyHours','weeklyContractHours','payMode',
     'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
   if (settingsKeys.includes(k)) markSettingsUpdated(u);
@@ -5005,7 +5013,7 @@ function loadLS() {
 
 function normalizeImportedUser(i, raw, opts = {}) {
   if (!raw || typeof raw !== 'object') return null;
-  const allowed = ['name','netSalary','grossSalary','salaryInputMode','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
+  const allowed = ['name','netSalary','grossSalary','salaryInputMode','sgkExemptEarn','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
     'customPresets','weeklyTemplate','notes','profileUpdatedAt','notesUpdatedAt','settingsUpdatedAt','lastLogin',
     'theme','monthlyHours','weeklyContractHours','payMode','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks','conflictLog',
     'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','otCompModeHistory','hideSuggestions'];
@@ -7394,6 +7402,7 @@ function deepMergeUser(local, cloud) {
     if (cloud.payMode !== undefined) merged.payMode = cloud.payMode;
     if (cloud.salaryInputMode !== undefined) merged.salaryInputMode = cloud.salaryInputMode;
     if (cloud.grossSalary !== undefined) merged.grossSalary = cloud.grossSalary;
+    if (cloud.sgkExemptEarn !== undefined) merged.sgkExemptEarn = cloud.sgkExemptEarn;
     /* [FIX] FM Yönetimi & Öneriler ayarlarını senkronize et */
     if (cloud.otCompMode !== undefined) merged.otCompMode = cloud.otCompMode;
     if (cloud.otCalcMode !== undefined) merged.otCalcMode = cloud.otCalcMode;
@@ -8941,7 +8950,11 @@ function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, mon
   const cfg = payrollCfg(y);
   gross = _bordroRound2(Math.max(0, safeNum(gross, 0)));
   priorYTDMatrah = _bordroRound2(Math.max(0, safeNum(priorYTDMatrah, 0)));
-  const sgkBase        = _bordroRound2(Math.min(gross, cfg.sgkCeiling));
+  /* [FEAT EK-KAZANÇ] SGK'dan istisna ama gelir+damga vergisine tabi kazanç
+     (örn. alış-veriş kartı / yemek-kartı yan ödemesi). Brüte dahildir; yalnızca
+     SGK matrahından düşülür. Gelir vergisi matrahı ve damga tabanı tam brüt kalır. */
+  const sgkExemptGross = _bordroRound2(Math.max(0, Math.min(gross, safeNum(opts && opts.sgkExemptGross, 0))));
+  const sgkBase        = _bordroRound2(Math.min(Math.max(0, gross - sgkExemptGross), cfg.sgkCeiling));
   const sgkDeduction   = _bordroRound2(sgkBase * cfg.sgkEmployee);
   const unemployDeduct = _bordroRound2(sgkBase * cfg.unemploymentEmployee);
 
@@ -8966,7 +8979,7 @@ function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, mon
   const stampTax      = _bordroRound2(Math.max(0, grossStampTax - stampTaxExemption));
 
   const net = _bordroRound2(gross - sgkDeduction - unemployDeduct - netGV - stampTax);
-  return { gross, sgkDeduction, unemployDeduct, disabilityDeduction, disabilityDegree: disDegree,
+  return { gross, sgkExemptGross, sgkBase, sgkDeduction, unemployDeduct, disabilityDeduction, disabilityDegree: disDegree,
     gvMatrah, ytdMatrah, thisMonthRawGV, incomeTaxExemption, stampTaxExemption, grossStampTax, netGV, stampTax, net,
     cfgYear: cfg.year };
 }
@@ -9020,6 +9033,9 @@ function openEBordroModal(y, m) {
     if (_ebGrossMode) amountEl.value = safeNum(u.grossSalary, 0);
     else if (u.netSalary) amountEl.value = u.netSalary;
   }
+  // SGK-muaf ek kazancı profil'den ön doldur
+  const sgkExEl = $('eb-sgkExemptEarn');
+  if (sgkExEl && u && safeNum(u.sgkExemptEarn, 0) > 0) sgkExEl.value = safeNum(u.sgkExemptEarn, 0);
 
   const priorYTDEl = $('eb-priorYTD');
   if (priorYTDEl && u) {
@@ -9106,6 +9122,8 @@ function renderBordroPreview() {
   const icra         = clampNum(($('eb-icra') || {}).value, 0, 100000000, 0);
   const avans        = clampNum(($('eb-avans') || {}).value, 0, 100000000, 0);
   const otherDeduct  = clampNum(($('eb-otherDeduct') || {}).value, 0, 100000000, 0);
+  /* [FEAT EK-KAZANÇ] SGK-muaf, gelir+damga vergisine tabi ek kazanç (alış-veriş kartı vb.) */
+  const sgkExemptEarn= clampNum(($('eb-sgkExemptEarn') || {}).value, 0, 100000000, 0);
   const sessionPeriod = _eBordroSession || {};
   const nowForPeriod = new Date();
   const y = clampInt(sessionPeriod.y, 2024, 2100, S.ey || nowForPeriod.getFullYear());
@@ -9227,6 +9245,13 @@ function renderBordroPreview() {
     totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross) + otGross + ot125Gross + nightGross + holGross + weekendGross);
   }
 
+  /* [FEAT EK-KAZANÇ] SGK-muaf, gelir+damga vergisine tabi ek kazancı tüm modlarda
+     brüte ekle ve SGK matrahından düş (calcOpts.sgkExemptGross). */
+  if (sgkExemptEarn > 0) {
+    totalGross = _bordroRound2(totalGross + sgkExemptEarn);
+    calcOpts.sgkExemptGross = sgkExemptEarn;
+  }
+
   // 3) Toplam brüt üzerinden vergi/kesinti hesabı (engellilik indirimi dahil)
   const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, calcOpts, y);
   const belowMinWage = totalGross > 0 && totalGross < cfg.minWageGross;
@@ -9311,7 +9336,7 @@ function renderBordroPreview() {
     userId:S.cu,
     earningMode, baseGross, normalGross, weeklyRestGross, publicHolidayGross, publicHolidayWorkGross,
     normalHours: isManualEarnings ? manualNormalHours : (d.rh || 0), weeklyRestDays: manualWeeklyRestDays, publicHolidayDays: isManualEarnings ? manualPublicHolidayDays : (d.publicHolidayPaidDays || 0),
-    otGross, ot125Gross, nightGross, holGross, weekendGross, totalGross,
+    otGross, ot125Gross, nightGross, holGross, weekendGross, sgkExemptEarn, totalGross,
     otHours, ot125Hours, nightHours: nightHrs, holDays: isManualEarnings ? manualPublicHolidayWorkDays : d.hdw, holPayDays,
     hrGross, drGross, compRate, partialRate, nightRate,
     payrollHourBasis,
@@ -9335,7 +9360,7 @@ function renderBordroPreview() {
 
   const fmb = v => formatTRY(v, 2);
   const fmr = v => formatNumTR(v, 2);
-  const hasExtras = unpaidGross > 0 || otGross > 0 || ot125Gross > 0 || nightGross > 0 || holGross > 0 || weekendGross > 0;
+  const hasExtras = unpaidGross > 0 || otGross > 0 || ot125Gross > 0 || nightGross > 0 || holGross > 0 || weekendGross > 0 || sgkExemptEarn > 0;
   const annualLeaveDays = d.mau || 0;
   const sickLeaveDays = d.msd || 0;
   const unpaidDays = d.ud || 0;
@@ -9374,7 +9399,9 @@ function renderBordroPreview() {
     ${nightGross > 0 ? `<div class="bordro-row add"><span class="bl">Gece Çalışma Zammı (${nightHrs.toFixed(1)}s × ${fmr(hrGross)}₺ × ${nightRate})</span><span class="bv">+ ${fmb(nightGross)}</span></div>` : ''}
     ${(nightHrs > 0 && nightRate <= 0) ? `<div class="bordro-row info"><span class="bl"><i class="fas fa-info-circle" style="color:#fbbf24"></i> Gece Primi</span><span class="bv">${nightHrs.toFixed(1)}s var, oran tanımsız (hesaba katılmadı)</span></div>` : ''}
     ${holGross > 0 ? `<div class="bordro-row add"><span class="bl">Genel Tatil (Çalıştı) — ${fmr(holPayDays)}g × ${fmr(drGross)}₺ ek ücret (Md.47)</span><span class="bv">+ ${fmb(holGross)}</span></div>` : ''}
+    ${sgkExemptEarn > 0 ? `<div class="bordro-row add"><span class="bl">SGK-Muaf Ek Kazanç (vergiye tabi)</span><span class="bv">+ ${fmb(sgkExemptEarn)}</span></div>` : ''}
     ${hasExtras ? `<div class="bordro-row sub"><span class="bl">TOPLAM BRÜT</span><span class="bv">${fmb(totalGross)}</span></div>` : ''}
+    ${sgkExemptEarn > 0 ? `<div class="bordro-row info"><span class="bl">SGK Matrahı (ek kazanç hariç)</span><span class="bv">${fmb(res.sgkBase)}</span></div>` : ''}
     <div class="bordro-row deduct"><span class="bl">SGK İşçi Payı (%14)</span><span class="bv">− ${fmb(res.sgkDeduction)}</span></div>
     <div class="bordro-row deduct"><span class="bl">İşsizlik Sigortası (%1)</span><span class="bv">− ${fmb(res.unemployDeduct)}</span></div>
     ${res.disabilityDeduction > 0 ? `<div class="bordro-row add"><span class="bl">Engellilik İndirimi — ${disabilityLabels[res.disabilityDegree]||''} (GVK md.31)</span><span class="bv">− ${fmb(res.disabilityDeduction)}</span></div>` : ''}
