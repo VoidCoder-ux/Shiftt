@@ -85,6 +85,11 @@ function mkUser(i) {
     monthlyHours: 225,
     weeklyContractHours: 45,
     payMode: 'monthly',
+    /* [FEAT BRÜT-TABAN] Maaş girişi net mi brüt mü? Brüt modda bordro,
+       sabit aylık brütten (net→brüt ters hesabı yapmadan) çalışır — resmi
+       bordro mantığıyla birebir. Varsayılan 'net' (geriye dönük uyumluluk). */
+    salaryInputMode: 'net', // 'net' | 'gross'
+    grossSalary: 0,         // Aylık brüt taban ücret (brüt modda kullanılır)
     goalHours: 0,
     goalEarning: 0,
     pin: null,
@@ -244,6 +249,36 @@ function getWeeklyContractHours(u) {
 }
 function getPayrollHourBasis(u, y) {
   return Math.max(1, safeNum(payrollCfg(y).monthlyStandardHours, 225));
+}
+/* [FEAT BRÜT-TABAN] Aylık tam brüt taban ücret.
+   - Brüt modda: kullanıcının girdiği SABİT aylık brüt doğrudan döner. Resmi
+     bordroyla birebir; ay/kümülatif vergiye göre değişmez.
+   - Net modda: mevcut davranış — net→brüt ikili arama (findGrossFromNet).
+   Tüm kazanç/bordro hesapları bu tek noktadan brüt tabanı alır. */
+function getMonthlyGross(u, marital = 'single', children = 0, priorYTD = 0, m = 0, opts = undefined, y = undefined) {
+  if (u && u.salaryInputMode === 'gross') {
+    const g = Math.max(0, safeNum(u.grossSalary, 0));
+    if (g > 0) return g;
+  }
+  const ns = Math.max(0, safeNum(u && u.netSalary, 0));
+  return ns > 0 ? findGrossFromNet(ns, marital, children, priorYTD, m, opts, y) : 0;
+}
+/* [FEAT BRÜT-TABAN] Brüt modda, tüm net-tabanlı ekranların (günlük/saatlik oran,
+   "maaş girildi mi?" kontrolleri) çalışması için temsili bir aylık net türetir.
+   Temsili = tam ay, sıfır kümülatif (Ocak) net. Kesin aylık net her ay ayrıca
+   computeNetFromGross ile brütten hesaplanır. */
+function syncDerivedNetFromGross(u) {
+  if (!u || u.salaryInputMode !== 'gross') return;
+  const g = Math.max(0, safeNum(u.grossSalary, 0));
+  if (g <= 0) { u.netSalary = 0; return; }
+  const y = new Date().getFullYear();
+  /* Yükleme sırası (payrollConfigByYear TDZ) veya beklenmedik hataya karşı
+     savunmacı: hesap mümkün değilse netSalary'yi olduğu gibi bırak. */
+  try {
+    const r = computeNetFromGross(g, 'single', 0, 0, 0, undefined, y);
+    const net = _bordroRound2(r && r.net);
+    if (Number.isFinite(net) && net > 0) u.netSalary = Math.max(0, net);
+  } catch (e) { /* sessizce yoksay — netSalary değişmeden kalır */ }
 }
 function getStandardDailyHours(u) {
   return Math.max(1, getMonthlyHours(u) / 30);
@@ -567,6 +602,10 @@ function normalizeLeaveRecord(lv) {
 function normalizeUserCalculations(u) {
   if (!u || typeof u !== 'object') return u;
   u.netSalary = Math.max(0, safeNum(u.netSalary, 0));
+  /* [FEAT BRÜT-TABAN] Brüt taban modu — brüt kanonik, net türetilir. */
+  u.salaryInputMode = (u.salaryInputMode === 'gross') ? 'gross' : 'net';
+  u.grossSalary = Math.max(0, safeNum(u.grossSalary, 0));
+  syncDerivedNetFromGross(u);
   u.annualLeave = clampInt(u.annualLeave, 0, 40, 0);
   u.monthlyHours = clampInt(u.monthlyHours || 225, 100, 400, 225);
   u.weeklyContractHours = clampInt(u.weeklyContractHours, 15, 45, 45);
@@ -969,9 +1008,7 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
   /* [FIX OT-GROSS] FM ve fazla çalışma ücreti 4857/41 gereği BRÜT saatlik ücret bazında
      hesaplanmalı. findGrossFromNet ikili arama ile net → brüt dönüşümü yapar.
      Taban maaş ve eksik gün hesabı net (dr) üzerinden kalmaya devam eder. */
-  const _fullGrossForOT = (Number.isFinite(ns) && ns > 0)
-    ? findGrossFromNet(ns, 'single', 0, 0, m, undefined, y)
-    : 0;
+  const _fullGrossForOT = getMonthlyGross(u, 'single', 0, 0, m, undefined, y);
   const hrGross = (_mh > 0 && _fullGrossForOT > 0) ? _fullGrossForOT / _mh : 0;
   const hr = _mh > 0 ? ns / _mh : 0;  // net saatlik oran (geriye dönük uyumluluk / display)
 
@@ -3929,7 +3966,7 @@ function estimatePayrollForMonth(u, y, m, d) {
   if (baseNet <= 0 && d.th <= 0 && d.mau <= 0 && d.msd <= 0 && d.wr <= 0) return null;
   const cfg = payrollCfg(y);
   const payrollHourBasis = getPayrollHourBasis(u, y);
-  const fullGross = _bordroRound2(findGrossFromNet(u.netSalary, marital, children, priorYTD, m, undefined, y));
+  const fullGross = _bordroRound2(getMonthlyGross(u, marital, children, priorYTD, m, undefined, y));
   /* baseGross'u 30 günlük yasal taban üzerinden pro-rate et.
      Türk bordrosu aylık ücreti 30 gün kabul eder; eksik günler 30'dan düşülür.
      paidDays = dim − absentDays olduğundan 31 günlük aylarda paidDays/30 > 1 olup
@@ -4286,7 +4323,7 @@ function _monthGVMatrah(u, y, m, cfg, priorYTDForGross) {
      Brütü o ana dek birikmiş matrah (priorYTDForGross) ile bul; 0 verilirse
      her ay Ocak gibi hesaplanıp yüksek dilim çalışanlarında matrah düşük çıkardı. */
   const priorYTD = Math.max(0, safeNum(priorYTDForGross, 0));
-  const fixedGross = findGrossFromNet(u.netSalary, 'single', 0, priorYTD, m, undefined, y);
+  const fixedGross = getMonthlyGross(u, 'single', 0, priorYTD, m, undefined, y);
   const sgkBase = Math.min(fixedGross, cfg.sgkCeiling);
   return Math.max(0, fixedGross - sgkBase * (cfg.sgkEmployee + cfg.unemploymentEmployee));
 }
@@ -4449,6 +4486,10 @@ function loadSet() {
   const sN = $('sName'), sS = $('sSalary'), sSt = $('sStart'), sB = $('sBirth'), sL = $('sLeave');
   if (sN) sN.value = u.name || '';
   if (sS) sS.value = u.netSalary || '';
+  /* [FEAT BRÜT-TABAN] Maaş giriş türü ve brüt alanı */
+  const sG = $('sGross'); if (sG) sG.value = u.grossSalary || '';
+  const sSM = $('sSalaryMode'); if (sSM) sSM.value = u.salaryInputMode || 'net';
+  _toggleSalaryInputs(u.salaryInputMode || 'net');
   if (sSt) sSt.value = u.startDate || '';
   if (sB) sB.value = u.birthDate || '';
   if (sL) sL.value = annualLeaveTotal(u);
@@ -4484,6 +4525,8 @@ function loadSet() {
 function sSet(k, v) {
   const u = cu(); if (!u) return;
   if (k === 'netSalary') { v = Math.max(0, safeNum(v, 0)); }
+  if (k === 'grossSalary') { v = Math.max(0, safeNum(v, 0)); }
+  if (k === 'salaryInputMode') { v = (v === 'gross') ? 'gross' : 'net'; }
   if (k === 'annualLeave') { v = clampInt(v, 0, 40, 0); }
   if (k === 'monthlyHours') { v = clampInt(v, 100, 400, 225); }
   if (k === 'weeklyContractHours') { v = clampInt(v, 15, 45, 45); }
@@ -4527,13 +4570,20 @@ function sSet(k, v) {
     if (isNaN(b2.getTime()) || b2 > new Date()) { toast('Geçersiz doğum tarihi', 'error'); return; }
   }
   u[k] = v;
+  /* [FEAT BRÜT-TABAN] Brüt veya mod değişince temsili neti yeniden türet ve
+     maaş giriş alanlarının görünürlüğünü güncelle. */
+  if (k === 'grossSalary' || k === 'salaryInputMode') {
+    syncDerivedNetFromGross(u);
+    _toggleSalaryInputs(u.salaryInputMode);
+    const sS = $('sSalary'); if (sS) sS.value = u.netSalary || '';
+  }
   if ((k === 'startDate' || k === 'birthDate') && u.startDate) {
     u.annualLeave = statutoryAnnualLeaveFromStart(u.startDate, u.birthDate) ?? annualLeaveTotal(u);
     const sL = $('sLeave'); if (sL) sL.value = u.annualLeave;
   }
   /* [FIX L-04] BUG-R3 ile eklenen settingsUpdatedAt: ayar değişikliklerini zaman damgasıyla işaretle.
      deepMergeUser bu zaman damgasını kullanarak daha yeni değişikliği (yerel/cloud) korur. */
-  const settingsKeys = ['netSalary','annualLeave','pin','weeklyTemplate','customPresets',
+  const settingsKeys = ['netSalary','grossSalary','salaryInputMode','annualLeave','pin','weeklyTemplate','customPresets',
     'goalHours','goalEarning','theme','autoTheme','monthlyHours','weeklyContractHours','payMode',
     'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
   if (settingsKeys.includes(k)) markSettingsUpdated(u);
@@ -4556,14 +4606,27 @@ function saveNotes() {
   toast('Notlar kaydedildi', 'success');
 }
 
+/* [FEAT BRÜT-TABAN] Net/Brüt giriş alanlarını moda göre göster/gizle. */
+function _toggleSalaryInputs(mode) {
+  const isGross = mode === 'gross';
+  const netWrap = $('sNetWrap'); if (netWrap) netWrap.style.display = isGross ? 'none' : '';
+  const grossWrap = $('sGrossWrap'); if (grossWrap) grossWrap.style.display = isGross ? '' : 'none';
+}
 function updSal() {
   const u = cu(); if (!u) return;
   const el = $('salPrev'); if (!el) return;
-  if (u.netSalary > 0) {
+  const isGross = u.salaryInputMode === 'gross' && safeNum(u.grossSalary, 0) > 0;
+  const _mhSal = getMonthlyHours(u);
+  const _otRateSal = getOTRate(u);
+  if (isGross) {
+    /* Brüt modda: girilen aylık brüt + brüt saatlik/günlük + tahmini net. */
+    const g = safeNum(u.grossSalary, 0);
+    el.style.display = 'block';
+    setTxt('salAmt', `${fm(g)} brüt`);
+    setTxt('salDet', `G.Brüt: ${fm(g/30)} | S.Brüt: ${fm(g/_mhSal)} | FM: ${fm(g/_mhSal*_otRateSal)} | ~Net: ${fm(u.netSalary)}`);
+  } else if (u.netSalary > 0) {
     el.style.display = 'block';
     setTxt('salAmt', fm(u.netSalary));
-    const _mhSal = getMonthlyHours(u);
-    const _otRateSal = getOTRate(u);
     setTxt('salDet', `Günlük: ${fm(u.netSalary/30)} | Saatlik: ${fm(u.netSalary/_mhSal)} | FM: ${fm(u.netSalary/_mhSal*_otRateSal)}`);
   } else { el.style.display = 'none'; }
 }
@@ -4942,7 +5005,7 @@ function loadLS() {
 
 function normalizeImportedUser(i, raw, opts = {}) {
   if (!raw || typeof raw !== 'object') return null;
-  const allowed = ['name','netSalary','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
+  const allowed = ['name','netSalary','grossSalary','salaryInputMode','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
     'customPresets','weeklyTemplate','notes','profileUpdatedAt','notesUpdatedAt','settingsUpdatedAt','lastLogin',
     'theme','monthlyHours','weeklyContractHours','payMode','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks','conflictLog',
     'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','otCompModeHistory','hideSuggestions'];
@@ -5219,7 +5282,10 @@ function renderRaiseSim() {
       const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM, undefined, _rsY);
       return { monthlyNet:calc.net, fullGross, baseGross, totalGross, finalNet:calc.net, calc };
     };
-    const curProjection = _projectByNet(curNet);
+    /* [FEAT BRÜT-TABAN] Brüt modda baz çizgi sabit brütten projekte edilir. */
+    const curProjection = (u.salaryInputMode === 'gross' && safeNum(u.grossSalary, 0) > 0)
+      ? _projectByGross(u.grossSalary)
+      : _projectByNet(curNet);
     const curGross = curProjection.fullGross;
     let newNet, newGross;
     if (_rsMode === 'pct') {
@@ -7326,6 +7392,8 @@ function deepMergeUser(local, cloud) {
     if (cloud.monthlyHours !== undefined) merged.monthlyHours = cloud.monthlyHours;
     if (cloud.weeklyContractHours !== undefined) merged.weeklyContractHours = cloud.weeklyContractHours;
     if (cloud.payMode !== undefined) merged.payMode = cloud.payMode;
+    if (cloud.salaryInputMode !== undefined) merged.salaryInputMode = cloud.salaryInputMode;
+    if (cloud.grossSalary !== undefined) merged.grossSalary = cloud.grossSalary;
     /* [FIX] FM Yönetimi & Öneriler ayarlarını senkronize et */
     if (cloud.otCompMode !== undefined) merged.otCompMode = cloud.otCompMode;
     if (cloud.otCalcMode !== undefined) merged.otCalcMode = cloud.otCalcMode;
@@ -8945,9 +9013,13 @@ function openEBordroModal(y, m) {
   const nameEl = $('eb-empName');
   if (nameEl && u && u.name) nameEl.value = u.name;
 
-  // Net maaşı profil'den ön doldur, hesaplama türü Net→Brüt
+  // Maaşı profil'den ön doldur — brüt modda brüt, aksi halde net
+  const _ebGrossMode = !!(u && u.salaryInputMode === 'gross' && safeNum(u.grossSalary, 0) > 0);
   const amountEl = $('eb-amount');
-  if (amountEl && u && u.netSalary) amountEl.value = u.netSalary;
+  if (amountEl && u) {
+    if (_ebGrossMode) amountEl.value = safeNum(u.grossSalary, 0);
+    else if (u.netSalary) amountEl.value = u.netSalary;
+  }
 
   const priorYTDEl = $('eb-priorYTD');
   if (priorYTDEl && u) {
@@ -8967,7 +9039,7 @@ function openEBordroModal(y, m) {
 
   const calcTypeEl = $('eb-calcType');
   if (calcTypeEl) {
-    calcTypeEl.value = 'net2gross';
+    calcTypeEl.value = _ebGrossMode ? 'gross2net' : 'net2gross';
     _ebUpdateAmountLabel();
     if (!calcTypeEl._ebHooked) {
       calcTypeEl.addEventListener('change', _ebUpdateAmountLabel);
@@ -9774,7 +9846,7 @@ function calculateTaxBracketProgress(u, y) {
     const pc = typeof getPayrollCheck === 'function' ? getPayrollCheck(u, y, curM) : null;
     if (pc) cumYTD = safeNum(pc.priorYTD, 0);
     if (!cumYTD && u.netSalary) {
-      const monthGross = findGrossFromNet(u.netSalary, 'single', 0, 0, 0, undefined, y);
+      const monthGross = getMonthlyGross(u, 'single', 0, 0, 0, undefined, y);
       const monthsToCount = y < curY ? 12 : Math.max(1, curM);
       cumYTD = monthGross * 0.85 * monthsToCount;
     }
