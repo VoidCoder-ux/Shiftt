@@ -589,6 +589,7 @@
         </div>
         <div class="fg" id="sNetWrap"><label for="sSalary">Aylık Net (₺)</label><input type="number" id="sSalary" placeholder="25000" min="0" step="100" onchange="sSet('netSalary',this.value)"></div>
         <div class="fg" id="sGrossWrap" style="display:none"><label for="sGross">Aylık Brüt (₺)</label><input type="number" id="sGross" placeholder="64246.50" min="0" step="100" onchange="sSet('grossSalary',this.value)"></div>
+        <div class="fg"><label for="sSgkExempt">SGK-Muaf Ek Kazanç (₺) <small style="color:var(--t2)">(alış-veriş/yemek kartı — vergiye tabi, opsiyonel)</small></label><input type="number" id="sSgkExempt" placeholder="0" min="0" step="50" onchange="sSet('sgkExemptEarn',this.value)"></div>
         <div class="salary-preview" id="salPrev" style="display:none">
           <div class="amt" id="salAmt">₺0</div>
           <div class="det" id="salDet"></div>
@@ -905,6 +906,10 @@
           <div class="bordro-form-group">
             <label class="bordro-label" for="eb-transportDays">Yol Yardımı (Gün Sayısı)</label>
             <input id="eb-transportDays" class="bordro-input" type="number" min="0" max="31" step="1" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-sgkExemptEarn">SGK-Muaf Ek Kazanç (₺) <small style="color:var(--t3);font-weight:400">(alış-veriş/yemek kartı — vergiye tabi)</small></label>
+            <input id="eb-sgkExemptEarn" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
           </div>
           <div class="bordro-form-group" style="grid-column:1/-1">
             <label class="bordro-label" for="eb-priorYTD">Önceki Ay Kümülatif GV Matrahı (₺) — Ocak için 0 bırakın</label>
