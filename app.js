@@ -88,8 +88,11 @@ function mkUser(i) {
     /* [FEAT BRÜT-TABAN] Maaş girişi net mi brüt mü? Brüt modda bordro,
        sabit aylık brütten (net→brüt ters hesabı yapmadan) çalışır — resmi
        bordro mantığıyla birebir. Varsayılan 'net' (geriye dönük uyumluluk). */
-    salaryInputMode: 'net', // 'net' | 'gross'
+    salaryInputMode: 'net', // 'net' | 'gross' | 'dailyNet'
     grossSalary: 0,         // Aylık brüt taban ücret (brüt modda kullanılır)
+    /* [FEAT GÜNLÜK-NET] Sabit günlük net yevmiye (bordro: ÜCRET PERİYO G-Net).
+       Aylık net = günlük net × ödenen gün-eşdeğeri. */
+    dailyNetWage: 0,
     /* [FEAT EK-KAZANÇ] SGK'dan istisna, gelir+damga vergisine tabi aylık ek
        kazanç (örn. alış-veriş/yemek kartı). Brüte eklenir, SGK matrahı dışı. */
     sgkExemptEarn: 0,
@@ -263,6 +266,11 @@ function getMonthlyGross(u, marital = 'single', children = 0, priorYTD = 0, m = 
     const g = Math.max(0, safeNum(u.grossSalary, 0));
     if (g > 0) return g;
   }
+  if (u && u.salaryInputMode === 'dailyNet') {
+    /* Günlük net → standart ay (30 gün) neti → brüt. */
+    const w = Math.max(0, safeNum(u.dailyNetWage, 0));
+    if (w > 0) return findGrossFromNet(w * 30, marital, children, priorYTD, m, opts, y);
+  }
   const ns = Math.max(0, safeNum(u && u.netSalary, 0));
   return ns > 0 ? findGrossFromNet(ns, marital, children, priorYTD, m, opts, y) : 0;
 }
@@ -271,7 +279,16 @@ function getMonthlyGross(u, marital = 'single', children = 0, priorYTD = 0, m = 
    Temsili = tam ay, sıfır kümülatif (Ocak) net. Kesin aylık net her ay ayrıca
    computeNetFromGross ile brütten hesaplanır. */
 function syncDerivedNetFromGross(u) {
-  if (!u || u.salaryInputMode !== 'gross') return;
+  if (!u) return;
+  /* [FEAT GÜNLÜK-NET] Günlük net modda temsili aylık net = günlük net × 30.
+     Bu, "maaş girildi mi?" kontrolleri ve net-tabanlı ekranlar için yeterli;
+     kesin aylık net her ay estimatePayrollForMonth ile gün-eşdeğerinden hesaplanır. */
+  if (u.salaryInputMode === 'dailyNet') {
+    const w = Math.max(0, safeNum(u.dailyNetWage, 0));
+    u.netSalary = w > 0 ? _bordroRound2(w * 30) : 0;
+    return;
+  }
+  if (u.salaryInputMode !== 'gross') return;
   const g = Math.max(0, safeNum(u.grossSalary, 0));
   if (g <= 0) { u.netSalary = 0; return; }
   const y = new Date().getFullYear();
@@ -605,9 +622,10 @@ function normalizeLeaveRecord(lv) {
 function normalizeUserCalculations(u) {
   if (!u || typeof u !== 'object') return u;
   u.netSalary = Math.max(0, safeNum(u.netSalary, 0));
-  /* [FEAT BRÜT-TABAN] Brüt taban modu — brüt kanonik, net türetilir. */
-  u.salaryInputMode = (u.salaryInputMode === 'gross') ? 'gross' : 'net';
+  /* [FEAT BRÜT-TABAN / GÜNLÜK-NET] net (varsayılan) | gross | dailyNet */
+  u.salaryInputMode = (u.salaryInputMode === 'gross' || u.salaryInputMode === 'dailyNet') ? u.salaryInputMode : 'net';
   u.grossSalary = Math.max(0, safeNum(u.grossSalary, 0));
+  u.dailyNetWage = Math.max(0, safeNum(u.dailyNetWage, 0));
   u.sgkExemptEarn = Math.max(0, safeNum(u.sgkExemptEarn, 0));
   syncDerivedNetFromGross(u);
   u.annualLeave = clampInt(u.annualLeave, 0, 40, 0);
@@ -3966,37 +3984,55 @@ function estimatePayrollForMonth(u, y, m, d) {
   const priorYTD = (m === 0) ? 0 : safeNum(getPayrollCheck(u, y, m).priorYTD, 0);
   const earning = calcEarningForMonth(y, m, u.netSalary);
   if (!earning || earning.isFutureMonth) return null;
-  const baseNet = Math.max(0, safeNum(earning.basePay, 0));
-  if (baseNet <= 0 && d.th <= 0 && d.mau <= 0 && d.msd <= 0 && d.wr <= 0) return null;
   const cfg = payrollCfg(y);
   const payrollHourBasis = getPayrollHourBasis(u, y);
-  const fullGross = _bordroRound2(getMonthlyGross(u, marital, children, priorYTD, m, undefined, y));
-  /* baseGross'u 30 günlük yasal taban üzerinden pro-rate et.
-     Türk bordrosu aylık ücreti 30 gün kabul eder; eksik günler 30'dan düşülür.
-     paidDays = dim − absentDays olduğundan 31 günlük aylarda paidDays/30 > 1 olup
-     brütü şişiriyordu. Doğru oran: (30 − eksikGün)/30. */
-  const absentDays = Math.max(0, safeNum(earning.absentDays, 0));
-  const proRate = Math.max(0, Math.min(1, (30 - absentDays) / 30));
-  const baseGross = _bordroRound2(fullGross * proRate);
-  // [FIX O7] FM saat ücreti yasal saat tabanından (payrollHourBasis) — e-Bordro ile tutarlı.
-  // Önceden getMonthlyHours(u) kullanılıyordu; monthlyHours≠225 olan kullanıcılarda bu ekran
-  // ile e-Bordro farklı fazla mesai ücreti gösteriyordu.
-  const hrGross = (fullGross > 0 && payrollHourBasis > 0) ? _bordroRound2(fullGross / payrollHourBasis) : 0;
-  const drGross = _bordroRound2(fullGross / 30);
   const compMode = u.otCompMode || 'pay';
   const compRate = getOTRate(u);
   const partialRate = cfg.otPartialMultiplier;
-  const otGross = compMode === 'pay' ? _bordroRound2((d.oh || 0) * hrGross * compRate) : 0;
-  const ot125Gross = compMode === 'pay' ? _bordroRound2((d.oh125 || 0) * hrGross * partialRate) : 0;
   const holPayDays = d.hpd !== undefined ? d.hpd : d.hdw;
-  const holGross = _bordroRound2(holPayDays * drGross);
-  const unpaidGross = _bordroRound2(Math.max(0, d.ud || 0) * drGross);
-  const weekendGross = _bordroRound2((d.weekendHours || 0) * hrGross * Math.max(0, (cfg.weekendMultiplier || 1) - 1));
   /* [FEAT EK-KAZANÇ] SGK-muaf, vergiye tabi ek kazanç — brüte eklenir, SGK matrahı dışı. */
   const sgkExemptEarn = _bordroRound2(Math.max(0, safeNum(u.sgkExemptEarn, 0)));
+  const isDailyNet = u.salaryInputMode === 'dailyNet' && safeNum(u.dailyNetWage, 0) > 0;
+
+  let fullGross, baseGross, baseNet, hrGross, drGross, holGross, unpaidGross, dailyNetPaidDays;
+  if (isDailyNet) {
+    /* [FEAT GÜNLÜK-NET] Yevmiye-net modeli (bordro: ÜCRET PERİYO G-Net):
+       hedef net = günlük net × ödenen gün-eşdeğeri; bu net brüte çevrilir.
+       Çalışılan resmi tatil ek günü (hpd) baz içine katılır (ayrı holGross yok).
+       Eksik/ücretsiz günler ödenen güne girmediğinden ayrıca düşülmez.
+       FM/hafta sonu saatlik referansı standart ay (W×30) brütünden alınır. */
+    const W = safeNum(u.dailyNetWage, 0);
+    dailyNetPaidDays = Math.max(0, _bordroRound2((d.workDayEquiv || 0) + (d.wr || 0) + (d.mau || 0) + (d.msd || 0) + (d.otcm || 0) + (holPayDays || 0)));
+    baseNet = _bordroRound2(W * dailyNetPaidDays);
+    if (baseNet <= 0 && d.th <= 0 && d.mau <= 0 && d.msd <= 0 && d.wr <= 0) return null;
+    baseGross = _bordroRound2(findGrossFromNet(baseNet, marital, children, priorYTD, m, undefined, y));
+    fullGross = _bordroRound2(findGrossFromNet(W * 30, marital, children, priorYTD, m, undefined, y));
+    hrGross = (fullGross > 0 && payrollHourBasis > 0) ? _bordroRound2(fullGross / payrollHourBasis) : 0;
+    drGross = _bordroRound2(fullGross / 30);
+    holGross = 0;     // çalışılan tatil ek günü baz içinde
+    unpaidGross = 0;  // ödenen güne girmeyen günler zaten hariç
+  } else {
+    baseNet = Math.max(0, safeNum(earning.basePay, 0));
+    if (baseNet <= 0 && d.th <= 0 && d.mau <= 0 && d.msd <= 0 && d.wr <= 0) return null;
+    fullGross = _bordroRound2(getMonthlyGross(u, marital, children, priorYTD, m, undefined, y));
+    /* baseGross'u 30 günlük yasal taban üzerinden pro-rate et.
+       Türk bordrosu aylık ücreti 30 gün kabul eder; eksik günler 30'dan düşülür. */
+    const absentDays = Math.max(0, safeNum(earning.absentDays, 0));
+    const proRate = Math.max(0, Math.min(1, (30 - absentDays) / 30));
+    baseGross = _bordroRound2(fullGross * proRate);
+    // [FIX O7] FM saat ücreti yasal saat tabanından (payrollHourBasis) — e-Bordro ile tutarlı.
+    hrGross = (fullGross > 0 && payrollHourBasis > 0) ? _bordroRound2(fullGross / payrollHourBasis) : 0;
+    drGross = _bordroRound2(fullGross / 30);
+    holGross = _bordroRound2(holPayDays * drGross);
+    unpaidGross = _bordroRound2(Math.max(0, d.ud || 0) * drGross);
+  }
+
+  const otGross = compMode === 'pay' ? _bordroRound2((d.oh || 0) * hrGross * compRate) : 0;
+  const ot125Gross = compMode === 'pay' ? _bordroRound2((d.oh125 || 0) * hrGross * partialRate) : 0;
+  const weekendGross = _bordroRound2((d.weekendHours || 0) * hrGross * Math.max(0, (cfg.weekendMultiplier || 1) - 1));
   const totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross) + otGross + ot125Gross + holGross + weekendGross + sgkExemptEarn);
   const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, { sgkExemptGross: sgkExemptEarn }, y);
-  return { ...res, baseNet, fullGross, baseGross, otGross, ot125Gross, holGross, weekendGross, unpaidGross, sgkExemptEarn, totalGross, holPayDays, payrollHourBasis, cfgYear: cfg.year, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
+  return { ...res, baseNet, fullGross, baseGross, otGross, ot125Gross, holGross, weekendGross, unpaidGross, sgkExemptEarn, totalGross, holPayDays, payrollHourBasis, cfgYear: cfg.year, dailyNetMode: isDailyNet, dailyNetPaidDays, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
 }
 function diffBadge(diff) {
   const abs = Math.abs(diff || 0);
@@ -4496,6 +4532,7 @@ function loadSet() {
   const sG = $('sGross'); if (sG) sG.value = u.grossSalary || '';
   const sSM = $('sSalaryMode'); if (sSM) sSM.value = u.salaryInputMode || 'net';
   const sSGX = $('sSgkExempt'); if (sSGX) sSGX.value = u.sgkExemptEarn || '';
+  const sDNW = $('sDailyNet'); if (sDNW) sDNW.value = u.dailyNetWage || '';
   _toggleSalaryInputs(u.salaryInputMode || 'net');
   if (sSt) sSt.value = u.startDate || '';
   if (sB) sB.value = u.birthDate || '';
@@ -4533,8 +4570,9 @@ function sSet(k, v) {
   const u = cu(); if (!u) return;
   if (k === 'netSalary') { v = Math.max(0, safeNum(v, 0)); }
   if (k === 'grossSalary') { v = Math.max(0, safeNum(v, 0)); }
+  if (k === 'dailyNetWage') { v = Math.max(0, safeNum(v, 0)); }
   if (k === 'sgkExemptEarn') { v = Math.max(0, safeNum(v, 0)); }
-  if (k === 'salaryInputMode') { v = (v === 'gross') ? 'gross' : 'net'; }
+  if (k === 'salaryInputMode') { v = (v === 'gross' || v === 'dailyNet') ? v : 'net'; }
   if (k === 'annualLeave') { v = clampInt(v, 0, 40, 0); }
   if (k === 'monthlyHours') { v = clampInt(v, 100, 400, 225); }
   if (k === 'weeklyContractHours') { v = clampInt(v, 15, 45, 45); }
@@ -4580,7 +4618,7 @@ function sSet(k, v) {
   u[k] = v;
   /* [FEAT BRÜT-TABAN] Brüt veya mod değişince temsili neti yeniden türet ve
      maaş giriş alanlarının görünürlüğünü güncelle. */
-  if (k === 'grossSalary' || k === 'salaryInputMode') {
+  if (k === 'grossSalary' || k === 'dailyNetWage' || k === 'salaryInputMode') {
     syncDerivedNetFromGross(u);
     _toggleSalaryInputs(u.salaryInputMode);
     const sS = $('sSalary'); if (sS) sS.value = u.netSalary || '';
@@ -4591,7 +4629,7 @@ function sSet(k, v) {
   }
   /* [FIX L-04] BUG-R3 ile eklenen settingsUpdatedAt: ayar değişikliklerini zaman damgasıyla işaretle.
      deepMergeUser bu zaman damgasını kullanarak daha yeni değişikliği (yerel/cloud) korur. */
-  const settingsKeys = ['netSalary','grossSalary','salaryInputMode','sgkExemptEarn','annualLeave','pin','weeklyTemplate','customPresets',
+  const settingsKeys = ['netSalary','grossSalary','dailyNetWage','salaryInputMode','sgkExemptEarn','annualLeave','pin','weeklyTemplate','customPresets',
     'goalHours','goalEarning','theme','autoTheme','monthlyHours','weeklyContractHours','payMode',
     'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
   if (settingsKeys.includes(k)) markSettingsUpdated(u);
@@ -4614,19 +4652,26 @@ function saveNotes() {
   toast('Notlar kaydedildi', 'success');
 }
 
-/* [FEAT BRÜT-TABAN] Net/Brüt giriş alanlarını moda göre göster/gizle. */
+/* [FEAT BRÜT-TABAN / GÜNLÜK-NET] Maaş giriş alanlarını moda göre göster/gizle. */
 function _toggleSalaryInputs(mode) {
-  const isGross = mode === 'gross';
-  const netWrap = $('sNetWrap'); if (netWrap) netWrap.style.display = isGross ? 'none' : '';
-  const grossWrap = $('sGrossWrap'); if (grossWrap) grossWrap.style.display = isGross ? '' : 'none';
+  const netWrap = $('sNetWrap'); if (netWrap) netWrap.style.display = (mode === 'net') ? '' : 'none';
+  const grossWrap = $('sGrossWrap'); if (grossWrap) grossWrap.style.display = (mode === 'gross') ? '' : 'none';
+  const dailyWrap = $('sDailyNetWrap'); if (dailyWrap) dailyWrap.style.display = (mode === 'dailyNet') ? '' : 'none';
 }
 function updSal() {
   const u = cu(); if (!u) return;
   const el = $('salPrev'); if (!el) return;
   const isGross = u.salaryInputMode === 'gross' && safeNum(u.grossSalary, 0) > 0;
+  const isDailyNet = u.salaryInputMode === 'dailyNet' && safeNum(u.dailyNetWage, 0) > 0;
   const _mhSal = getMonthlyHours(u);
   const _otRateSal = getOTRate(u);
-  if (isGross) {
+  if (isDailyNet) {
+    /* Günlük net modda: günlük net + saatlik net + temsili aylık net (×30). */
+    const w = safeNum(u.dailyNetWage, 0);
+    el.style.display = 'block';
+    setTxt('salAmt', `${fm(w)}/gün net`);
+    setTxt('salDet', `Saatlik net: ${fm(w / (_mhSal / 30))} | Temsili aylık net (×30): ${fm(w * 30)} | Kesin net puantajdan gün-eşdeğerine göre hesaplanır`);
+  } else if (isGross) {
     /* Brüt modda: girilen aylık brüt + brüt saatlik/günlük + tahmini net. */
     const g = safeNum(u.grossSalary, 0);
     el.style.display = 'block';
@@ -5013,7 +5058,7 @@ function loadLS() {
 
 function normalizeImportedUser(i, raw, opts = {}) {
   if (!raw || typeof raw !== 'object') return null;
-  const allowed = ['name','netSalary','grossSalary','salaryInputMode','sgkExemptEarn','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
+  const allowed = ['name','netSalary','grossSalary','dailyNetWage','salaryInputMode','sgkExemptEarn','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
     'customPresets','weeklyTemplate','notes','profileUpdatedAt','notesUpdatedAt','settingsUpdatedAt','lastLogin',
     'theme','monthlyHours','weeklyContractHours','payMode','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks','conflictLog',
     'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','otCompModeHistory','hideSuggestions'];
@@ -7402,6 +7447,7 @@ function deepMergeUser(local, cloud) {
     if (cloud.payMode !== undefined) merged.payMode = cloud.payMode;
     if (cloud.salaryInputMode !== undefined) merged.salaryInputMode = cloud.salaryInputMode;
     if (cloud.grossSalary !== undefined) merged.grossSalary = cloud.grossSalary;
+    if (cloud.dailyNetWage !== undefined) merged.dailyNetWage = cloud.dailyNetWage;
     if (cloud.sgkExemptEarn !== undefined) merged.sgkExemptEarn = cloud.sgkExemptEarn;
     /* [FIX] FM Yönetimi & Öneriler ayarlarını senkronize et */
     if (cloud.otCompMode !== undefined) merged.otCompMode = cloud.otCompMode;
@@ -9026,11 +9072,13 @@ function openEBordroModal(y, m) {
   const nameEl = $('eb-empName');
   if (nameEl && u && u.name) nameEl.value = u.name;
 
-  // Maaşı profil'den ön doldur — brüt modda brüt, aksi halde net
+  // Maaşı profil'den ön doldur — brüt modda brüt, günlük-net modda yevmiye, aksi halde net
   const _ebGrossMode = !!(u && u.salaryInputMode === 'gross' && safeNum(u.grossSalary, 0) > 0);
+  const _ebDailyNetMode = !!(u && u.salaryInputMode === 'dailyNet' && safeNum(u.dailyNetWage, 0) > 0);
   const amountEl = $('eb-amount');
   if (amountEl && u) {
-    if (_ebGrossMode) amountEl.value = safeNum(u.grossSalary, 0);
+    if (_ebDailyNetMode) amountEl.value = safeNum(u.dailyNetWage, 0);
+    else if (_ebGrossMode) amountEl.value = safeNum(u.grossSalary, 0);
     else if (u.netSalary) amountEl.value = u.netSalary;
   }
   // SGK-muaf ek kazancı profil'den ön doldur
@@ -9063,9 +9111,30 @@ function openEBordroModal(y, m) {
     }
   }
   const earningModeEl = $('eb-earningMode');
-  if (earningModeEl && !earningModeEl._ebHooked) {
-    earningModeEl.addEventListener('change', _ebUpdateAmountLabel);
-    earningModeEl._ebHooked = true;
+  if (earningModeEl) {
+    /* [FEAT GÜNLÜK-NET] Günlük net modda e-Bordro'yu "Günlük Net (G-Net)"
+       moduna al ve gün alanlarını puantajdan tek-tıkla ön doldur. */
+    if (_ebDailyNetMode) {
+      earningModeEl.value = 'officialNetDaily';
+      const _ebNow = new Date();
+      const dd = getMD(y, m, (y === _ebNow.getFullYear() && m === _ebNow.getMonth()) ? { throughDay:_ebNow.getDate() } : undefined);
+      const _dsh = payrollCfg(y).dailyStandardHours || 7.5;
+      const hdw = dd.hdw || 0;                                  // çalışılan resmi tatil günü
+      const normalDays = Math.max(0, (dd.workDayEquiv || 0) - hdw);
+      const setVal = (id, val) => { const el = $(id); if (el) el.value = val; };
+      setVal('eb-normalHours', _bordroRound2(normalDays * _dsh));
+      setVal('eb-weeklyRestDays', dd.weeklyRestDays || 0);
+      setVal('eb-publicHolidayDays', _bordroRound2((dd.publicHolidayPaidDays || 0) + hdw)); // her tatile baz ücret
+      setVal('eb-publicHolidayWorkDays', hdw);                  // çalışılana ayrıca ilave (Md.47)
+      setVal('eb-manualOTHours', _bordroRound2(dd.oh || 0));
+      setVal('eb-manualOT125Hours', _bordroRound2(dd.oh125 || 0));
+      setVal('eb-manualNightHours', _bordroRound2(dd.nh || 0));
+    }
+    _ebUpdateAmountLabel();
+    if (!earningModeEl._ebHooked) {
+      earningModeEl.addEventListener('change', _ebUpdateAmountLabel);
+      earningModeEl._ebHooked = true;
+    }
   }
 
   // Önizlemeyi sıfırla
