@@ -4007,7 +4007,14 @@ function estimatePayrollForMonth(u, y, m, d) {
     if (baseNet <= 0 && d.th <= 0 && d.mau <= 0 && d.msd <= 0 && d.wr <= 0) return null;
     baseGross = _bordroRound2(findGrossFromNet(baseNet, marital, children, priorYTD, m, undefined, y));
     fullGross = _bordroRound2(findGrossFromNet(W * 30, marital, children, priorYTD, m, undefined, y));
-    hrGross = (fullGross > 0 && payrollHourBasis > 0) ? _bordroRound2(fullGross / payrollHourBasis) : 0;
+    /* [FIX FM-MARJİNAL] FM/hafta sonu saatlik bazı: asgari ücret istisnasından
+       ARINMIŞ marjinal brüt. 4857/41 gereği fazla mesai normal saat ücreti
+       üzerinden hesaplanır; vergi istisnası ücret oranını düşürmez. Bir ek günün
+       marjinal brütü (W×31 − W×30) / günlük standart saat = tatil saatlik brütü. */
+    const _dsh = cfg.dailyStandardHours || 7.5;
+    const marginalDayGross = _bordroRound2(findGrossFromNet(W * 31, marital, children, priorYTD, m, undefined, y) - fullGross);
+    hrGross = marginalDayGross > 0 ? _bordroRound2(marginalDayGross / _dsh)
+            : (fullGross > 0 && payrollHourBasis > 0 ? _bordroRound2(fullGross / payrollHourBasis) : 0);
     drGross = _bordroRound2(fullGross / 30);
     holGross = 0;     // çalışılan tatil ek günü baz içinde
     unpaidGross = 0;  // ödenen güne girmeyen günler zaten hariç
@@ -9263,7 +9270,11 @@ function renderBordroPreview() {
     publicHolidayGross = _bordroRound2(manualPublicHolidayDays * drGross);
     publicHolidayWorkGross = _bordroRound2(manualPublicHolidayWorkDays * drGross);
     normalGross = _bordroRound2(Math.max(0, officialTotalGross - weeklyRestGross - publicHolidayGross - publicHolidayWorkGross));
-    hrGross = manualNormalHours > 0 ? _bordroRound2(normalGross / manualNormalHours) : _bordroRound2((drGross * 30) / payrollHourBasis);
+    /* [FIX FM-MARJİNAL] FM saatlik bazı, asgari ücret istisnasıyla düşmüş normal
+       saatten değil, istisnadan arınmış MARJİNAL (tatil) günlük brütünden alınır:
+       drGross(=tatil günlük brüt) / günlük std saat. 4857/41 ile uyumlu. */
+    hrGross = drGross > 0 ? _bordroRound2(drGross / (cfg.dailyStandardHours || 7.5))
+            : (manualNormalHours > 0 ? _bordroRound2(normalGross / manualNormalHours) : _bordroRound2((drGross * 30) / payrollHourBasis));
     baseGross = _bordroRound2(normalGross + weeklyRestGross + publicHolidayGross);
     otHours = manualOTHours;
     ot125Hours = manualOT125Hours;
