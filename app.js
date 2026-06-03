@@ -118,6 +118,7 @@ function mkUser(i) {
 
 let confirmCallback = null;
 let mdCache = {};
+let _payrollChainGuard = false; // [FIX] estimatePayrollForMonth ↔ estimateCumulativeMatrah sonsuz döngü koruması
 let yearlyOTCache = {};
 
 /* ============================================================
@@ -4036,8 +4037,30 @@ function estimatePayrollForMonth(u, y, m, d) {
   /* [N-03] Medeni durum/çocuk sayısı 7349 sy. Kanun sonrası GV hesabını etkilemez (AGİ kaldırıldı).
      Bekâr/çocuksuz varsayımı hesap sonucunu değiştirmiyor. */
   const marital = 'single', children = 0;
-  /* [FIX P2] Ocak ayında kümülatif vergi matrahı sıfırlanır */
-  const priorYTD = (m === 0) ? 0 : safeNum(getPayrollCheck(u, y, m).priorYTD, 0);
+  /* [FIX] Devreden GV matrahı (vergi dilimi) tüm ekranlarda AYNI kaynaktan:
+     Ocak'ta 0; manuel girilmişse o; yoksa Ocak'tan bu aya OTOMATİK kümülatif
+     toplam (estimateCumulativeMatrah). Guard ile döngü engellenir. Böylece
+     Net Özet / dashboard / e-Bordro hep aynı dilimi kullanır. */
+  let priorYTD;
+  if (m === 0) {
+    priorYTD = 0;
+  } else {
+    const _rec = getPayrollCheck(u, y, m);
+    const _manual = _rec.priorYTDState === 'manual' && Number.isFinite(safeNum(_rec.priorYTD, NaN));
+    if (_manual || _payrollChainGuard) {
+      priorYTD = Math.max(0, safeNum(_rec.priorYTD, 0));
+    } else {
+      _payrollChainGuard = true;
+      try {
+        const _cum = estimateCumulativeMatrah(u, y, m);
+        priorYTD = Math.max(0, _bordroRound2(safeNum(_cum.ytdMatrah, 0) - safeNum(_cum.monthMatrah, 0)));
+      } catch (e) {
+        priorYTD = Math.max(0, safeNum(_rec.priorYTD, 0));
+      } finally {
+        _payrollChainGuard = false;
+      }
+    }
+  }
   const earning = calcEarningForMonth(y, m, u.netSalary);
   if (!earning || earning.isFutureMonth) return null;
   const cfg = payrollCfg(y);
