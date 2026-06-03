@@ -9816,6 +9816,15 @@ function exportBordroCSV() {
   if (!r) { toast('Önce hesaplama yapın', 'warning'); return; }
   const cfg = payrollCfg(r.y);
   const fv = v => (+(v||0)).toFixed(2);
+  /* [FIX CSV] Doğru alan adları: computeNetFromGross sonucu sgkDeduction/
+     unemployDeduct/netGV/gvMatrah/stampTax döndürür; eski export sgkDeduct gibi
+     yanlış adlar okuyup tüm kesintileri 0 gösteriyordu. */
+  const _sgk = r.sgkDeduction || 0, _uns = r.unemployDeduct || 0;
+  const _gv = r.netGV || 0, _stamp = r.stampTax || 0;
+  const _besD = r.besDeduct || 0, _icra = r.icra || 0, _avans = r.avans || 0, _other = r.otherDeduct || 0;
+  const _legalTotal = _sgk + _uns + _gv + _stamp;
+  const _privateTotal = _besD + _icra + _avans + _other;
+  const _totalDeducts = _legalTotal + _privateTotal;
   const headers = [
     'Alan', 'Değer', 'Açıklama'
   ];
@@ -9825,31 +9834,36 @@ function exportBordroCSV() {
     ['Hesaplama Türü', r.calcType === 'net2gross' ? 'Net→Brüt' : 'Brüt→Net', ''],
     ['', '', ''],
     ['BRÜT KAZANÇLAR', '', ''],
-    ['Brüt Maaş', fv(r.baseGross || 0), ''],
-    ['Fazla Mesai %50', fv(r.otGross || 0), `Oran: ${(cfg.otMultiplier||1.5).toFixed(2)}x`],
+    ['Normal Çalışma', fv(r.normalGross || 0), ''],
+    ['Hafta Tatili', fv(r.weeklyRestGross || 0), ''],
+    ['Genel Tatil', fv(r.publicHolidayGross || 0), ''],
+    ['Genel Tatil (Çalıştı)', fv(r.holGross || 0), 'Md.47 ilave'],
+    ['Fazla Mesai %50', fv(r.otGross || 0), `Oran: ${(+(r.compRate||1.5)).toFixed(2)}x`],
     ['Fazla Çalışma %25', fv(r.ot125Gross || 0), `Oran: ${(cfg.otPartialMultiplier||1.25).toFixed(2)}x`],
     ['Gece Zammı', fv(r.nightGross || 0), `Oran: ${((r.nightRate||0)*100).toFixed(1)}%`],
-    ['Resmi Tatil', fv(r.holGross || 0), ''],
-    ['Hafta Tatili', fv(r.weekendGross || 0), `Katsayı: ${(cfg.weekendMultiplier||1).toFixed(1)}x`],
-    ['Yemek Yardımı', fv(r.mealAmount || 0), `${r.mealDays||0} gün`],
-    ['Yol Yardımı', fv(r.transportAmount || 0), `${r.transportDays||0} gün`],
+    ['Hafta Sonu Farkı', fv(r.weekendGross || 0), `Katsayı: ${(cfg.weekendMultiplier||1).toFixed(1)}x`],
+    ['SGK-Muaf Ek Kazanç', fv(r.sgkExemptEarn || 0), 'Vergiye tabi, SGK matrahı dışı'],
+    ['Yemek Yardımı', fv(r.mealTotal || 0), `${r.mealDays||0} gün`],
+    ['Yol Yardımı', fv(r.transportTotal || 0), `${r.transportDays||0} gün`],
     ['Toplam Brüt', fv(r.totalGross || 0), ''],
     ['', '', ''],
     ['KESİNTİLER', '', ''],
-    ['SGK Primi (%14)', fv(r.sgkDeduct || 0), ''],
-    ['İşsizlik Primi (%1)', fv(r.unempDeduct || 0), ''],
-    ['Gelir Vergisi', fv(r.taxDeduct || 0), `GV Matrahı: ${fv(r.taxBase||0)}`],
-    ['Damga Vergisi', fv(r.stampDeduct || 0), `Oran: ${((cfg.stampTaxRate||0)*100).toFixed(3)}%`],
-    ['BES Kesintisi', fv(r.besDeduct || 0), `Oran: ${((r.besRate||0)*100).toFixed(1)}%`],
-    ['İcra', fv(r.icra || 0), ''],
-    ['Avans', fv(r.avans || 0), ''],
-    ['Diğer Kesinti', fv(r.otherDeduct || 0), ''],
-    ['Toplam Kesinti', fv(r.totalDeducts || 0), ''],
+    ['SGK Primi (%14)', fv(_sgk), `SGK matrahı: ${fv(r.sgkBase||0)}`],
+    ['İşsizlik Primi (%1)', fv(_uns), ''],
+    ['Gelir Vergisi', fv(_gv), `GV Matrahı: ${fv(r.gvMatrah||0)} · İstisna: ${fv(r.incomeTaxExemption||0)}`],
+    ['Damga Vergisi', fv(_stamp), `Oran: ${((cfg.stampTaxRate||0)*100).toFixed(3)}%`],
+    ['BES Kesintisi', fv(_besD), `Oran: ${((r.besRate||0)*100).toFixed(1)}%`],
+    ['İcra', fv(_icra), ''],
+    ['Avans', fv(_avans), ''],
+    ['Diğer Kesinti', fv(_other), ''],
+    ['Toplam Yasal Kesinti', fv(_legalTotal), ''],
+    ['Toplam Kesinti', fv(_totalDeducts), ''],
     ['', '', ''],
     ['NET ÖDEMELER', '', ''],
-    ['Yasal Net', fv(r.calculatedLegalNet || r.net || 0), 'Resmi bordro neti'],
-    ['Ele Geçen Net', fv(r.finalNet || r.calculatedTakeHomeNet || 0), ''],
+    ['Yasal Net', fv(r.net || 0), 'Resmi bordro neti'],
+    ['Ele Geçen Net', fv(r.finalNet || r.net || 0), ''],
     ['', '', ''],
+    ['Devreden GV Matrahı', fv(r.priorYTD || 0), 'Önceki aylardan kümülatif'],
     ['Politika', '', ''],
     ['Asgari Ücret', fv(cfg.minWageGross), `${r.y} yılı asgari brüt`],
     ['Hesaplama Esası', `Aylık ${cfg.monthlyStandardHours || 225} saat`, ''],
