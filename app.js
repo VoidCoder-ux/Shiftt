@@ -4461,10 +4461,16 @@ function _monthGVMatrah(u, y, m, cfg, priorYTDForGross) {
    Eski "cari ay × ay sayısı" yaklaşımı değişken kazançta hatalıydı. */
 function estimateCumulativeMatrah(u, y, m) {
   const cfg = payrollCfg(y);
-  const setPrior = (m === 0) ? 0 : safeNum(getPayrollCheck(u, y, m).priorYTD, -1);
+  /* [FIX] Devreden matrah: yalnızca kullanıcı MANUEL girdiyse onu kullan.
+     Aksi halde HER ZAMAN Ocak'tan bu aya takvim verisinden taze topla —
+     eski/otomatik kaydedilmiş (stale) bir değer taze hesabı ezmesin. */
+  const rec = getPayrollCheck(u, y, m);
+  const manual = rec.priorYTDState === 'manual' && Number.isFinite(safeNum(rec.priorYTD, NaN));
   let priorMatrah;
-  if (setPrior >= 0) {
-    priorMatrah = setPrior;
+  if (m === 0) {
+    priorMatrah = 0;
+  } else if (manual) {
+    priorMatrah = Math.max(0, safeNum(rec.priorYTD, 0));
   } else {
     // Önceki ayları sırayla topla; her ayın brütünü o ana dek birikmiş
     // matrahla hesapla ki dilim yükselmeleri doğru yansısın.
@@ -9181,17 +9187,15 @@ function openEBordroModal(y, m) {
     const prevY = isJan ? null : y;
     const prevRec = (prevM === null) ? {} :
       ((u.payrollChecks && u.payrollChecks[employeeMonthKey(prevY, prevM)]) || {});
-    const hasManualPrior = rec.priorYTDState === 'manual' || (rec.priorYTDAuto === false && rec.priorYTD !== undefined);
-    /* [FEAT OTO-ZİNCİR] Devreden GV matrahı OTOMATİK: kullanıcı elle girmez.
-       Öncelik: (1) manuel girilen, (2) önceki ayın hesaplanmış YTD'si,
-       (3) Ocak'tan bu aya kadar takvim verisinden kümülatif matrah toplamı. */
+    const hasManualPrior = rec.priorYTDState === 'manual' && Number.isFinite(safeNum(rec.priorYTD, NaN));
+    /* [FEAT OTO-ZİNCİR] Devreden GV matrahı OTOMATİK ve TUTARLI: manuel girilmişse
+       onu, yoksa HER ZAMAN Ocak'tan bu aya takvim verisinden taze kümülatif toplam
+       (estimateCumulativeMatrah). Net Özet / dashboard ile aynı kaynak. */
     let autoPrior;
     if (isJan) {
       autoPrior = 0;
     } else if (hasManualPrior) {
       autoPrior = safeNum(rec.priorYTD, 0);
-    } else if (safeNum(prevRec.calculatedYTD, 0) > 0) {
-      autoPrior = safeNum(prevRec.calculatedYTD, 0);
     } else {
       const _cum = estimateCumulativeMatrah(u, y, m);
       autoPrior = Math.max(0, safeNum(_cum.ytdMatrah, 0) - safeNum(_cum.monthMatrah, 0));
