@@ -9103,8 +9103,20 @@ function openEBordroModal(y, m) {
     const prevRec = (prevM === null) ? {} :
       ((u.payrollChecks && u.payrollChecks[employeeMonthKey(prevY, prevM)]) || {});
     const hasManualPrior = rec.priorYTDState === 'manual' || (rec.priorYTDAuto === false && rec.priorYTD !== undefined);
-    const autoPrior = isJan ? 0 :
-      (hasManualPrior ? safeNum(rec.priorYTD, 0) : (safeNum(rec.priorYTD, 0) || safeNum(prevRec.calculatedYTD, 0) || 0));
+    /* [FEAT OTO-ZİNCİR] Devreden GV matrahı OTOMATİK: kullanıcı elle girmez.
+       Öncelik: (1) manuel girilen, (2) önceki ayın hesaplanmış YTD'si,
+       (3) Ocak'tan bu aya kadar takvim verisinden kümülatif matrah toplamı. */
+    let autoPrior;
+    if (isJan) {
+      autoPrior = 0;
+    } else if (hasManualPrior) {
+      autoPrior = safeNum(rec.priorYTD, 0);
+    } else if (safeNum(prevRec.calculatedYTD, 0) > 0) {
+      autoPrior = safeNum(prevRec.calculatedYTD, 0);
+    } else {
+      const _cum = estimateCumulativeMatrah(u, y, m);
+      autoPrior = Math.max(0, safeNum(_cum.ytdMatrah, 0) - safeNum(_cum.monthMatrah, 0));
+    }
     priorYTDEl.value = autoPrior > 0 ? autoPrior.toFixed(2) : '0';
   }
 
