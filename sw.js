@@ -1,14 +1,10 @@
 importScripts('./version.js'); // APP_VERSION burada tanımlanır
 
 const CACHE_NAME = APP_VERSION;
-const CORE_ASSETS = ['./', './index.html', './version.js', './app.js', './style.css', './manifest.json', './assets/icons/icon-192.png', './assets/icons/icon-512.png'];
+const CORE_ASSETS = ['./', './index.html', './version.js', './app.css', './engine.js', './sync.js', './ui.js', './manifest.json', './assets/icons/icon-192.png', './assets/icons/icon-512.png'];
 const CDN_ASSETS = [
-  'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css',
-  // PDF/e-Bordro üretimi için — offline'da da çalışsın diye önbelleğe alınır.
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap',
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css'
 ];
 
 self.addEventListener('install', e => {
