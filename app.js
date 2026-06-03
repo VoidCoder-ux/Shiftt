@@ -2808,9 +2808,15 @@ function getShiftType(sh) {
     }
   }
   if (isNightShift(sh.start, sh.end)) return { key:'night', name:'Gece', icon:'🌙' };
-  const h = parseInt(sh.start.split(':')[0], 10);
+  /* [FIX] Vardiya etiketi yalnızca başlangıç saatine bakmasın: gece yarısında
+     (00:00) veya akşam geç saatte (>=20:00) biten vardiya "Akşam" sayılır.
+     Aksi halde 13:00–00:00 gibi akşam vardiyaları yanlışlıkla "Öğlen" oluyordu. */
+  const _st = parseTime(sh.start), _en = parseTime(sh.end);
+  const h = _st !== null ? Math.floor(_st / 60) : 0;
+  const endsLate = (_en === 0) || (_en !== null && _en >= 20 * 60);
+  if (endsLate && h >= 12) return { key:'evening_custom', name:'Akşam', icon:'🌙' };
   if (h < 12) return { key:'morning_custom', name:'Sabah', icon:'🌅' };
-  if (h < 17) return { key:'afternoon_custom', name:'Öğlen', icon:'🌇' };
+  if (h < 16) return { key:'afternoon_custom', name:'Öğlen', icon:'🌇' };
   return { key:'evening_custom', name:'Akşam', icon:'🌙' };
 }
 
