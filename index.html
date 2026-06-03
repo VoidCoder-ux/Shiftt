@@ -2,34 +2,1019 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<meta name="theme-color" content="#0f1115">
-<title>Bordro — Shiftt</title>
-<meta http-equiv="Content-Security-Policy" content="
-  default-src 'self';
-  script-src 'self' https://www.gstatic.com https://cdnjs.cloudflare.com 'unsafe-inline';
-  style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com;
-  font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com;
-  img-src 'self' data: blob:;
-  connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com;
-  frame-src 'self' https://*.firebaseapp.com;
-  object-src 'none'">
-<link rel="manifest" href="./manifest.json">
-<link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<link rel="stylesheet" href="./app.css?v=shifttrack-v44">
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="./ui.js?v=shifttrack-v44"></script>
-  <script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+<title>ShiftTrack Pro</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.gstatic.com https://*.google.com https://apis.google.com https://cdnjs.cloudflare.com https://fonts.googleapis.com https://fonts.gstatic.com https://api.deepseek.com; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.google.com https://api.deepseek.com wss://*.firebaseapp.com https://*.firebaseio.com; frame-src 'self' https://*.firebaseapp.com https://*.google.com https://accounts.google.com; object-src 'none'">
+<script src="version.js"></script>
+<script>
+// Cache buster — eski service worker'ı temizle
+// Sürüm numarası version.js'deki APP_VERSION'dan okunur — o dosyayı güncelle yeter.
+(function(){
+  var CV = (typeof APP_VERSION !== 'undefined') ? APP_VERSION : 'shifttrack-v20';
+  if (localStorage.getItem('st_cache_ver') !== CV) {
+    localStorage.setItem('st_cache_ver', CV);
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(r) { r.unregister(); });
+        caches.keys().then(function(keys) {
+          Promise.all(keys.map(function(k) { return caches.delete(k); })).then(function() {
+            location.reload(true);
+          });
+        });
       });
     }
-  </script>
+  }
+})();
+</script>
+<meta name="theme-color" content="#8b5cf6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" crossorigin="anonymous">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" integrity="sha384-/o6I2CkkWC//PSjvWC/eYN7l3xM3tJm8ZzVkCOfp//W05QcE3mlGskpoHB6XqI+B" crossorigin="anonymous">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
+<!-- ===== eBORDRO MODULE CDN ===== -->
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" integrity="sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3" crossorigin="anonymous"></script>
+<!-- ===== eBORDRO MODULE CDN END ===== -->
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
+<!-- Firebase -->
+<script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" integrity="sha384-sEVIly94UBRLKWdkYoPpSG7GD/e79YHMrxVyZaOk712Ga7+EAw6w1EFi+xBzBdd+" crossorigin="anonymous"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js" integrity="sha384-EkqK+ezBWJuvO3hfrSx2iVqr3YQbhmnzn8kPhOpBZ+0GMVU5oGSgptwIu8D84HjE" crossorigin="anonymous"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js" integrity="sha384-M481iNZJtbpypKgvlvZ+78Giq0BsewFLk5r2k+MOcGXlwKCc27DQRZ+WCV/zpmpC" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="toast-container" id="toastContainer" role="status" aria-live="polite" aria-atomic="false"></div>
+
+<!-- CONFIRM -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <div class="confirm-icon ci-danger"><i class="fas fa-exclamation-triangle"></i></div>
+    <h4 id="confirmTitle">Emin misiniz?</h4>
+    <p id="confirmMsg"></p>
+    <div class="confirm-btns">
+      <button class="btn btn-ghost btn-sm" onclick="confirmCancel()">İptal</button>
+      <button class="btn btn-danger btn-sm" onclick="confirmOk()"><i class="fas fa-check"></i> Onayla</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW USER MODAL -->
+<div class="overlay" id="newUserModal">
+  <div class="modal" style="max-width:340px">
+    <div class="modal-top">
+      <h3><i class="fas fa-user-plus" style="color:var(--p);margin-right:6px"></i>Yeni Kullanıcı</h3>
+      <button class="modal-x" onclick="closeNewUserModal()" aria-label="Kapat"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label for="newUserName">Kullanıcı Adı</label><input type="text" id="newUserName" placeholder="İsim girin..." maxlength="30" autocomplete="off"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost btn-sm" onclick="closeNewUserModal()">İptal</button>
+      <button class="btn btn-primary btn-sm" onclick="confirmNewUser()"><i class="fas fa-check"></i>Ekle</button>
+    </div>
+  </div>
+</div>
+
+<!-- WT DAY MODAL -->
+<div class="wt-modal-overlay" id="wtModal">
+  <div class="wt-modal">
+    <div class="wt-modal-top"><h3 id="wtModalTitle">Pazartesi</h3><button class="modal-x" onclick="closeWTModal()" aria-label="Kapat"><i class="fas fa-times"></i></button></div>
+    <div class="wt-modal-body">
+      <div class="wt-preset-btns">
+        <button class="btn btn-soft btn-sm" onclick="wtSetPreset('08:00','16:00')"><i class="fas fa-sun"></i>Sabah</button>
+        <button class="btn btn-soft btn-sm" onclick="wtSetPreset('12:00','20:00')"><i class="fas fa-cloud-sun"></i>Öğlen</button>
+        <button class="btn btn-soft btn-sm" onclick="wtSetPreset('16:00','00:00')"><i class="fas fa-moon"></i>Akşam</button>
+        <button class="btn btn-soft btn-sm" onclick="wtSetPreset('22:00','06:00')"><i class="fas fa-star"></i>Gece</button>
+        <button class="btn btn-danger btn-sm" onclick="wtSetOff()"><i class="fas fa-times"></i>İzin</button>
+      </div>
+      <div class="time-inputs">
+        <div class="ti"><label for="wtStart">Giriş</label><input type="time" id="wtStart" value="08:00"></div>
+        <div class="ti"><label for="wtEnd">Çıkış</label><input type="time" id="wtEnd" value="16:00"></div>
+        <div class="ti"><label for="wtBreak">Mola</label>
+          <select id="wtBreak">
+            <option value="0">Yok</option><option value="15">15dk</option>
+            <option value="30" selected>30dk</option><option value="45">45dk</option><option value="60">1s</option>
+          </select>
+        </div>
+      </div>
+      <div id="wtPreview" style="text-align:center;font-size:13px;font-weight:800;color:var(--p);margin-top:6px"></div>
+    </div>
+    <div class="wt-modal-foot">
+      <button class="btn btn-ghost btn-sm" onclick="closeWTModal()">İptal</button>
+      <button class="btn btn-primary btn-sm" onclick="saveWTDay()"><i class="fas fa-check"></i>Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- CUSTOM PRESET MODAL -->
+<div class="cp-modal-overlay" id="cpModal">
+  <div class="cp-modal">
+    <div class="cp-modal-top"><h3>Yeni Vardiya Şablonu</h3><button class="modal-x" onclick="closeCPModal()" aria-label="Kapat"><i class="fas fa-times"></i></button></div>
+    <div class="cp-modal-body">
+      <div class="fg"><label for="cpName">Şablon Adı</label><input type="text" id="cpName" placeholder="Gece vardiyası..." maxlength="30"></div>
+      <div class="fg">
+        <label>İkon</label>
+        <div class="emoji-grid" id="emojiGrid"></div>
+      </div>
+      <div class="time-inputs">
+        <div class="ti"><label for="cpStart">Giriş</label><input type="time" id="cpStart" value="22:00"></div>
+        <div class="ti"><label for="cpEnd">Çıkış</label><input type="time" id="cpEnd" value="06:00"></div>
+        <div class="ti"><label for="cpBreak">Mola</label>
+          <select id="cpBreak">
+            <option value="0">Yok</option><option value="15">15dk</option>
+            <option value="30" selected>30dk</option><option value="45">45dk</option><option value="60">1s</option>
+          </select>
+        </div>
+      </div>
+      <div id="cpPreview" style="text-align:center;font-size:13px;font-weight:800;color:var(--p);margin-top:4px"></div>
+    </div>
+    <div class="cp-modal-foot">
+      <button class="btn btn-ghost btn-sm" onclick="closeCPModal()">İptal</button>
+      <button class="btn btn-primary btn-sm" onclick="saveCPModal()"><i class="fas fa-check"></i>Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- PIN MODAL -->
+<div class="pin-overlay" id="pinOverlay">
+  <div class="pin-box">
+    <h4 id="pinTitle">PIN Girin</h4>
+    <p style="font-size:12px;color:var(--t2);margin-top:6px" id="pinSubtitle"></p>
+    <div class="pin-dots" id="pinDots"><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div></div>
+    <div class="pin-keypad" id="pinKeypad">
+      <button class="pin-key" onclick="pinInput(1)">1</button><button class="pin-key" onclick="pinInput(2)">2</button><button class="pin-key" onclick="pinInput(3)">3</button>
+      <button class="pin-key" onclick="pinInput(4)">4</button><button class="pin-key" onclick="pinInput(5)">5</button><button class="pin-key" onclick="pinInput(6)">6</button>
+      <button class="pin-key" onclick="pinInput(7)">7</button><button class="pin-key" onclick="pinInput(8)">8</button><button class="pin-key" onclick="pinInput(9)">9</button>
+      <button class="pin-key pk-action" onclick="pinClear()" aria-label="Sil"><i class="fas fa-backspace" aria-hidden="true"></i></button><button class="pin-key" onclick="pinInput(0)">0</button>
+      <button class="pin-key pk-action" onclick="pinCancel()" aria-label="İptal"><i class="fas fa-times" aria-hidden="true"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- QR MODAL -->
+<div class="qr-modal-overlay" id="qrOverlay">
+  <div class="qr-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3><i class="fas fa-qrcode" style="color:var(--p);margin-right:6px"></i>Veri Transferi</h3>
+      <button class="modal-x" onclick="closeQR()" aria-label="Kapat"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="mode-tabs" style="margin-bottom:12px">
+      <button class="mode-tab active" onclick="qrMode('export',this)"><i class="fas fa-upload"></i>Paylaş</button>
+      <button class="mode-tab" onclick="qrMode('import',this)"><i class="fas fa-download"></i>Al</button>
+    </div>
+    <div id="qrExportPane">
+      <p style="font-size:12px;color:var(--t2);margin-bottom:12px">QR kodu diğer cihazdan okutun</p>
+      <div id="qrCode"></div>
+      <button class="btn btn-soft btn-sm" onclick="copyShareLink()" style="margin-top:10px"><i class="fas fa-copy"></i>Linki Kopyala</button>
+    </div>
+    <div id="qrImportPane" style="display:none">
+      <p style="font-size:12px;color:var(--t2);margin-bottom:12px">Paylaşılan linki yapıştırın</p>
+      <div class="fg"><textarea id="qrImportData" placeholder="Paylaşım linkini veya veriyi yapıştırın..." rows="4" style="font-size:11px"></textarea></div>
+      <button class="btn btn-primary btn-sm" onclick="importFromQR()"><i class="fas fa-download"></i>İçe Aktar</button>
+    </div>
+  </div>
+</div>
+
+<!-- DOCUMENT UPLOAD MODAL -->
+<div id="docUploadModal" onclick="if(event.target===this)closeDocUpload()">
+  <div class="doc-upload-box">
+    <h3><i class="fas fa-cloud-upload-alt" style="color:var(--p)"></i>Belge Ekle</h3>
+    <div class="doc-drop-zone" id="docDropZone" onclick="$('docFileInput').click()" ondragover="docDragOver(event)" ondragleave="docDragLeave(event)" ondrop="docDrop(event)">
+      <div class="dz-icon">📎</div>
+      <p>Fotoğraf veya PDF seçin</p>
+      <small>JPG, PNG, PDF · Maks. 5 MB</small>
+    </div>
+    <input type="file" id="docFileInput" accept="image/*,.pdf" style="display:none" onchange="docFileSelected(this)">
+    <div class="doc-preview-wrap" id="docPreviewWrap">
+      <div id="docPreviewContent"></div>
+    </div>
+    <div class="upload-progress" id="uploadProgress"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
+    <div class="fg" style="margin-bottom:10px">
+      <label class="fl" for="docNameInput">Belge Adı</label>
+      <input type="text" id="docNameInput" placeholder="örn. Hijyen Sertifikası 2025" maxlength="60">
+    </div>
+    <div class="fg" style="margin-bottom:14px">
+      <label class="fl" for="docCatSelect">Kategori</label>
+      <select id="docCatSelect">
+        <option value="hygiene">🧼 Hijyen Belgesi</option>
+        <option value="mastery">🏆 Ustalık Belgesi</option>
+        <option value="payslip">🧾 Bordro</option>
+        <option value="contract">📑 İş Sözleşmesi</option>
+        <option value="sgk">🏥 SGK Belgesi</option>
+        <option value="leave_form">🗓️ İzin Formu</option>
+        <option value="passport">📘 Pasaport</option>
+        <option value="id">🪪 Kimlik / Nüfus Cüzdanı</option>
+        <option value="certificate">📜 Sertifika</option>
+        <option value="resume">📋 Özgeçmiş</option>
+        <option value="other">📄 Diğer</option>
+      </select>
+    </div>
+    <div id="docErrorMsg" style="display:none;padding:10px 12px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:10px;font-size:12px;color:var(--r);margin-bottom:12px;word-break:break-word"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline" style="flex:1" onclick="closeDocUpload()">İptal</button>
+      <button class="btn btn-primary" style="flex:2" id="docSaveBtn" onclick="saveDocument()"><i class="fas fa-save"></i>Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- DOC VIEWER -->
+<div id="docViewer" onclick="closeDocViewer()">
+  <div class="dv-bar" onclick="event.stopPropagation()">
+    <span class="dv-name" id="dvName"></span>
+    <button class="btn btn-soft btn-xs" id="dvWaBtn" onclick="shareDocWA(currentViewDoc)"><i class="fab fa-whatsapp"></i>WhatsApp</button>
+    <button class="btn btn-outline btn-xs" onclick="closeDocViewer()" aria-label="Kapat"><i class="fas fa-times" aria-hidden="true"></i></button>
+  </div>
+  <div id="dvContent" onclick="event.stopPropagation()"></div>
+</div>
+
+<!-- SHIFT CALCULATOR MODAL -->
+<div class="calc-overlay" id="calcOverlay" onclick="if(event.target===this)closeCalc()">
+  <div class="calc-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="font-size:16px;font-weight:800"><i class="fas fa-calculator" style="color:var(--p);margin-right:6px"></i>Mesai Hesap Makinesi</h3>
+      <button class="modal-x" onclick="closeCalc()" aria-label="Kapat"><i class="fas fa-times"></i></button>
+    </div>
+    <p style="font-size:11px;color:var(--t2);margin-bottom:14px">"X tarihten Y tarihine kadar çalışırsam ne kadar kazanırım?" simülasyonu</p>
+    <div class="fg"><label for="calcDateFrom">Başlangıç Tarihi</label><input type="date" id="calcDateFrom"></div>
+    <div class="fg"><label for="calcDateTo">Bitiş Tarihi</label><input type="date" id="calcDateTo"></div>
+    <div class="time-inputs" style="margin-top:8px">
+      <div class="ti"><label for="calcStart">Giriş</label><input type="time" id="calcStart" value="08:00"></div>
+      <div class="ti"><label for="calcEnd">Çıkış</label><input type="time" id="calcEnd" value="16:00"></div>
+      <div class="ti"><label for="calcBreak">Mola</label>
+        <select id="calcBreak">
+          <option value="0">Yok</option><option value="15">15dk</option>
+          <option value="30" selected>30dk</option><option value="45">45dk</option><option value="60">1s</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:8px">
+      <label style="font-size:11px;font-weight:700;color:var(--t2);display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="calcSkipWeekends" checked style="accent-color:var(--p)">Haftasonlarını atla
+      </label>
+      <label style="font-size:11px;font-weight:700;color:var(--t2);display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px">
+        <input type="checkbox" id="calcSkipHolidays" checked style="accent-color:var(--p)">Resmi tatilleri atla
+      </label>
+    </div>
+    <button class="btn btn-primary" onclick="runCalc()" style="margin-top:12px;width:100%"><i class="fas fa-calculator"></i>Hesapla</button>
+    <div id="calcResult"></div>
+  </div>
+</div>
+
+<!-- EMPLOYER MODE OVERLAY -->
+<div class="employer-overlay" id="employerOverlay" onclick="if(event.target===this)closeEmployer()">
+  <div class="employer-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="font-size:16px;font-weight:800"><i class="fas fa-users" style="color:var(--p);margin-right:6px"></i>İşveren Modu — Takım Görünümü</h3>
+      <button class="modal-x" onclick="closeEmployer()" aria-label="Kapat"><i class="fas fa-times"></i></button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="chgTeamWeek(-1)" aria-label="Önceki hafta"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+        <span class="cal-month-title" id="teamWeekTitle" style="font-size:14px;min-width:200px"></span>
+        <button class="cal-nav-btn" onclick="chgTeamWeek(1)" aria-label="Sonraki hafta"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+      </div>
+      <button class="btn btn-soft btn-sm" onclick="teamGoThisWeek()"><i class="fas fa-crosshairs"></i>Bu Hafta</button>
+    </div>
+    <div id="teamContent"></div>
+  </div>
+</div>
+
+<!-- INSTALL BANNER -->
+<div class="install-banner" id="installBanner">
+  <i class="fas fa-mobile-alt"></i>
+  <span>Ana ekrana ekle</span>
+  <button class="ib-install" onclick="installPWA()">Ekle</button>
+  <button class="ib-close" onclick="dismissInstall()">×</button>
+</div>
+
+<!-- IOS INSTALL MODAL -->
+<div class="ios-install-overlay" id="iosInstallOverlay" onclick="closeIOSInstall(event)">
+  <div class="ios-install-box">
+    <h3><i class="fas fa-mobile-alt" style="color:var(--p);margin-right:8px"></i>Ana Ekrana Ekle</h3>
+    <p>ShiftTrack Pro'yu ana ekranınıza ekleyerek uygulama gibi kullanın</p>
+    <div class="ios-steps">
+      <div class="ios-step">
+        <div class="ios-step-num">1</div>
+        <div class="ios-step-text">
+          Tarayıcının alt kısmındaki paylaş butonuna dokunun
+          <small>Safari'nin alt çubuğundaki kutu+ok simgesi</small>
+        </div>
+        <div class="ios-step-icon">⬆️</div>
+      </div>
+      <div class="ios-step">
+        <div class="ios-step-num">2</div>
+        <div class="ios-step-text">
+          Listede <strong>"Ana Ekrana Ekle"</strong> seçeneğini bulun
+          <small>Aşağı kaydırmanız gerekebilir</small>
+        </div>
+        <div class="ios-step-icon">➕</div>
+      </div>
+      <div class="ios-step">
+        <div class="ios-step-num">3</div>
+        <div class="ios-step-text">
+          Sağ üstteki <strong>"Ekle"</strong> butonuna dokunun
+          <small>Uygulama ana ekranınıza eklenecek</small>
+        </div>
+        <div class="ios-step-icon">✅</div>
+      </div>
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="closeIOSInstall()">Anladım</button>
+  </div>
+</div>
+
+<!-- AUTH SCREEN -->
+<div id="authScreen">
+  <div class="auth-box">
+    <div class="auth-brand">
+      <div class="icon"><i class="fas fa-clock"></i></div>
+      <h1>ShiftTrack Pro</h1>
+      <p>Giriş yapın veya kayıt olun — verileriniz tüm cihazlarda senkronize olsun</p>
+    </div>
+    <div id="authError" class="auth-error"></div>
+    <div id="authSuccess" class="auth-success"></div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="authTab('login',this)">Giriş</button>
+      <button class="auth-tab" onclick="authTab('register',this)">Kayıt Ol</button>
+    </div>
+    <div id="authLoginPane">
+      <div class="auth-fg"><label for="authEmail">E-posta</label><input type="email" id="authEmail" placeholder="ornek@mail.com" autocomplete="email"></div>
+      <div class="auth-fg"><label for="authPass">Şifre</label><input type="password" id="authPass" placeholder="••••••" autocomplete="current-password"></div>
+      <button class="auth-btn" id="authLoginBtn" onclick="firebaseLogin()"><i class="fas fa-sign-in-alt" style="margin-right:6px"></i>Giriş Yap</button>
+    </div>
+    <div id="authRegisterPane" style="display:none">
+      <div class="auth-fg"><label for="authRegEmail">E-posta</label><input type="email" id="authRegEmail" placeholder="ornek@mail.com" autocomplete="email"></div>
+      <div class="auth-fg"><label for="authRegPass">Şifre (min 6 karakter)</label><input type="password" id="authRegPass" placeholder="••••••" autocomplete="new-password"></div>
+      <div class="auth-fg"><label for="authRegPass2">Şifre Tekrar</label><input type="password" id="authRegPass2" placeholder="••••••" autocomplete="new-password"></div>
+      <button class="auth-btn" id="authRegBtn" onclick="firebaseRegister()"><i class="fas fa-user-plus" style="margin-right:6px"></i>Kayıt Ol</button>
+    </div>
+    <div class="auth-divider">veya</div>
+    <button class="auth-skip" onclick="skipAuth()"><i class="fas fa-user-secret" style="margin-right:6px"></i>Hesap olmadan devam et (sadece bu cihaz)</button>
+    <div id="authResetLink" style="text-align:center;margin-top:12px">
+      <a href="#" onclick="firebaseResetPass();return false" style="font-size:11px;color:var(--p);text-decoration:none;font-weight:600">Şifremi Unuttum</a>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-container">
+    <div class="login-brand">
+      <div class="icon"><i class="fas fa-clock"></i></div>
+      <h1>ShiftTrack Pro</h1>
+      <p>Akıllı Vardiya &amp; Kazanç Yönetimi</p>
+      <span class="version" id="appVersionLabel">v6.7 Cloud</span>
+    </div>
+    <div class="login-cards" id="loginCards"></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="mainApp">
+  <header class="topbar">
+    <div class="topbar-brand"><div class="ico"><i class="fas fa-clock"></i></div>ShiftTrack<span class="cloud-user" id="cloudUserInfo"></span></div>
+    <div class="topbar-right">
+      <div class="sync-status" id="syncStatus" title="Dokun: Şimdi senkronize et" onclick="forceSyncNow()" style="cursor:pointer"><div class="sync-dot offline" id="syncDot"></div><span id="syncText">Çevrimdışı</span></div>
+      <button class="topbar-btn notif-bell" id="notifBtn" onclick="showNotifications()" title="Bildirimler" aria-label="Bildirimler"><i class="fas fa-bell"></i><span class="notif-badge" id="notifBadge" style="display:none"></span></button>
+      <button class="topbar-btn tb-desktop" onclick="showShortcuts()" title="Kısayollar (?)" aria-label="Kısayollar"><i class="fas fa-keyboard"></i></button>
+      <button class="topbar-btn tb-desktop" id="undoBtn" disabled onclick="undo()" title="Geri Al (Ctrl+Z)" aria-label="Geri Al"><i class="fas fa-undo"></i></button>
+      <div class="topbar-user" onclick="go('settings',document.querySelectorAll('.nav-tab')[6])">
+        <div class="av" id="topAv">U</div>
+        <span id="topName">Kullanıcı</span>
+      </div>
+      <button class="topbar-btn danger" onclick="logout()" title="Çıkış" aria-label="Çıkış"><i class="fas fa-sign-out-alt"></i></button>
+    </div>
+  </header>
+  <nav class="nav-tabs">
+    <button class="nav-tab active" onclick="go('dashboard',this)"><i class="fas fa-th-large"></i><span>Panel</span></button>
+    <button class="nav-tab" onclick="go('calendar',this)"><i class="fas fa-calendar-alt"></i><span>Takvim</span></button>
+    <button class="nav-tab" onclick="go('stats',this)"><i class="fas fa-chart-line"></i><span>İstatistik</span></button>
+    <button class="nav-tab" onclick="go('leaves',this)"><i class="fas fa-umbrella-beach"></i><span>İzinler</span></button>
+    <button class="nav-tab" onclick="go('earnings',this)"><i class="fas fa-wallet"></i><span>Kazanç</span></button>
+    <button class="nav-tab" onclick="go('ai',this)"><i class="fas fa-wand-magic-sparkles"></i><span>AI</span></button>
+    <button class="nav-tab" onclick="go('settings',this)"><i class="fas fa-cog"></i><span>Ayarlar</span></button>
+    <button class="nav-tab" onclick="go('documents',this)"><i class="fas fa-folder-open"></i><span>Evrak</span></button>
+  </nav>
+  <main class="content">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="pg-dashboard">
+      <div class="page-head dash-page-head">
+        <div class="dash-page-title">
+          <h1>Kontrol Paneli</h1>
+          <p id="dashSub"></p>
+        </div>
+        <div class="dash-actions">
+          <div id="dashStreak"></div>
+          <button class="btn btn-soft btn-sm" onclick="openCalc()" title="Mesai Hesap Makinesi"><i class="fas fa-calculator"></i></button>
+          <button class="btn btn-soft btn-sm" onclick="openEmployer()" title="İşveren Modu"><i class="fas fa-users"></i></button>
+          <button class="btn btn-outline btn-sm" onclick="shareMonthReport()" title="Rapor Paylaş"><i class="fas fa-share-alt"></i></button>
+        </div>
+      </div>
+
+      <div id="dashTodayWidget"></div>
+      <div class="stats" id="statsEl"></div>
+
+      <div class="dash-mid-grid">
+        <div id="dashProgressBar"></div>
+        <div id="dashWeekSummary"></div>
+      </div>
+
+      <div id="dashFMTracker"></div>
+      <div id="dashOTComp"></div>
+      <div id="dashAISummary"></div>
+      <div id="dashYearlyCumul"></div>
+      <div id="dashGoal" class="goal-wrap"></div>
+      <div class="year-overview-wrap" id="yearOverviewWrap"></div>
+      <div id="dashLast7Days"></div>
+
+      <div class="dash-bottom-grid">
+        <div class="card dash-chart-card">
+          <div class="card-head">
+            <h3><i class="fas fa-chart-bar"></i>Haftalık Saatler</h3>
+            <span class="dash-card-meta">Limit: sözleşme</span>
+          </div>
+          <div class="week-chart" id="weekChart"></div>
+        </div>
+        <div class="card dash-summary-card">
+          <div class="card-head">
+            <h3><i class="fas fa-layer-group"></i>Özet</h3>
+          </div>
+          <div class="info-list" id="dashInfo"></div>
+          <div id="dashHeatmap" style="margin-top:14px"></div>
+        </div>
+      </div>
+
+      <div id="dashEarnSummary"></div>
+      <div id="dashReports"></div>
+    </div>
+
+    <!-- CALENDAR -->
+    <div class="page" id="pg-calendar">
+      <div class="page-head">
+        <div><h1>Vardiya Takvimi</h1><p>Güne tıklayarak giriş yapın</p></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="toggleMultiSelect()" id="multiSelBtn"><i class="fas fa-object-group"></i>Çoklu Seç</button>
+          <button class="btn btn-outline btn-sm" onclick="repeatLastWeek()" title="Geçen hafta → bu hafta"><i class="fas fa-redo"></i>Haftayı Tekrarla</button>
+          <button class="btn btn-outline btn-sm" onclick="copyThisWeekToNext()" title="Bu hafta → sonraki hafta"><i class="fas fa-forward"></i>Sonraki Haftaya Kopyala</button>
+          <button class="btn btn-soft btn-sm" onclick="goToday()"><i class="fas fa-crosshairs"></i>Bugün</button>
+        </div>
+      </div>
+      <div id="copyBar"></div>
+      <div id="multiBar"></div>
+      <div class="card">
+        <div class="cal-controls">
+          <div class="cal-nav">
+            <button class="cal-nav-btn" onclick="chgM(-1)" aria-label="Önceki ay"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+            <span class="cal-month-title" id="calTitle"></span>
+            <button class="cal-nav-btn" onclick="chgM(1)" aria-label="Sonraki ay"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+          </div>
+          <span style="font-size:11px;color:var(--t3);font-weight:600" id="calSummary"></span>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+        <div id="calEarnBar"></div>
+        <div id="calMonthSummary"></div>
+        <div class="cal-legend">
+          <span><i class="fas fa-circle" style="color:var(--p)"></i>Bugün</span>
+          <span><i class="fas fa-circle" style="color:var(--g)"></i>Vardiya</span>
+          <span><i class="fas fa-circle" style="color:var(--r)"></i>R.Tatil</span>
+<span><i class="fas fa-circle" style="color:var(--leave-annual)"></i>Y.İzin</span>
+                                              <span><i class="fas fa-circle" style="color:var(--leave-sick)"></i>Rapor</span>
+        </div>
+        <div id="shiftStats"></div>
+      </div>
+      <div id="bankHolidaysSection"></div>
+    </div>
+
+    <!-- STATS -->
+    <div class="page" id="pg-stats">
+      <div class="page-head"><div><h1>İstatistik</h1><p>6 aylık trend analizi</p></div></div>
+      <div id="statsContent"></div>
+    </div>
+
+    <!-- LEAVES -->
+    <div class="page" id="pg-leaves">
+      <div class="page-head"><div><h1>İzin Yönetimi</h1><p>İzin haklarınız</p></div></div>
+      <div class="leave-cards" id="leaveCards"></div>
+      <div class="card">
+        <div class="card-head">
+          <h3><i class="fas fa-history"></i>Geçmiş — <span id="leaveYr"></span></h3>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="leave-year-nav">
+              <button onclick="chgLeaveYear(-1)" aria-label="Önceki yıl"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+              <button onclick="chgLeaveYear(1)" aria-label="Sonraki yıl"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+            </div>
+            <select id="leaveFilter" onchange="renderLeaves()" style="padding:4px 8px;font-size:11px;width:auto">
+              <option value="all">Tümü</option>
+              <option value="annual">Yıllık İzin</option>
+              <option value="sick">Rapor</option>
+              <option value="weekly">H.Tatil</option>
+              <option value="unpaid">Ücretsiz</option>
+            </select>
+          </div>
+        </div>
+        <div id="leaveSearchWrap"></div>
+        <div id="leaveTable"></div>
+      </div>
+    </div>
+
+    <!-- EARNINGS -->
+    <div class="page" id="pg-earnings">
+      <div class="page-head"><div><h1>Kazanç Raporu</h1><p>Aylık gelir detayları</p></div></div>
+      <div class="cal-controls" style="margin-bottom:16px">
+        <div class="cal-nav">
+          <button class="cal-nav-btn" onclick="chgE(-1)" aria-label="Önceki ay"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+          <span class="cal-month-title" id="earnTitle"></span>
+          <button class="cal-nav-btn" onclick="chgE(1)" aria-label="Sonraki ay"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+        </div>
+      </div>
+      <div id="earnContent"></div>
+      <div id="earnCompare" style="margin-top:16px"></div>
+    </div>
+
+    <!-- AI ASSISTANT -->
+    <div class="page" id="pg-ai">
+      <div class="page-head">
+        <div><h1>AI Asistan</h1><p>Yerel tahmin, bordro açıklaması ve profil önerileri</p></div>
+        <button class="btn btn-soft btn-sm" onclick="renderAIAssistantPage()"><i class="fas fa-rotate"></i>Yenile</button>
+      </div>
+      <div id="aiAssistantContent"></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="pg-settings">
+      <div class="page-head"><div><h1>Ayarlar</h1><p>Kişisel bilgiler ve görünüm</p></div></div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-palette"></i>Tema</h3>
+        <div style="font-size:10px;font-weight:700;color:var(--t3);margin-bottom:6px;text-transform:uppercase">Karanlık</div>
+        <div class="theme-picker" id="themePicker">
+          <div class="theme-dot" data-t="default" onclick="setTheme('default')"></div>
+          <div class="theme-dot" data-t="ocean" onclick="setTheme('ocean')"></div>
+          <div class="theme-dot" data-t="forest" onclick="setTheme('forest')"></div>
+          <div class="theme-dot" data-t="sunset" onclick="setTheme('sunset')"></div>
+          <div class="theme-dot" data-t="rose" onclick="setTheme('rose')"></div>
+          <div class="theme-dot" data-t="gold" onclick="setTheme('gold')"></div>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:var(--t3);margin:10px 0 6px;text-transform:uppercase">Aydınlık</div>
+        <div class="theme-picker">
+          <div class="theme-dot" data-t="light" onclick="setTheme('light')" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);border:2px solid #e2dff0"></div>
+          <div class="theme-dot" data-t="light-ocean" onclick="setTheme('light-ocean')" style="background:linear-gradient(135deg,#0891b2,#22d3ee);border:2px solid #bae6fd"></div>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+          <label style="font-size:11px;font-weight:700;color:var(--t2);cursor:pointer;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="autoThemeToggle" onchange="toggleAutoTheme(this.checked)" style="accent-color:var(--p)">
+            Sistem temasına göre otomatik geçiş
+          </label>
+        </div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-user"></i>Kişisel Bilgiler</h3>
+        <div class="fg"><label for="sName">Ad Soyad</label><input type="text" id="sName" placeholder="Adınız" onchange="sSet('name',this.value)"></div>
+        <div class="fg"><label for="sStart">İşe Başlama</label><input type="date" id="sStart" onchange="sSet('startDate',this.value)"></div>
+        <div class="fg"><label for="sBirth">Doğum Tarihi</label><input type="date" id="sBirth" onchange="sSet('birthDate',this.value)"></div>
+        <div id="seniorityInfo"></div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-money-bill-wave"></i>Maaş</h3>
+        <div class="hint"><i class="fas fa-lightbulb"></i><span>Giriş türünü seçin. <b>Net</b>: aylık net maaş. <b>Brüt</b>: sabit aylık brüt. <b>Günlük Net</b>: sabit günlük net yevmiye (bordroda ÜCRET PERİYO: G-Net) — aylık net = günlük × ödenen gün-eşdeğeri.</span></div>
+        <div class="fg"><label for="sSalaryMode">Giriş Türü</label>
+          <select id="sSalaryMode" onchange="sSet('salaryInputMode',this.value)">
+            <option value="net">Net Maaş (aylık)</option>
+            <option value="gross">Brüt Maaş (aylık)</option>
+            <option value="dailyNet">Günlük Net (yevmiye)</option>
+          </select>
+        </div>
+        <div class="fg" id="sNetWrap"><label for="sSalary">Aylık Net (₺)</label><input type="number" id="sSalary" placeholder="25000" min="0" step="100" onchange="sSet('netSalary',this.value)"></div>
+        <div class="fg" id="sGrossWrap" style="display:none"><label for="sGross">Aylık Brüt (₺)</label><input type="number" id="sGross" placeholder="64246.50" min="0" step="100" onchange="sSet('grossSalary',this.value)"></div>
+        <div class="fg" id="sDailyNetWrap" style="display:none"><label for="sDailyNet">Günlük Net Yevmiye (₺)</label><input type="number" id="sDailyNet" placeholder="1440" min="0" step="10" onchange="sSet('dailyNetWage',this.value)"></div>
+        <div class="fg"><label for="sSgkExempt">SGK-Muaf Ek Kazanç (₺) <small style="color:var(--t2)">(alış-veriş/yemek kartı — vergiye tabi, opsiyonel)</small></label><input type="number" id="sSgkExempt" placeholder="0" min="0" step="50" onchange="sSet('sgkExemptEarn',this.value)"></div>
+        <div class="salary-preview" id="salPrev" style="display:none">
+          <div class="amt" id="salAmt">₺0</div>
+          <div class="det" id="salDet"></div>
+        </div>
+      </div>
+
+      <!-- [FEAT F5] Zam Simülatörü -->
+      <div class="card s-card">
+        <h3><i class="fas fa-chart-line"></i>Zam Simülatörü</h3>
+        <div class="hint"><i class="fas fa-lightbulb"></i><span>Yüzde veya hedef net maaş girin — brüt/net fark ve yıllık etki anında görünsün.</span></div>
+        <div class="raise-sim-tabs">
+          <button class="rst-tab active" type="button" onclick="rsSwitch('pct')">% Zam</button>
+          <button class="rst-tab" type="button" onclick="rsSwitch('net')">Hedef Net</button>
+          <button class="rst-tab" type="button" onclick="rsSwitch('gross')">Hedef Brüt</button>
+        </div>
+        <div class="fg" id="rsInputWrap">
+          <label id="rsLabel" for="rsInput">Zam Oranı (%)</label>
+          <input type="number" id="rsInput" placeholder="25" min="0" step="0.5" oninput="renderRaiseSim()">
+        </div>
+        <div id="rsResult" class="raise-sim-result"></div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-calendar-check"></i>Yıllık İzin</h3>
+        <div class="fg"><label for="sLeave">İzin Hakkı (gün)</label><input type="number" id="sLeave" placeholder="14" min="0" max="40" onchange="sSet('annualLeave',this.value)"></div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-bullseye"></i>Aylık Saat Hedefi</h3>
+        <div class="hint"><i class="fas fa-lightbulb"></i><span>Saatlik ücret hesaplaması için aylık toplam çalışma saati. Varsayılan: 225 (Yargıtay 9.HD: 30 gün × 7,5s). Tercihe göre 195 (45×52,18÷12) da kullanılabilir.</span></div>
+        <div class="fg"><label for="sMH">Aylık Saat</label><input type="number" id="sMH" placeholder="225" min="100" max="400" step="5" onchange="sSet('monthlyHours',this.value)"></div>
+        <div class="fg" style="margin-top:8px"><label for="sWCH">Haftalık Sözleşme Saati</label><input type="number" id="sWCH" placeholder="45" min="15" max="45" step="1" onchange="sSet('weeklyContractHours',this.value)">
+          <small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">Sözleşme 45'ten az ise (örn. 40s), aradaki saatler %25 zamlı (fazla sürelerle çalışma) ödenir.</small>
+        </div>
+      </div>
+
+      <!-- [FIX] Fazla Mesai → İzin Karşılığı (Comp Time) -->
+      <div class="card s-card">
+        <h3><i class="fas fa-exchange-alt"></i>Fazla Mesai Yönetimi</h3>
+        <div class="hint"><i class="fas fa-lightbulb"></i><span>FM saatlerini ücret olarak al veya izin olarak biriktir. İzin modunda takvimde "FM İzni" seçeneği aktif olur.</span></div>
+        <div class="fg">
+          <label>FM Modu</label>
+          <div class="radio-row">
+            <label class="radio-opt"><input type="radio" name="otMode" data-ot-mode="1" value="pay" onchange="sSet('otCompMode',this.value)"> 💰 Ücret öde</label>
+            <label class="radio-opt"><input type="radio" name="otMode" data-ot-mode="1" value="leave" onchange="sSet('otCompMode',this.value)"> 🏖️ İzin biriktir</label>
+          </div>
+        </div>
+        <div class="fg"><label for="sOTRate">FM Katsayısı</label><input type="number" id="sOTRate" placeholder="1.5" min="1.5" max="3" step="0.5" onchange="sSet('otCompRate',this.value)"><small style="color:var(--t3);font-size:10px;margin-top:2px;display:block">TR İş Kanunu gereği minimum 1.5×</small></div>
+        <div class="fg" style="margin-top:10px">
+          <label>FM Hesap Modu</label>
+          <div class="radio-row" id="otCalcModeRow">
+            <label class="radio-opt" title="4857/41 — haftalık 45 saat üstü FM. Hafta tamamlanmadan FM hesaplanmaz."><input type="radio" name="otCalcMode" data-otcalc-mode="1" value="weekly45" onchange="sSet('otCalcMode',this.value)"> 📅 Haftalık 45s</label>
+            <label class="radio-opt" title="Günlük 7,5 saat üstü FM (toplu sözleşme/işyeri uygulaması). Hafta beklenmeden günlük olarak işlenir."><input type="radio" name="otCalcMode" data-otcalc-mode="1" value="daily75" onchange="sSet('otCalcMode',this.value)"> ⏰ Günlük 7,5s</label>
+            <label class="radio-opt" title="İkisinden hangisi daha fazla FM üretirse: günlük 7,5 üstü + haftalık 45 üstü (kesişimde çift sayım yok)."><input type="radio" name="otCalcMode" data-otcalc-mode="1" value="hybrid" onchange="sSet('otCalcMode',this.value)"> 🔀 Karma</label>
+          </div>
+          <small style="color:var(--t3);font-size:10px;margin-top:4px;display:block">Varsayılan haftalık 45s (yasal). Sözleşme/işyeri uygulaması günlük çalışma süresini esas alıyorsa "Günlük 7,5s" seçin.</small>
+        </div>
+        <div id="otBalanceDisplay"></div>
+      </div>
+
+      <!-- [FIX] Akıllı Vardiya Önerileri toggle -->
+      <div class="card s-card">
+        <h3><i class="fas fa-lightbulb"></i>Akıllı Vardiya Önerileri</h3>
+        <div class="hint"><i class="fas fa-info-circle"></i><span>Boş günlerde yasal sınırlara (11s dinlenme, 45s/hafta) uyan günleri 💡 ikonu ile işaretle.</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+          <label style="font-size:11px;font-weight:700;color:var(--t2);cursor:pointer;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="hideSuggestionsToggle" onchange="sSet('hideSuggestions',!this.checked)" style="accent-color:var(--p)">
+            Önerileri göster
+          </label>
+        </div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-bullseye"></i>Hedefler</h3>
+        <div class="hint"><i class="fas fa-lightbulb"></i><span>Aylık saat ve kazanç hedefi belirleyin. Dashboard'da ilerleme gösterilir.</span></div>
+        <div class="fg"><label for="sGoalHours">Aylık Saat Hedefi</label><input type="number" id="sGoalHours" placeholder="180" min="0" max="400" step="5" onchange="sSet('goalHours',this.value)"></div>
+        <div class="fg"><label for="sGoalEarning">Aylık Kazanç Hedefi (₺)</label><input type="number" id="sGoalEarning" placeholder="30000" min="0" step="500" onchange="sSet('goalEarning',this.value)"></div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-lock"></i>Güvenlik</h3>
+        <div class="hint"><i class="fas fa-shield-alt"></i><span>4 haneli PIN ile hesabınızı koruyun.</span></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="pinStatus" style="font-size:12px;color:var(--t2)"></span>
+          <button class="btn btn-soft btn-sm" id="pinSetBtn" onclick="setupPIN()"><i class="fas fa-lock"></i>PIN Ayarla</button>
+          <button class="btn btn-danger btn-sm" id="pinDelBtn" onclick="removePIN()" style="display:none"><i class="fas fa-lock-open"></i>Kaldır</button>
+        </div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-bell"></i>Bildirimler</h3>
+        <p style="font-size:12px;color:var(--t2);margin-bottom:8px">Yarınki vardiya hatırlatması (akşam 20:00)</p>
+        <button class="btn btn-soft btn-sm" onclick="requestNotifPermission()"><i class="fas fa-bell"></i>Bildirimleri Aç</button>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-clock"></i>Vardiya Şablonları</h3>
+        <div id="customPresets"></div>
+        <button class="btn btn-soft btn-sm" onclick="openCPModal()" style="margin-top:8px"><i class="fas fa-plus"></i>Ekle</button>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-calendar-week"></i>Haftalık Şablon</h3>
+        <div class="hint"><i class="fas fa-lightbulb"></i><span>Haftanın her günü için sabit vardiya tanımlayın, sonra bir aya toplu uygulayın.</span></div>
+        <div id="weeklyTemplate"></div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-qrcode"></i>Vardiya Şablonu Paylaşımı</h3>
+        <div class="hint"><i class="fas fa-lightbulb"></i><span>Haftalık şablonunuzu QR kod ile başka kullanıcıya aktarın.</span></div>
+        <div id="tplShareSection"></div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-sticky-note"></i>Notlarım</h3>
+        <div class="notes-panel">
+          <textarea id="userNotes" placeholder="Genel notlarınızı buraya yazın..." rows="4"></textarea>
+          <div class="note-save-row"><button class="btn btn-primary btn-sm" onclick="saveNotes()"><i class="fas fa-save"></i>Kaydet</button></div>
+        </div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-database"></i>Veri</h3>
+        <div id="dataUsage" style="margin-bottom:12px"></div>
+        <div class="data-btns">
+          <button class="btn btn-outline" onclick="exportD()"><i class="fas fa-download"></i>Yedekle</button>
+          <button class="btn btn-outline" onclick="exportCSV()"><i class="fas fa-file-csv"></i>CSV</button>
+          <button class="btn btn-outline" onclick="exportPDF()"><i class="fas fa-file-pdf"></i>PDF</button>
+          <button class="btn btn-outline" onclick="shareMonthReport()"><i class="fas fa-share-alt"></i>Paylaş</button>
+          <button class="btn btn-outline" onclick="openQR()"><i class="fas fa-qrcode"></i>QR Transfer</button>
+          <button class="btn btn-outline" onclick="document.getElementById('impF').click()"><i class="fas fa-upload"></i>Yükle</button>
+          <input type="file" id="impF" style="display:none" accept=".json" onchange="importD(event)">
+          <button class="btn btn-danger" onclick="clearD()"><i class="fas fa-trash"></i>Sıfırla</button>
+          <button class="btn btn-danger" onclick="deleteCurrentUser()"><i class="fas fa-user-minus"></i>Hesabı Sil</button>
+        </div>
+      </div>
+
+      <div class="card s-card" id="installAppCard">
+        <h3><i class="fas fa-mobile-alt"></i>Ana Ekrana Ekle</h3>
+        <p style="font-size:12px;color:var(--t2);margin-bottom:10px">Uygulamayı ana ekranınıza ekleyerek daha hızlı erişin. İnternet bağlantısı olmadan da çalışır.</p>
+        <div id="installAppStatus"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button class="btn btn-primary btn-sm" id="installAppBtn" onclick="triggerInstall()" style="display:none"><i class="fas fa-download"></i>Ana Ekrana Ekle</button>
+          <button class="btn btn-soft btn-sm" id="iosInstallBtn" onclick="showIOSInstall()" style="display:none"><i class="fas fa-info-circle"></i>Nasıl Eklenir?</button>
+        </div>
+      </div>
+
+      <div class="card s-card" id="cloudAccountCard">
+        <h3><i class="fas fa-cloud"></i>Bulut Hesabı</h3>
+        <div id="cloudAccountInfo"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn btn-primary btn-sm" id="cloudSyncBtn" onclick="manualSync()" style="display:none"><i class="fas fa-sync"></i>Şimdi Senkronize Et</button>
+          <button class="btn btn-outline btn-sm" id="cloudLogoutBtn" onclick="firebaseLogout()" style="display:none"><i class="fas fa-sign-out-alt"></i>Bulut Hesabından Çık</button>
+          <button class="btn btn-primary btn-sm" id="cloudLoginBtn" onclick="showAuthScreen()" style="display:none"><i class="fas fa-cloud-upload-alt"></i>Bulut Hesabı Bağla</button>
+        </div>
+      </div>
+
+      <div class="card s-card">
+        <h3><i class="fas fa-calculator"></i>İhbar &amp; Kıdem Tazminatı</h3>
+        <p style="font-size:12px;color:var(--t2);margin-bottom:10px">İşe giriş tarihiniz ve maaşınıza göre ihbar ve kıdem tazminatı, yıllık izin durumu ve vergi dilimi hesaplanır.</p>
+        <button class="btn btn-primary btn-sm" onclick="openSeveranceModal()"><i class="fas fa-calculator"></i>Hesapla</button>
+      </div>
+    </div>
+
+    <!-- EVRAKLARIM -->
+    <div class="page" id="pg-documents">
+      <div class="docs-hero">
+        <h2><i class="fas fa-folder-open" style="margin-right:8px"></i>Evraklarım</h2>
+        <p>Belgelerinizi güvenle saklayın, WhatsApp ile anında paylaşın</p>
+      </div>
+      <div class="doc-cats" id="docCatFilter"></div>
+      <div id="docsContent"></div>
+      <button class="docs-add-btn" onclick="openDocUpload()" title="Belge Ekle"><i class="fas fa-plus"></i></button>
+    </div>
+
+  </main>
+</div>
+
+<!-- SHIFT MODAL -->
+<div class="overlay" id="modal">
+  <div class="modal">
+    <div class="modal-top">
+      <div style="display:flex;align-items:center;gap:8px">
+        <h3 id="mTitle">16</h3>
+        <span class="date-badge" id="mDate">Pzt</span>
+      </div>
+      <button class="modal-x" onclick="closeM()" aria-label="Kapat"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div id="mAlert" class="h-alert" style="display:none"><i class="fas fa-flag"></i><span id="mAlertTx"></span></div>
+      <div id="mConflictWarn" class="h-warn" style="display:none"><i class="fas fa-exclamation-triangle"></i><span id="mConflictTx"></span></div>
+      <div id="mNightInfo" class="h-info" style="display:none"><i class="fas fa-moon"></i><span id="mNightTx"></span></div>
+      <div id="mBreakInfo" class="h-info" style="display:none;color:var(--r)"><i class="fas fa-coffee"></i><span id="mBreakTx"></span></div>
+      <div class="mode-tabs">
+        <button class="mode-tab active" onclick="mMode('shift',this)"><i class="fas fa-clock"></i>Vardiya</button>
+        <button class="mode-tab" onclick="mMode('leave',this)"><i class="fas fa-umbrella-beach"></i>İzin</button>
+      </div>
+      <div id="mShift">
+        <div class="preset-row" id="presetRow"></div>
+        <div class="time-inputs">
+          <div class="ti"><label for="iStart">Giriş</label><input type="time" id="iStart" value="08:00"></div>
+          <div class="ti"><label for="iEnd">Çıkış</label><input type="time" id="iEnd" value="16:00"></div>
+          <div class="ti"><label for="iBreak">Mola</label>
+            <select id="iBreak">
+              <option value="0">Yok</option><option value="15">15dk</option>
+              <option value="30" selected>30dk</option><option value="45">45dk</option>
+              <option value="60">1s</option><option value="90">1.5s</option>
+            </select>
+          </div>
+        </div>
+        <div class="result-box">
+          <div class="rb-item"><div class="rb-val" id="rbGross">8s</div><div class="rb-lbl">Brüt</div></div>
+          <div class="rb-div"></div>
+          <div class="rb-item"><div class="rb-val accent" id="rbBreak">30dk</div><div class="rb-lbl">Mola</div></div>
+          <div class="rb-div"></div>
+          <div class="rb-item"><div class="rb-val green" id="rbNet">7.5s</div><div class="rb-lbl">Net</div></div>
+          <div class="rb-div"></div>
+          <div class="rb-item"><div class="rb-val" id="rbOT" style="color:var(--t3)">—</div><div class="rb-lbl">F.Mesai</div></div>
+        </div>
+        <div id="mEarningPreview" style="margin-top:8px;text-align:center;font-size:11px;color:var(--t2);font-weight:600"></div>
+        <div class="fg" style="margin-top:10px"><label>Not</label><div style="display:flex;gap:4px"><input type="text" id="iShiftNote" placeholder="Opsiyonel..." maxlength="100" style="flex:1"><button type="button" class="btn btn-outline btn-sm" onclick="toggleNoteEmoji('iShiftNote')" style="flex-shrink:0;padding:0 8px;font-size:14px">😊</button></div></div>
+      </div>
+      <div id="mLeave" style="display:none">
+        <div class="lt-row">
+          <div class="lt-opt" data-t="annual" onclick="selLT('annual',this)"><i class="fas fa-umbrella-beach" style="color:var(--leave-annual)"></i>Yıllık İzin<small>Ücretli</small></div>
+          <div class="lt-opt" data-t="weekly" onclick="selLT('weekly',this)"><i class="fas fa-couch" style="color:var(--p)"></i>Hafta Tatili<small>Ücretli</small></div>
+          <div class="lt-opt" data-t="sick" onclick="selLT('sick',this)"><i class="fas fa-notes-medical" style="color:var(--leave-sick)"></i>Rapor<small>Hastalık</small></div>
+          <div class="lt-opt" data-t="unpaid" onclick="selLT('unpaid',this)"><i class="fas fa-ban" style="color:var(--r)"></i>Ücretsiz<small>Kesinti</small></div>
+          <!-- [FIX] FM İzni — yalnızca otCompMode==='leave' modunda görünür -->
+          <div class="lt-opt" data-t="ot_comp" id="ltOptOTComp" onclick="selLT('ot_comp',this)" style="display:none"><i class="fas fa-exchange-alt" style="color:var(--leave-ot-comp)"></i>FM İzni<small id="ltOptOTCompBal">Bakiyeden</small></div>
+        </div>
+        <div class="fg"><label>Not</label><div style="display:flex;gap:4px"><input type="text" id="iNote" placeholder="Opsiyonel..." maxlength="100" style="flex:1"><button type="button" class="btn btn-outline btn-sm" onclick="toggleNoteEmoji('iNote')" style="flex-shrink:0;padding:0 8px;font-size:14px">😊</button></div></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline btn-sm" id="mPaste" onclick="pasteAndClose()" style="display:none;margin-right:auto"><i class="fas fa-paste"></i>Yapıştır</button>
+      <button class="btn btn-outline btn-sm" id="mCopy" onclick="copyShift()" style="display:none" aria-label="Vardiyayı kopyala"><i class="fas fa-copy" aria-hidden="true"></i></button>
+      <button class="btn btn-danger btn-sm" id="mDel" onclick="delEntry()" style="display:none"><i class="fas fa-trash"></i>Sil</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeM()">İptal</button>
+      <button class="btn btn-primary btn-sm" onclick="saveEntry()"><i class="fas fa-check"></i>Kaydet</button>
+    </div>
+  </div>
+</div>
+<script defer src="app.js"></script>
+
+<!-- ===== eBORDRO MODULE START ===== -->
+<div id="eBordroModal" class="bordro-overlay" style="display:none" onclick="if(event.target===this)closeEBordroModal()">
+  <div class="bordro-box">
+    <div class="bordro-head">
+      <h2><i class="fas fa-file-invoice"></i> e-Bordro Oluştur</h2>
+      <button class="bordro-close" onclick="closeEBordroModal()" aria-label="Kapat">×</button>
+    </div>
+    <div class="bordro-body">
+
+      <!-- Dönem -->
+      <div class="bordro-section">
+        <div class="bordro-section-title"><i class="fas fa-calendar-alt"></i> Dönem</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="bordro-period-badge"><i class="fas fa-calendar"></i> <span id="eb-period">—</span></span>
+          <span style="font-size:11px;color:var(--t3)">Kazanç sayfasındaki aya göre</span>
+        </div>
+      </div>
+
+      <!-- Çalışan Bilgileri -->
+      <div class="bordro-section">
+        <div class="bordro-section-title"><i class="fas fa-user"></i> Çalışan Bilgileri</div>
+        <div class="bordro-form-grid">
+          <div class="bordro-form-group" style="grid-column:1/-1">
+            <label class="bordro-label" for="eb-empName">Ad Soyad</label>
+            <input id="eb-empName" class="bordro-input" type="text" placeholder="Çalışan adı soyadı">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-tcNo">TC Kimlik / SGK No (isteğe bağlı)</label>
+            <input id="eb-tcNo" class="bordro-input" type="text" placeholder="xxxxxxxxxx" maxlength="11">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-company">Şirket Adı (isteğe bağlı)</label>
+            <input id="eb-company" class="bordro-input" type="text" placeholder="Şirket adı">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-marital">Medeni Durum <small style="color:var(--t3);font-weight:400">(7349 sy. Kanun sonrası GV hesabını etkilemez)</small></label>
+            <select id="eb-marital" class="bordro-select" disabled style="opacity:.5;cursor:not-allowed">
+              <option value="single">Bekar (Hesaba dahil değil)</option>
+            </select>
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-children">Çocuk Sayısı <small style="color:var(--t3);font-weight:400">(2023 sonrası AGİ kaldırıldı, etkisiz)</small></label>
+            <select id="eb-children" class="bordro-select" disabled style="opacity:.5;cursor:not-allowed">
+              <option value="0">0 (Hesaba dahil değil)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hesaplama -->
+      <div class="bordro-section">
+        <div class="bordro-section-title"><i class="fas fa-calculator"></i> Hesaplama</div>
+        <div class="bordro-form-grid">
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-calcType">Hesaplama Türü</label>
+            <select id="eb-calcType" class="bordro-select">
+              <option value="net2gross">Net → Brüt (ters hesap)</option>
+              <option value="gross2net">Brüt → Net</option>
+            </select>
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" id="eb-amountLabel" for="eb-amount">Net Maaş (₺)</label>
+            <input id="eb-amount" class="bordro-input" type="number" min="0" step="0.01" placeholder="Örn: 35000">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-mealDays">Yemek Yardımı (Gün Sayısı)</label>
+            <input id="eb-mealDays" class="bordro-input" type="number" min="0" max="31" step="1" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-transportDays">Yol Yardımı (Gün Sayısı)</label>
+            <input id="eb-transportDays" class="bordro-input" type="number" min="0" max="31" step="1" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-sgkExemptEarn">SGK-Muaf Ek Kazanç (₺) <small style="color:var(--t3);font-weight:400">(alış-veriş/yemek kartı — vergiye tabi)</small></label>
+            <input id="eb-sgkExemptEarn" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group" style="grid-column:1/-1">
+            <label class="bordro-label" for="eb-priorYTD">Önceki Ay Kümülatif GV Matrahı (₺) — Ocak için 0 bırakın</label>
+            <input id="eb-priorYTD" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group" style="grid-column:1/-1">
+            <label class="bordro-label" for="eb-earningMode">Kazanç Kalemi Kaynağı</label>
+            <select id="eb-earningMode" class="bordro-select">
+              <option value="auto">Maaş + takvim ekleri</option>
+              <option value="manual">Kalem bazlı resmi bordro</option>
+              <option value="officialNetDaily">G-Net günlük resmi bordro</option>
+            </select>
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" id="eb-dailyGrossLabel" for="eb-dailyGross">Günlük Brüt (₺)</label>
+            <input id="eb-dailyGross" class="bordro-input" type="number" min="0" step="0.01" placeholder="Örn: 1930.31">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-normalHours">Normal Çalışma (saat)</label>
+            <input id="eb-normalHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="187.50" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-weeklyRestDays">Hafta Tatili (gün)</label>
+            <input id="eb-weeklyRestDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="5" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-publicHolidayDays">Genel Tatil (çalışılmayan gün)</label>
+            <input id="eb-publicHolidayDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="1" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-publicHolidayWorkDays">Genel Tatil Çalışması (gün)</label>
+            <input id="eb-publicHolidayWorkDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="1" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-manualOTHours">Fazla Mesai %50 (saat)</label>
+            <input id="eb-manualOTHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-manualOT125Hours">Fazla Çalışma %25 (saat)</label>
+            <input id="eb-manualOT125Hours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-manualNightHours">Gece Zammı Saati</label>
+            <input id="eb-manualNightHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- Ek hesap parametreleri -->
+      <div class="bordro-section">
+        <div class="bordro-section-title"><i class="fas fa-sliders-h"></i> Ek Parametreler &amp; Özel Kesintiler</div>
+        <div class="bordro-form-grid">
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-disability">Engellilik Derecesi <small style="color:var(--t3);font-weight:400">(GVK md.31)</small></label>
+            <select id="eb-disability" class="bordro-select">
+              <option value="0">Yok</option>
+              <option value="1">1. Derece (≥%80) — 9.900 ₺</option>
+              <option value="2">2. Derece (%60–79) — 5.700 ₺</option>
+              <option value="3">3. Derece (%40–59) — 2.400 ₺</option>
+            </select>
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-nightRate">Gece Zammı Oranı <small style="color:var(--t3);font-weight:400">(toplu sözleşme/işyeri; yasal zorunlu değil)</small></label>
+            <input id="eb-nightRate" class="bordro-input" type="number" min="0" max="1" step="0.05" placeholder="0.00" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-besRate">BES Kesintisi (%) <small style="color:var(--t3);font-weight:400">(otomatik katılım)</small></label>
+            <input id="eb-besRate" class="bordro-input" type="number" min="0" max="0.15" step="0.005" placeholder="0.03" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-icra">İcra Kesintisi (₺)</label>
+            <input id="eb-icra" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-avans">Avans Kesintisi (₺)</label>
+            <input id="eb-avans" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+          <div class="bordro-form-group">
+            <label class="bordro-label" for="eb-otherDeduct">Diğer Özel Kesinti (₺)</label>
+            <input id="eb-otherDeduct" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- Önizleme -->
+      <div class="bordro-section">
+        <div class="bordro-section-title"><i class="fas fa-eye"></i> Bordro Önizleme</div>
+        <div id="bordroPreview" class="bordro-preview">
+          <div class="bordro-empty"><i class="fas fa-info-circle"></i> Bilgileri doldurup "Hesapla &amp; Önizle" butonuna basın</div>
+        </div>
+      </div>
+
+    </div><!-- /.bordro-body -->
+    <div class="bordro-actions">
+      <button class="bordro-btn bordro-btn-primary" onclick="renderBordroPreview()"><i class="fas fa-calculator"></i> Hesapla &amp; Önizle</button>
+      <button class="bordro-btn bordro-btn-success" onclick="downloadBordroPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
+      <button class="bordro-btn bordro-btn-info" onclick="exportBordroJSON()"><i class="fas fa-code"></i> JSON</button>
+      <button class="bordro-btn bordro-btn-warn" onclick="exportBordroXML()"><i class="fas fa-file-code"></i> XML</button>
+      <button class="bordro-btn" style="background:var(--g);color:#fff" onclick="exportBordroCSV()"><i class="fas fa-file-csv"></i> CSV</button>
+    </div>
+  </div>
+</div>
+<!-- ===== eBORDRO MODULE END ===== -->
+
 </body>
 </html>
