@@ -418,8 +418,13 @@ function showConfirm(title, msg, cb) {
 }
 function confirmOk() {
   const co = $('confirmOverlay'); if (co) co.classList.remove('show');
-  if (typeof confirmCallback === 'function') confirmCallback();
+  /* [FIX] İç içe onay: callback'i çağırmadan ÖNCE paylaşılan değişkeni temizle.
+     Aksi halde callback yeni bir showConfirm açarsa (ör. tatilde çalışma onayı),
+     bu fonksiyonun sonundaki null ataması o yeni callback'i siliyordu → ikinci
+     "Evet"te kaydetme çalışmıyordu (hata yok ama kayıt olmuyordu). */
+  const cb = confirmCallback;
   confirmCallback = null;
+  if (typeof cb === 'function') cb();
 }
 function confirmCancel() {
   const co = $('confirmOverlay'); if (co) co.classList.remove('show');
