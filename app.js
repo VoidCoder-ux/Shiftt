@@ -3965,27 +3965,39 @@ function renderNetSummaryCard(u, y, m, d) {
   const payroll = estimatePayrollForMonth(u, y, m, d);
   if (!payroll || !payroll.dailyNetMode) return '';
   const W = safeNum(u.dailyNetWage, 0);
-  const holWorked = Math.max(0, safeNum(payroll.holPayDays, 0));
-  const paidDays = Math.max(0, safeNum(payroll.dailyNetPaidDays, 0));
-  const temelGun = Math.max(0, paidDays - holWorked);
-  const temelNet = _bordroRound2(W * temelGun);
-  const tatilNet = _bordroRound2(W * holWorked);
-  const baseNet = _bordroRound2(payroll.baseNet);
+  /* Gün-eşdeğeri ayrıştırması (hepsi net W/gün):
+     normal çalışma + hafta tatili (haftalık izin) + genel tatil (resmi tatil taban)
+     + genel tatilde çalışma (Md.47 ilave) + (yıllık/rapor/FM izni) = baseNet.
+     Fazla mesai ise net ilave (baz üstü). */
+  const wEq    = Math.max(0, safeNum(d.workDayEquiv, safeNum(d.wd, 0)));
+  const hdw    = Math.max(0, safeNum(d.hdw, 0));               // çalışılan resmi tatil günü
+  const holPay = Math.max(0, safeNum(payroll.holPayDays, safeNum(d.hpd, 0))); // Md.47 ilave
+  const phPaid = Math.max(0, safeNum(d.publicHolidayPaidDays, 0)); // çalışılmayan resmi tatil
+  const normalGun  = Math.max(0, _bordroRound2(wEq - hdw));    // resmi tatil hariç normal çalışma
+  const haftaGun   = Math.max(0, safeNum(d.weeklyRestDays, 0));
+  const genelGun   = Math.max(0, _bordroRound2(hdw + phPaid)); // tüm resmi tatil taban (çalışılan+izin)
+  const izinGun    = Math.max(0, _bordroRound2(safeNum(d.mau, 0) + safeNum(d.msd, 0) + safeNum(d.otcm, 0)));
+
+  const baseNet  = _bordroRound2(payroll.baseNet);
   const totalNet = _bordroRound2(payroll.net);
-  const premiumNet = Math.max(0, _bordroRound2(totalNet - baseNet));
+  const premiumNet = Math.max(0, _bordroRound2(totalNet - baseNet)); // fazla mesai (+ varsa diğer mesai) neti
   const fmHours = safeNum(d.oh, 0) + safeNum(d.oh125, 0);
+  const nd = (v) => _bordroRound2(v * W);
   const row = (label, val, sign = '', cls = '') => `<div class="esd"><span class="ek">${label}</span><span class="ev ${cls}">${sign}${fm(val)}</span></div>`;
   return `
   <div class="esb" style="border:1.5px solid var(--g)">
     <div class="esb-title" style="color:var(--g)"><i class="fas fa-wallet"></i>Net Özet — Günlük Yevmiye</div>
     <div class="esb-detail">
       <div class="esd"><span class="ek">Günlük net yevmiye</span><span class="ev">${fm(W)}</span></div>
-      ${row(`Temel net (${formatDayCount(temelGun)}g × ${fm(W)})`, temelNet)}
-      ${holWorked > 0 ? row(`Resmi tatilde çalışma (${formatDayCount(holWorked)}g × ${fm(W)})`, tatilNet, '+', 'pos') : ''}
-      ${premiumNet > 0 ? row(`Fazla mesai ilavesi${fmHours > 0 ? ` (${fmHours.toFixed(1)}s)` : ''}`, premiumNet, '+', 'pos') : ''}
+      ${normalGun > 0 ? row(`Normal Çalışma (${formatDayCount(normalGun)}g × ${fm(W)})`, nd(normalGun)) : ''}
+      ${haftaGun > 0 ? row(`Hafta Tatili — haftalık izin (${formatDayCount(haftaGun)}g × ${fm(W)})`, nd(haftaGun)) : ''}
+      ${genelGun > 0 ? row(`Genel Tatil — resmi tatil (${formatDayCount(genelGun)}g × ${fm(W)})`, nd(genelGun)) : ''}
+      ${izinGun > 0 ? row(`Yıllık/Ücretli İzin (${formatDayCount(izinGun)}g × ${fm(W)})`, nd(izinGun)) : ''}
+      ${holPay > 0 ? row(`Genel Tatilde Çalışma — Md.47 ilave (${formatDayCount(holPay)}g × ${fm(W)})`, nd(holPay), '+', 'pos') : ''}
+      ${premiumNet > 0 ? row(`Fazla Mesai ilavesi${fmHours > 0 ? ` (${fmHours.toFixed(1)}s)` : ''}`, premiumNet, '+', 'pos') : ''}
       <div class="esd total"><span class="ek"><i class="fas fa-money-bill-wave"></i><b>AYLIK NET</b></span><span class="ev">${fm(totalNet)}</span></div>
     </div>
-    <div style="font-size:10.5px;opacity:.7;margin-top:6px;line-height:1.4"><i class="fas fa-info-circle"></i> Günlük net × ödenen gün + fazla mesai/resmi tatil ilaveleri. Brüt detayı için <b>e-Bordro</b> oluşturun.</div>
+    <div style="font-size:10.5px;opacity:.7;margin-top:6px;line-height:1.4"><i class="fas fa-info-circle"></i> Günlük net × ödenen gün; resmi tatilde çalışma çift ücret (taban + Md.47 ilave), fazla mesai net ilave. Brüt detayı için <b>e-Bordro</b>.</div>
   </div>`;
 }
 
