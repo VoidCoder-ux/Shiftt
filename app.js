@@ -3898,11 +3898,17 @@ function renderEarn() {
   const _earnCfg = payrollCfg(y);
   const _minNetWage = computeNetFromGross(_earnCfg.minWageGross, 'single', 0, 0, m, undefined, y).net;
   const _belowMinWage = !e.isFutureMonth && e.totalEarning > 0 && e.totalEarning < _minNetWage;
+  /* [FIX] Tek motor: günlük-net modunda hero ve toplamlar estimatePayrollForMonth
+     (gerçek gün-bazlı net) ile gösterilir — Net Özet ile AYNI sayı. calcEarningForMonth
+     tam-ay tahmini ile çelişen eski Detaylı Hesaplama kartı bu modda gizlenir. */
+  const _payrollEst = estimatePayrollForMonth(u, y, m, d);
+  const _isDailyNet = u.salaryInputMode === 'dailyNet' && _payrollEst && Number.isFinite(_payrollEst.net);
+  const _displayNet = _isDailyNet ? _bordroRound2(_payrollEst.net) : e.totalEarning;
   ec.innerHTML = `
   ${_belowMinWage ? `<div class="hint" style="background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35);margin-bottom:8px"><i class="fas fa-exclamation-triangle" style="color:#fbbf24"></i><span style="color:#fbbf24">Hesaplanan kazanç (${fm(e.totalEarning)}) ${y} asgari ücret netinin (${fm(_minNetWage)}) altında. Eksik gün veya kısmi çalışma kontrolü yapın.</span></div>` : ''}
   <div class="earn-hero">
     <div class="sub">KAZANÇ — ${MTR[m].toUpperCase()} ${y}${e.isCurrentMonth ? ' — DEVAM EDİYOR' : ''}</div>
-    <div class="amt">${fm(e.totalEarning)}</div>
+    <div class="amt">${fm(_displayNet)}</div>
     <div class="info">${e.isFullMonth ? 'Tam ay' : e.isCurrentMonth ? (e.workedDays || 0) + 'g girildi' : e.absentDays > 0 ? e.absentDays + 'g eksik' : 'Tam'} • ${e.totalHours.toFixed(1)}s</div>
     <div style="margin-top:6px;font-size:10.5px;opacity:.75;line-height:1.4"><i class="fas fa-info-circle"></i> Tahmini net kazanç (panel ile aynı hesaplama). SGK/vergi dilimli kesin net için <b>e-Bordro</b> oluşturun.</div>
     ${prevE && !prevE.isFutureMonth && prevE.totalEarning > 0 ? `<div style="margin-top:8px"><span style="font-size:11px;opacity:.7">${diff>=0?'↑':'↓'} Önceki aya göre ${fm(Math.abs(diff))}</span></div>` : ''}
@@ -3913,7 +3919,7 @@ function renderEarn() {
     </div>
   </div>
   ${renderNetSummaryCard(u, y, m, d)}
-  <div class="esb">
+  ${_isDailyNet ? '' : `<div class="esb">
     <div class="esb-title"><i class="fas fa-calculator"></i>Detaylı Hesaplama</div>
     <div class="esb-grid">
       <div class="esb-item"><div class="esb-val" style="color:var(--p)">${e.workedDays}g</div><div class="esb-lbl">Çalışma</div></div>
@@ -3946,7 +3952,7 @@ function renderEarn() {
       ` : ''}
       <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>NET KAZANÇ</b></span><span class="ev">${fm(e.totalEarning)}</span></div>
     </div>
-  </div>
+  </div>`}
   ${renderDailyEarningsTracker(u, y, m, e)}
   ${dgHtml}
   ${renderEarnWeekly(u, y, m, d, e)}
@@ -3978,6 +3984,9 @@ function renderNetSummaryCard(u, y, m, d) {
   const haftaGun   = Math.max(0, safeNum(d.weeklyRestDays, 0));
   const genelGun   = Math.max(0, _bordroRound2(hdw + phPaid)); // tüm resmi tatil taban (çalışılan+izin)
   const izinGun    = Math.max(0, _bordroRound2(safeNum(d.mau, 0) + safeNum(d.msd, 0) + safeNum(d.otcm, 0)));
+  const unpaidGun  = Math.max(0, safeNum(d.ud, 0));               // ücretsiz izin
+  // Ayın işaretsiz (ödenmeyen) günleri: çalışma/tatil/izin olarak girilmemiş
+  const unaccounted = Math.max(0, _bordroRound2(safeNum(d.dim, 0) - (normalGun + haftaGun + genelGun + izinGun + unpaidGun)));
 
   const baseNet  = _bordroRound2(payroll.baseNet);
   const totalNet = _bordroRound2(payroll.net);
@@ -3998,6 +4007,7 @@ function renderNetSummaryCard(u, y, m, d) {
       ${premiumNet > 0 ? row(`Fazla Mesai ilavesi${fmHours > 0 ? ` (${fmHours.toFixed(1)}s)` : ''}`, premiumNet, '+', 'pos') : ''}
       <div class="esd total"><span class="ek"><i class="fas fa-money-bill-wave"></i><b>AYLIK NET</b></span><span class="ev">${fm(totalNet)}</span></div>
     </div>
+    ${unaccounted > 0 ? `<div style="font-size:11px;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(251,191,36,.12);color:#fbbf24;line-height:1.4"><i class="fas fa-exclamation-triangle"></i> Ayın <b>${formatDayCount(unaccounted)} günü işaretsiz</b> (çalışma/hafta tatili/izin girilmemiş) — bu günler ödenen güne katılmadı. Eksikse takvime <b>Hafta Tatili</b> veya çalışma olarak girin; net buna göre artar.</div>` : ''}
     <div style="font-size:10.5px;opacity:.7;margin-top:6px;line-height:1.4"><i class="fas fa-info-circle"></i> Günlük net × ödenen gün; resmi tatilde çalışma çift ücret (taban + Md.47 ilave), fazla mesai net ilave. Brüt detayı için <b>e-Bordro</b>.</div>
   </div>`;
 }
