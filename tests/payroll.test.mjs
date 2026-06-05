@@ -125,6 +125,14 @@ test('günlük-net bordro — Ocak 2026 mutabakatı (golden)', () => {
   assert.ok(near(r.stampTax, 170.76, 0.5), 'damga');
 });
 
+// === K6: SGK tavanı (SPEK üst sınırı) = asgari ücret × 7,5 (9× değil) ===
+test('SGK tavanı 7,5× asgari ücret — tavan üstü brütte SGK sınırlanır (2026)', () => {
+  const r = f.computeNetFromGross(300000, 'single', 0, 0, 4, undefined, 2026);
+  // 2026 tavan = 33030 × 7,5 = 247725 → SGK %14 = 34681,5 · işsizlik %1 = 2477,25
+  assert.ok(near(r.sgkDeduction, 34681.5, 0.5), `SGK ${r.sgkDeduction}`);
+  assert.ok(near(r.unemployDeduct, 2477.25, 0.5), `işsizlik ${r.unemployDeduct}`);
+});
+
 // === FM marjinal saatlik baz — asgari ücret istisnasından arınmış (Mayıs 2026) ===
 // 4857/41: fazla mesai, vergi istisnasıyla düşmüş "ortalama" değil, marjinal saat
 // ücreti üzerinden. Bir ek günün marjinal brütü / 7.5 = tatil saatlik brüt 285,54.
