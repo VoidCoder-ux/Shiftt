@@ -528,10 +528,13 @@ function holidayPayWeightForPart(part) {
 const _rhWarnedYears = new Set();
 function isH(ds) {
   const _p = parseDS(ds);
-  if (_p && _p.y > 2032 && !_rhWarnedYears.has(_p.y)) {
+  /* [FIX-DÜŞÜK] Dini tatil (Ramazan/Kurban) verisi 2024–2032 kapsamında.
+     Kapsam dışı YIL (öncesi de dahil) için bir kez uyar — eskiden yalnızca >2032
+     uyarılıyordu; <2024 geçmiş aylarda dini tatiller sessizce sayılmıyordu. */
+  if (_p && (_p.y < 2024 || _p.y > 2032) && !_rhWarnedYears.has(_p.y)) {
     _rhWarnedYears.add(_p.y);
-    console.warn(`[Shiftt] ${_p.y} yılı dini tatil verisi eksik (kapsam: 2024–2032). Ramazan/Kurban tatilleri bu yıl için hesaplanamıyor.`);
-    setTimeout(() => toast(`⚠️ ${_p.y} yılı için dini tatil (Ramazan/Kurban) tarihleri tanımlı değil — uygulama kapsamı 2032'ye kadar. Tatil prim hesapları eksik olabilir.`, 'warning'), 400);
+    console.warn(`[Shiftt] ${_p.y} yılı dini tatil verisi yok (kapsam: 2024–2032). Ramazan/Kurban tatilleri bu yıl için hesaplanamıyor.`);
+    setTimeout(() => toast(`⚠️ ${_p.y} yılı için dini tatil (Ramazan/Kurban) tarihleri tanımlı değil (kapsam 2024–2032). Tatil prim hesapları eksik olabilir.`, 'warning'), 400);
   }
   return getH(ds) !== null;
 }
@@ -6040,14 +6043,18 @@ function quickAddToday(presetKey) {
   const ds = dStr(new Date());
   if (u.shifts[ds] || u.leaves[ds]) { toast('Bugün için kayıt zaten var', 'warning'); return; }
   pushUndo('Hızlı ekle');
+  /* [FIX-DÜŞÜK] Tombstone temizliği diğer ekleme yollarıyla tutarlı: updatedAt
+     eski tombstone'dan kesin büyük, hem shift hem leave tombstone'u temizlenir. */
+  const _delTs = (u.deletedShifts && u.deletedShifts[ds]) || 0;
   u.shifts[ds] = {
     start: p.start,
     end: p.end,
     break: check.breakMinutes,
     note: '',
-    updatedAt: Date.now()
+    updatedAt: Math.max(Date.now(), _delTs + 1)
   };
   if (u.deletedShifts) delete u.deletedShifts[ds];
+  if (u.deletedLeaves) delete u.deletedLeaves[ds];
   invalidateMDCache(); saveLS(); renderActivePage();
   const hrs = check.netHours;
   toast(`Vardiya eklendi: ${p.start}–${p.end} (${hrs.toFixed(1)}s)`, 'success');
@@ -9220,6 +9227,13 @@ function findGrossFromNet(targetNet, maritalStatus, children, priorYTDMatrah, mo
   if (targetNet <= 0) return 0;
   // Üst sınır yüksek dilim için genişletildi (max %40 sonrası ve büyük rakamlar için)
   let lo = targetNet * 0.75, hi = Math.max(targetNet * 5, 1000000);
+  /* [FIX-DÜŞÜK] Üst sınır dinamik genişletme: net(hi) hâlâ targetNet'in altındaysa
+     (çok yüksek dilim/uç durum) hi'yi büyüt; aksi halde bisection yanlış yakınsayabilir. */
+  for (let g = 0; g < 12; g++) {
+    const _r = computeNetFromGross(hi, maritalStatus, children, priorYTDMatrah, monthIndex, opts, y);
+    if (Number.isFinite(_r.net) && _r.net >= targetNet) break;
+    hi *= 2;
+  }
   for (let i = 0; i < 200; i++) {
     const mid = (lo + hi) / 2;
     const { net } = computeNetFromGross(mid, maritalStatus, children, priorYTDMatrah, monthIndex, opts, y);
@@ -9274,10 +9288,7 @@ function openEBordroModal(y, m) {
     /* [FIX P2] Ocak ayında kümülatif vergi matrahı sıfırlanır (GVK md.107).
        Aralık YTD'yi yeni yıla taşıma yapmıyoruz. */
     const isJan = (m === 0);
-    const prevM = isJan ? null : (m - 1);
-    const prevY = isJan ? null : y;
-    const prevRec = (prevM === null) ? {} :
-      ((u.payrollChecks && u.payrollChecks[employeeMonthKey(prevY, prevM)]) || {});
+    // [FIX-DÜŞÜK] Kullanılmayan prevM/prevY/prevRec kaldırıldı (taze kümülatif kullanılıyor).
     const hasManualPrior = rec.priorYTDState === 'manual' && Number.isFinite(safeNum(rec.priorYTD, NaN));
     /* [FEAT OTO-ZİNCİR] Devreden GV matrahı OTOMATİK ve TUTARLI: manuel girilmişse
        onu, yoksa HER ZAMAN Ocak'tan bu aya takvim verisinden taze kümülatif toplam
@@ -9593,6 +9604,7 @@ function renderBordroPreview() {
     curRec.calculatedFinalNet = +finalNet.toFixed(2);
     curRec.calculatedTakeHomeNet = +finalNet.toFixed(2);
     curRec.calculatedPrivateDeductions = +privateDeducts.toFixed(2);
+    curRec.updatedAt = Date.now(); // [FIX-DÜŞÜK] merge doğru tarafı seçsin
     try { saveLS(); } catch(e) { /* yoksay */ }
   }
 
