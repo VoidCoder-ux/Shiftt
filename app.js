@@ -2150,6 +2150,7 @@ function loginAttempt(id) {
 function login(id) {
   S.cu = id;
   const u = cu(); if (!u) return;
+  _eBordroSession = {}; // [FIX O10] kullanıcı geçişinde önceki bordro oturumunu temizle
   u.lastLogin = new Date().toISOString();
   applyTheme(u.theme || 'default');
   saveLS();
@@ -2169,6 +2170,7 @@ function logout() {
   S.multiSelect = false;
   S.selectedDates = [];
   S.clipboard = null;
+  _eBordroSession = {}; // [FIX O10] çıkışta bordro oturumunu temizle
   undoStack.length = 0;
   invalidateMDCache();
   applyTheme('default');
@@ -2506,6 +2508,15 @@ function multiApplyLeave(t) {
       return;
     }
   }
+  if (t === 'weekly') {
+    /* [FIX O12] Resmi tatil günü zaten ödenen tatildir; üzerine hafta tatili yazmak
+       gün sınıflandırmasını bozar. Engelle. */
+    const blocked = S.selectedDates.filter(ds => isH(ds));
+    if (blocked.length) {
+      toast(`Resmi tatil gününe hafta tatili yazılamaz; o gün zaten resmi tatil (${blocked[0]})`, 'error');
+      return;
+    }
+  }
   if (t === 'ot_comp') {
     const required = S.selectedDates.length * 8;
     const bal = getOTBalance();
@@ -2823,6 +2834,9 @@ function getShiftType(sh) {
      Aksi halde 13:00–00:00 gibi akşam vardiyaları yanlışlıkla "Öğlen" oluyordu. */
   const _st = parseTime(sh.start), _en = parseTime(sh.end);
   const h = _st !== null ? Math.floor(_st / 60) : 0;
+  /* [FIX O14] Gece penceresinde (00:00–06:00) başlayan vardiya "Gece" sayılır;
+     eski kod 00:00–08:00 gibi gece vardiyalarını "Sabah" etiketliyordu. */
+  if (h < 6) return { key:'night', name:'Gece', icon:'🌙' };
   const endsLate = (_en === 0) || (_en !== null && _en >= 20 * 60);
   if (endsLate && h >= 12) return { key:'evening_custom', name:'Akşam', icon:'🌙' };
   if (h < 12) return { key:'morning_custom', name:'Sabah', icon:'🌅' };
@@ -3233,7 +3247,10 @@ function saveEntry() {
       if (u.shifts[S.sd]) {
         toast('Bu gün için tek vardiya modeli kullanılıyor; mevcut vardiya güncellendi.', 'warning');
       }
-      u.shifts[S.sd] = { start:st, end:en, break:br, note, updatedAt:Date.now() };
+      /* [FIX O8] updatedAt, varsa eski tombstone'dan KESİN büyük olsun; aksi halde
+         aynı-ms sil+yeniden ekle senaryosunda merge yeni vardiyayı silinmiş sayardı. */
+      const _delTs = (u.deletedShifts && u.deletedShifts[S.sd]) || 0;
+      u.shifts[S.sd] = { start:st, end:en, break:br, note, updatedAt:Math.max(Date.now(), _delTs + 1) };
       if (u.deletedShifts) delete u.deletedShifts[S.sd];
       if (u.leaves[S.sd]) { if (!u.deletedLeaves) u.deletedLeaves = {}; u.deletedLeaves[S.sd] = Date.now(); }
       delete u.leaves[S.sd];
@@ -3265,8 +3282,11 @@ function saveEntry() {
     // Rest time check
     const restWarn = checkRestTime(S.sd, st);
     if (restWarn) {
-      showConfirm('Dinlenme Uyarısı',
-        `Önceki vardiya (${restWarn.prevDate}) ${restWarn.prevEnd}'de bitti. Dinlenme: ${restWarn.restHours}s (min ${restWarn.required}s). Devam?`,
+      const _rtTitle = restWarn.overlap ? '⚠️ Vardiya Çakışması' : 'Dinlenme Uyarısı';
+      const _rtMsg = restWarn.overlap
+        ? `Bu vardiya, önceki (${restWarn.prevDate} — ${restWarn.prevEnd}'de biten gece) vardiyayla ÇAKIŞIYOR. Saatler üst üste biniyor. Yine de eklensin mi?`
+        : `Önceki vardiya (${restWarn.prevDate}) ${restWarn.prevEnd}'de bitti. Dinlenme: ${restWarn.restHours}s (min ${restWarn.required}s). Devam?`;
+      showConfirm(_rtTitle, _rtMsg,
         () => {
           if (checkHolidayWork(S.sd)) {
             showConfirm('Tatil Vardiyası', `Bu gün resmi tatil! Tatilde çalışma kaydı eklenecek. Devam?`, doSave);
@@ -4472,9 +4492,15 @@ function _monthGVMatrah(u, y, m, cfg, priorYTDForGross) {
      üst dilimdeki çalışanda matrahı düşük gösteriyordu. */
   const payroll = estimatePayrollForMonth(u, y, m, undefined, priorYTDForGross);
   if (payroll) return Math.max(0, safeNum(payroll.gvMatrah, 0));
-  /* Fallback: sabit-net çalışanın brütü yıl içinde dilimler yükseldikçe artar.
-     Brütü o ana dek birikmiş matrah (priorYTDForGross) ile bul; 0 verilirse
-     her ay Ocak gibi hesaplanıp yüksek dilim çalışanlarında matrah düşük çıkardı. */
+  /* [FIX O2] Ayda hiç çalışma/izin yoksa o ayı 0 say — tam ay varsayma. İşe sonradan
+     giren veya aylar arası boşluğu olan çalışanda kümülatif matrah şişmesin. */
+  try {
+    const _dd = getMD(y, m);
+    const _active = (_dd.th > 0) || (_dd.wr > 0) || (_dd.mau > 0) || (_dd.msd > 0) || (_dd.wd > 0) || (_dd.ud > 0);
+    if (!_active) return 0;
+  } catch (e) {}
+  /* Kısmi/eksik veri varsa: sabit-net çalışanın brütü dilimler yükseldikçe artar;
+     brütü o ana dek birikmiş matrah (priorYTDForGross) ile bul. */
   const priorYTD = Math.max(0, safeNum(priorYTDForGross, 0));
   const fixedGross = getMonthlyGross(u, 'single', 0, priorYTD, m, undefined, y);
   const sgkBase = Math.min(fixedGross, cfg.sgkCeiling);
@@ -6514,20 +6540,25 @@ function checkRestTime(ds, startTime) {
   if (prevEndMin === null || curStartMin === null || prevStartMin === null) return null;
 
   // Gece vardiyası tespiti: bitiş < giriş → ertesi güne taşıyor
-  let restMinutes;
+  let restMinutes, overlap = false;
   if (prevEndMin < prevStartMin) {
     // Gece vardiyası — bitiş saati bugüne taşıyor (ör: 22:00-06:00)
-    // Gerçek bitiş bugün prevEndMin'de, bugün başlama curStartMin'de
-    restMinutes = curStartMin < prevEndMin ? 0 : curStartMin - prevEndMin;
+    // [FIX O13] Bugünkü başlangıç, önceki vardiyanın bugüne taşan bitişinden ÖNCE ise
+    // vardiyalar çakışıyor (negatif dinlenme) — "0s" diye geçiştirilmemeli.
+    restMinutes = curStartMin - prevEndMin;
+    if (curStartMin < prevEndMin) overlap = true;
   } else {
     // Normal vardiya — bitiş dün, başlama bugün
     restMinutes = (1440 - prevEndMin) + curStartMin;
   }
 
-  if (restMinutes < 0) restMinutes += 1440;
+  if (!overlap && restMinutes < 0) restMinutes += 1440;
   const restHours = restMinutes / 60;
+  if (overlap) {
+    return { restHours: restHours.toFixed(1), required: MIN_REST_HOURS, prevEnd: prevShift.end, prevDate: prevDs, overlap: true };
+  }
   if (restHours < MIN_REST_HOURS) {
-    return { restHours: restHours.toFixed(1), required: MIN_REST_HOURS, prevEnd: prevShift.end, prevDate: prevDs };
+    return { restHours: restHours.toFixed(1), required: MIN_REST_HOURS, prevEnd: prevShift.end, prevDate: prevDs, overlap: false };
   }
   return null;
 }
@@ -7609,7 +7640,9 @@ function deepMergeUser(local, cloud) {
 
   const localPT = safeTimestamp(merged.profileUpdatedAt, 0);
   const cloudPT = safeTimestamp(cloud.profileUpdatedAt, 0);
-  if (cloudPT >= localPT) {
+  /* [FIX O7] Eşitlikte YEREL korunur (settings/notes ile aynı politika) — eski `>=`
+     eşit/legacy(0) zaman damgasında offline profil düzenlemesini sessizce eziyordu. */
+  if (cloudPT > localPT) {
     if (cloud.name !== undefined) merged.name = cloud.name;
     if (cloud.startDate !== undefined) merged.startDate = cloud.startDate;
     if (cloud.birthDate !== undefined) merged.birthDate = cloud.birthDate;
@@ -7845,7 +7878,10 @@ window.addEventListener('storage', function(e) {
   }
   if (e.key !== 'st_data' || e.newValue == null) return;
   invalidateMDCache();
+  _eBordroSession = {}; // [FIX O11] başka sekmedeki değişiklik sonrası bordro oturumunu tazele
   try { loadLS(); } catch (err) { console.warn('Sekmeler arası senkron yükleme hatası:', err); }
+  /* [FIX O11] Başka sekmede aktif kullanıcı silinmiş olabilir → S.cu dangling kalmasın. */
+  if (S.cu && !S.u[S.cu]) { try { logout(); return; } catch (e2) {} }
   if (cu()) { renderAll(); updTop(); }
 });
 
@@ -9563,7 +9599,7 @@ function renderBordroPreview() {
   // Sonucu oturuma kaydet (PDF/JSON/XML için)
   _eBordroSession.result = {
     ...res, mealTotal, transportTotal, yasalNet, finalNet, marital, children, priorYTD, y, m,
-    userId:S.cu,
+    userId:S.cu, calcType,
     earningMode, baseGross, normalGross, weeklyRestGross, publicHolidayGross, publicHolidayWorkGross,
     normalHours: isManualEarnings ? manualNormalHours : (d.rh || 0), weeklyRestDays: manualWeeklyRestDays, publicHolidayDays: isManualEarnings ? manualPublicHolidayDays : (d.publicHolidayPaidDays || 0),
     otGross, ot125Gross, nightGross, holGross, weekendGross, sgkExemptEarn, totalGross,
@@ -9993,7 +10029,7 @@ function exportBordroCSV() {
     ['Toplam Kesinti', fv(_totalDeducts), ''],
     ['', '', ''],
     ['NET ÖDEMELER', '', ''],
-    ['Yasal Net', fv(r.net || 0), 'Resmi bordro neti'],
+    ['Yasal Net', fv((r.yasalNet != null ? r.yasalNet : r.net) || 0), 'Resmi bordro neti (yemek/yol dahil)'],
     ['Ele Geçen Net', fv(r.finalNet || r.net || 0), ''],
     ['', '', ''],
     ['Devreden GV Matrahı', fv(r.priorYTD || 0), 'Önceki aylardan kümülatif'],
