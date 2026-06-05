@@ -5027,7 +5027,11 @@ function clearWeeklyTemplate() {
 /* ============================================================
    DATA
 ============================================================ */
-function saveLS() {
+function saveLS(opts) {
+  /* [FIX K3] Buluttan gelen veriyi kaydederken geri push'u açık parametreyle engelle.
+     Eski global `skipNextPush` bayrağı, araya giren başka saveLS çağrısında yanlış
+     tüketilip ya buluttan geleni geri push ediyor ya da yerel düzenlemeyi atlıyordu. */
+  const _noPush = !!(opts && opts.noPush);
   try {
     const d = JSON.stringify({ users:S.u, deletedUsers:S.deletedUsers || {}, version:DATA_VERSION, nextUid:S.nextUid });
     /* [FIX BUG-09] d.length karakter sayısı, localStorage UTF-16 ~5MB = ~2.5M char.
@@ -5035,10 +5039,7 @@ function saveLS() {
     if (d.length > 2 * 1024 * 1024) toast('Veri büyük, yedekleme önerilir', 'warning');
     localStorage.setItem('st_data', d);
     // Cloud'dan gelen veri ise geri push etme
-    if (skipNextPush) {
-      skipNextPush = false;
-      return;
-    }
+    if (_noPush) return;
     // Buluta da gönder (debounced)
     debouncedPush();
   } catch(e) {
@@ -5721,7 +5722,12 @@ function confirmNewUser() {
   const nm = $('newUserName'); if (!nm) return;
   const name = (nm.value || '').trim();
   if (!name) { toast('İsim boş olamaz', 'error'); return; }
-  const id = S.nextUid++;
+  /* [FIX K4] Çakışmaya dayanıklı SAYISAL kimlik (parseInt-uyumlu): zaman damgası×100
+     + rastgele. Sıralı nextUid, iki cihaz çevrimdışı kullanıcı eklediğinde aynı id'yi
+     üretip senkronda iki kişinin verisini tek profilde birleştiriyordu. */
+  let id = Date.now() * 100 + Math.floor(Math.random() * 100);
+  while (S.u[id]) id++; // teorik çakışmaya karşı
+  S.nextUid = Math.max(safeInt(S.nextUid, 3), 3); // legacy sayaç korunur
   S.u[id] = mkUser(id);
   S.u[id].name = name;
   S.u[id].profileUpdatedAt = Date.now();
@@ -6996,7 +7002,7 @@ if (typeof FIREBASE_CONFIG === 'undefined') {
 
 let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
 let syncInProgress = false, lastSyncTime = 0;
-let skipNextPush = false; // cloud'dan gelen veriyi geri push etmeyi engeller
+// [FIX K3] global skipNextPush kaldırıldı — saveLS({noPush:true}) kullanılıyor
 const SYNC_DEBOUNCE = 3000; // 3 saniye debounce
 const SYNC_TIMEOUT = 15000; // 15 saniye timeout
 
@@ -7129,8 +7135,18 @@ function firebaseRegister() {
             .catch(e => console.warn('E-posta doğrulama gönderilemedi:', e));
         }
       } catch (e) { console.warn('sendEmailVerification hatası:', e); }
-      // İlk kayıtta mevcut lokal veriyi buluta yükle
-      try { const existing = localStorage.getItem('st_data'); if (existing) pushToCloud(); } catch(e) { console.warn('İlk kayıt push hatası:', e); }
+      /* [FIX K2] Yerel veriyi yeni hesaba YALNIZCA bu cihazda daha önce başka hesap
+         yoksa taşı (gerçek "ilk kayıt" / çevrimdışı kullanım). Aksi halde yereldeki
+         veri önceki kullanıcıya aittir → yeni hesaba push etme (enterAppAfterAuth
+         farklı uid tespit edip temizleyecek). */
+      try {
+        const _lastUid = localStorage.getItem('st_last_uid');
+        const _newUid = cred && cred.user && cred.user.uid;
+        if (!_lastUid && localStorage.getItem('st_data')) pushToCloud();
+        else if (_lastUid && _newUid && _lastUid !== _newUid) {
+          console.warn('Kayıt: cihazda farklı hesap verisi var, yeni hesaba taşınmadı.');
+        }
+      } catch(e) { console.warn('İlk kayıt push hatası:', e); }
       // Direkt uygulamaya geç
       enterAppAfterAuth();
     })
@@ -7234,6 +7250,19 @@ function firebaseLogout() {
 function enterAppAfterAuth() {
   const as = $('authScreen'); if (as) as.style.display = 'none';
   const ls = $('loginScreen'); if (ls) ls.style.display = 'flex';
+  /* [FIX K1] Paylaşımlı cihaz veri sızması: oturum açan hesap, bu cihazda en son
+     giriş yapandan FARKLI ise, yereldeki ÖNCEKİ hesabın verisini yeni hesaba
+     taşıma/merge etme — temizle, yalnızca buluttan çek. Aynı hesap (sayfa yenileme)
+     ise yerel korunur ve normal merge yapılır. */
+  try {
+    const _uid = fbUser && fbUser.uid;
+    const _lastUid = localStorage.getItem('st_last_uid');
+    if (_uid && _lastUid && _lastUid !== _uid) {
+      wipeLocalSensitiveData(); // st_data siler, S.u={} — sonraki loadLS taze varsayılan verir
+      toast('Farklı hesaba giriş yapıldı; bu cihazdaki önceki veriler bu hesaba taşınmadı.', 'info');
+    }
+    if (_uid) localStorage.setItem('st_last_uid', _uid);
+  } catch (e) { console.warn('Hesap geçişi koruması hatası:', e); }
   loadLS();
   applyTheme('default');
   updLogin();
@@ -7624,8 +7653,7 @@ function pullFromCloud(callback) {
           });
 
           // saveLS ama push etme (cloud'dan aldık, geri göndermeye gerek yok)
-          skipNextPush = true;
-          saveLS();
+          saveLS({ noPush: true });
           invalidateMDCache();
         }
         // Bordro override'larını (vergi/SGK parametreleri) da birleştir
@@ -7701,8 +7729,7 @@ function startRealtimeSync() {
 
         // Cloud'dan gelen veriyi geri push etme — bekleyen timer'ı da iptal et
         if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
-        skipNextPush = true;
-        saveLS();
+        saveLS({ noPush: true });
         invalidateMDCache();
         if (cu()) { renderAll(); updTop(); }
         setSyncState('online');
