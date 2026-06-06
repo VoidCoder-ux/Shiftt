@@ -7440,12 +7440,14 @@ function pushToCloud(callback) {
   }, SYNC_TIMEOUT);
 
   const docRef = fbDb.collection('userData').doc(fbUser.uid);
-  let mergedDeletedUsers = null;
+  let mergedDeletedUsers = null, _cloudUsersSnap = null, _cloudNextUid = 0;
   fbDb.runTransaction(async tx => {
     const snap = await tx.get(docRef);
     const cloud = snap.exists ? (snap.data() || {}) : {};
     const deletedUsers = mergeDeletedUsers(S.deletedUsers || {}, cloud.deletedUsers || {});
     mergedDeletedUsers = deletedUsers;
+    _cloudUsersSnap = cloud.users || {};
+    _cloudNextUid = safeInt(cloud.nextUid, 0);
     const usersForCloud = mergeUsersMap(cloneUsersForCloud(S.u), cloud.users || {}, deletedUsers);
     const data = {
       users: usersForCloud,
@@ -7464,6 +7466,25 @@ function pushToCloud(callback) {
         S.deletedUsers = mergedDeletedUsers;
         Object.keys(S.deletedUsers).forEach(k => { delete S.u[k]; });
       }
+      /* [FIX O9] Transaction'da buluttaki (başka cihazın yazmış olabileceği) veriyi
+         BELLEĞE de uygula — aksi halde push sonrası S.u eski kalıp bir sonraki push'ta
+         güncel bulut verisini eski yerelle ezebiliyordu. Yerel öncelikli merge (url
+         gibi yerel alanlar korunur). UI churn'ü önlemek için renderAll yapmıyoruz;
+         ekran sonraki doğal render veya realtime onSnapshot ile güncellenir. */
+      try {
+        if (_cloudUsersSnap) {
+          const du = S.deletedUsers || {};
+          const keys = new Set([...Object.keys(S.u || {}), ...Object.keys(_cloudUsersSnap)]);
+          keys.forEach(k => {
+            if (du[k]) { delete S.u[k]; return; }
+            if (isNaN(parseInt(k))) return;
+            S.u[k] = deepMergeUser(S.u[k] || null, _cloudUsersSnap[k] || null);
+          });
+          S.nextUid = Math.max(safeInt(S.nextUid, 0), _cloudNextUid);
+          invalidateMDCache();
+          saveLS({ noPush: true });
+        }
+      } catch (e) { console.warn('Push sonrası bellek tazeleme hatası:', e); }
       lastSyncTime = Date.now();
       setSyncState('online');
       syncInProgress = false;
@@ -9175,15 +9196,34 @@ function _bordroMinWageTaxableBase(gross, y) {
   return _bordroRound2(Math.max(0, exemptGross - sgkDeduction - unemployDeduct));
 }
 
+/* [FIX O3] Bir aya ait geçerli brüt asgari ücret. Yıl içi asgari ücret zammı
+   varsa cfg.minWageGrossByMonth[ay] (12 elemanlı) kullanılır; yoksa yıllık tek
+   değer. Böylece istisna, ayların gerçek asgari ücretine göre kümüle edilir. */
+function _bordroMinWageGrossForMonth(cfg, monthIndex) {
+  const arr = cfg && cfg.minWageGrossByMonth;
+  if (Array.isArray(arr)) {
+    const v = safeNum(arr[Math.max(0, Math.min(11, monthIndex))], 0);
+    if (v > 0) return v;
+  }
+  return cfg.minWageGross;
+}
+
 // 7349 sayılı Kanun sonrası: AGİ yok; asgari ücrete isabet eden GV/DV istisnası uygulanır.
 function _bordroCalcMinWageTaxExemption(gross, thisMonthRawGV, monthIndex, y) {
   const cfg = payrollCfg(y);
   const safeMonth = Math.max(0, Math.min(11, safeInt(monthIndex, 0)));
-  const minTaxable = _bordroMinWageTaxableBase(cfg.minWageGross, y);
-  const priorMinYTD = minTaxable * safeMonth;
-  const minWageGV = _bordroRound2(_bordroCalcGV(priorMinYTD + minTaxable, y) - _bordroCalcGV(priorMinYTD, y));
+  /* [FIX O3] Kümülatif asgari ücret matrahını her ayın KENDİ asgari ücretiyle topla
+     (yıl içi zam desteği). Tek asgari ücretli yıllarda sonuç eskiyle birebir aynı
+     (minTaxable × ay). Eksik/kısmi ay istisnayı düşürmez — istisna aylıktır. */
+  let priorMinYTD = 0;
+  for (let pm = 0; pm < safeMonth; pm++) {
+    priorMinYTD += _bordroMinWageTaxableBase(_bordroMinWageGrossForMonth(cfg, pm), y);
+  }
+  const thisMinWageGross = _bordroMinWageGrossForMonth(cfg, safeMonth);
+  const thisMinTaxable = _bordroMinWageTaxableBase(thisMinWageGross, y);
+  const minWageGV = _bordroRound2(_bordroCalcGV(priorMinYTD + thisMinTaxable, y) - _bordroCalcGV(priorMinYTD, y));
   const incomeTaxExemption = _bordroRound2(Math.min(Math.max(0, thisMonthRawGV || 0), Math.max(0, minWageGV)));
-  const stampTaxExemption = _bordroRound2(Math.min(Math.max(0, gross || 0), cfg.minWageGross) * cfg.stampTaxRate);
+  const stampTaxExemption = _bordroRound2(Math.min(Math.max(0, gross || 0), thisMinWageGross) * cfg.stampTaxRate);
   return { incomeTaxExemption, stampTaxExemption };
 }
 
