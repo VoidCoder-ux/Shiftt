@@ -4017,8 +4017,16 @@ function renderNetSummaryCard(u, y, m, d) {
   const genelGun   = Math.max(0, _bordroRound2(hdw + phPaid)); // tüm resmi tatil taban (çalışılan+izin)
   const izinGun    = Math.max(0, _bordroRound2(safeNum(d.mau, 0) + safeNum(d.msd, 0) + safeNum(d.otcm, 0)));
   const unpaidGun  = Math.max(0, safeNum(d.ud, 0));               // ücretsiz izin
-  // Ayın işaretsiz (ödenmeyen) günleri: çalışma/tatil/izin olarak girilmemiş
-  const unaccounted = Math.max(0, _bordroRound2(safeNum(d.dim, 0) - (normalGun + haftaGun + genelGun + izinGun + unpaidGun)));
+  /* [FIX] İşaretsiz günleri tek tek listele: vardiya VE izin olmayan takvim günleri.
+     Eski hâl yalnızca SAYI gösteriyordu; kullanıcı hangi günün eksik olduğunu
+     göremiyor, yanlış günü girip "hâlâ eksik" sanıyordu. Sayım da bu listeden gelir. */
+  const unmarkedDays = [];
+  const _dimN = Math.max(0, safeInt(d.dim, 0));
+  for (let _dd = 1; _dd <= _dimN; _dd++) {
+    const _ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(_dd).padStart(2, '0')}`;
+    if (!(u.shifts && u.shifts[_ds]) && !(u.leaves && u.leaves[_ds])) unmarkedDays.push(_dd);
+  }
+  const unaccounted = unmarkedDays.length;
 
   const baseNet  = _bordroRound2(payroll.baseNet);
   const totalNet = _bordroRound2(payroll.net);
@@ -4039,7 +4047,7 @@ function renderNetSummaryCard(u, y, m, d) {
       ${premiumNet > 0 ? row(`Fazla Mesai ilavesi${fmHours > 0 ? ` (${fmHours.toFixed(1)}s)` : ''}`, premiumNet, '+', 'pos') : ''}
       <div class="esd total"><span class="ek"><i class="fas fa-money-bill-wave"></i><b>AYLIK NET</b></span><span class="ev">${fm(totalNet)}</span></div>
     </div>
-    ${unaccounted > 0 ? `<div style="font-size:11px;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(251,191,36,.12);color:#fbbf24;line-height:1.4"><i class="fas fa-exclamation-triangle"></i> Ayın <b>${formatDayCount(unaccounted)} günü işaretsiz</b> (çalışma/hafta tatili/izin girilmemiş) — bu günler ödenen güne katılmadı. Eksikse takvime <b>Hafta Tatili</b> veya çalışma olarak girin; net buna göre artar.</div>` : ''}
+    ${unaccounted > 0 ? `<div style="font-size:11px;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(251,191,36,.12);color:#fbbf24;line-height:1.4"><i class="fas fa-exclamation-triangle"></i> Ayın <b>${unaccounted} günü işaretsiz</b> (çalışma/hafta tatili/izin girilmemiş): <b>${unmarkedDays.join(', ')} ${MTR[m]}</b>. Bu günler ödenen güne katılmadı — eksikse takvimde işaretleyin, net buna göre artar.</div>` : ''}
     <div style="font-size:10.5px;opacity:.7;margin-top:6px;line-height:1.4"><i class="fas fa-info-circle"></i> Günlük net × ödenen gün; resmi tatilde çalışma çift ücret (taban + Md.47 ilave), fazla mesai net ilave. Brüt detayı için <b>e-Bordro</b>.</div>
   </div>`;
 }
