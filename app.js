@@ -117,6 +117,7 @@ function mkUser(i) {
 }
 
 let confirmCallback = null;
+let confirmCancelCb = null; // [FIX-DÜŞÜK] onay iptal edildiğinde çağrılır (opsiyonel)
 let mdCache = {};
 let _payrollChainGuard = false; // [FIX] estimatePayrollForMonth ↔ estimateCumulativeMatrah sonsuz döngü koruması
 let yearlyOTCache = {};
@@ -411,10 +412,11 @@ function toast(msg, type = 'info', duration = 2500) {
   }, Math.max(800, safeNum(duration, 2500)));
 }
 
-function showConfirm(title, msg, cb) {
+function showConfirm(title, msg, cb, onCancel) {
   setTxt('confirmTitle', title);
   setTxt('confirmMsg', msg);
   confirmCallback = cb;
+  confirmCancelCb = (typeof onCancel === 'function') ? onCancel : null;
   const co = $('confirmOverlay'); if (co) co.classList.add('show');
 }
 function confirmOk() {
@@ -425,11 +427,17 @@ function confirmOk() {
      "Evet"te kaydetme çalışmıyordu (hata yok ama kayıt olmuyordu). */
   const cb = confirmCallback;
   confirmCallback = null;
+  confirmCancelCb = null;
   if (typeof cb === 'function') cb();
 }
 function confirmCancel() {
   const co = $('confirmOverlay'); if (co) co.classList.remove('show');
+  /* [FIX-DÜŞÜK] İptal callback'i (varsa) çağrılır — ör. vardiya kaydı iptal edildi
+     bildirimi. Önce temizle ki iç içe akışta yanlış tüketilmesin. */
+  const ccb = confirmCancelCb;
   confirmCallback = null;
+  confirmCancelCb = null;
+  if (typeof ccb === 'function') ccb();
 }
 
 function getH(ds) {
@@ -949,6 +957,11 @@ function getMD(y, m, opts = {}) {
         if (isH(startDs)) dailyHolOT += over;
       }
     });
+    /* [NOT-DÜŞÜK #1] %25 "fazla sürelerle çalışma" yasada HAFTALIK bir kavramdır
+       (sözleşme saati..45/hafta arası). 'daily75' opt-in modunda günlük FM ödenirken
+       bu band, haftalık %25 havuzuyla (weeklyOh125) sınırlanır — yani günlük FM'in
+       en çok haftalık %25 bandı kadarı %25, kalanı %50 sayılır. Bu kasıtlı ve
+       yasayla tutarlı; standart 'weekly45' modu (varsayılan) etkilenmez. */
     const dailyOT125 = Math.min(dailyOT, weeklyOh125);
     const dailyOT50 = Math.max(0, dailyOT - dailyOT125);
     if (otCalcMode === 'daily75') {
@@ -3282,6 +3295,9 @@ function saveEntry() {
       saveLS(); closeM(); renderActivePage();
     };
 
+    // [FIX-DÜŞÜK] Onay iptal edilirse kullanıcıya kaydın yapılmadığını bildir.
+    const _cancelToast = () => toast('Vardiya kaydedilmedi (iptal edildi)', 'info');
+
     // Rest time check
     const restWarn = checkRestTime(S.sd, st);
     if (restWarn) {
@@ -3292,9 +3308,10 @@ function saveEntry() {
       showConfirm(_rtTitle, _rtMsg,
         () => {
           if (checkHolidayWork(S.sd)) {
-            showConfirm('Tatil Vardiyası', `Bu gün resmi tatil! Tatilde çalışma kaydı eklenecek. Devam?`, doSave);
+            showConfirm('Tatil Vardiyası', `Bu gün resmi tatil! Tatilde çalışma kaydı eklenecek. Devam?`, doSave, _cancelToast);
           } else { doSave(); }
-        }
+        },
+        _cancelToast
       );
       return;
     }
@@ -3304,15 +3321,15 @@ function saveEntry() {
       const existingLeaveType = u.leaves[S.sd].type || 'izin';
       const proceedAfterLeaveOverwrite = () => {
         if (checkHolidayWork(S.sd)) {
-          showConfirm('Tatil Vardiyası', `Bu gün resmi tatil! Tatilde çalışma kaydı eklenecek. Devam?`, doSave);
+          showConfirm('Tatil Vardiyası', `Bu gün resmi tatil! Tatilde çalışma kaydı eklenecek. Devam?`, doSave, _cancelToast);
         } else { doSave(); }
       };
-      showConfirm('İzin Kaydı Silinecek', `Bu gün için "${existingLeaveType}" izin kaydı var. Vardiya eklenirse izin silinecek. Devam?`, proceedAfterLeaveOverwrite);
+      showConfirm('İzin Kaydı Silinecek', `Bu gün için "${existingLeaveType}" izin kaydı var. Vardiya eklenirse izin silinecek. Devam?`, proceedAfterLeaveOverwrite, _cancelToast);
       return;
     }
 
     if (checkHolidayWork(S.sd)) {
-      showConfirm('Tatil Vardiyası', `Bu gün resmi tatil! Tatilde çalışma kaydı eklenecek. Devam?`, doSave);
+      showConfirm('Tatil Vardiyası', `Bu gün resmi tatil! Tatilde çalışma kaydı eklenecek. Devam?`, doSave, _cancelToast);
       return;
     }
 
@@ -4144,6 +4161,10 @@ function estimatePayrollForMonth(u, y, m, d, priorYTDOverride) {
        üzerinden hesaplanır; vergi istisnası ücret oranını düşürmez. Bir ek günün
        marjinal brütü (W×31 − W×30) / günlük standart saat = tatil saatlik brütü. */
     const _dsh = cfg.dailyStandardHours || 7.5;
+    /* [NOT-DÜŞÜK #2] Marjinal saatlik, "30→31. gün" noktasından alınır. Çok yüksek
+       FM hacminde (kümülatif dilim üst sınıra çok yakınken) FM hafifçe düşük tahmin
+       edilebilir; tipik aylarda (gerçek bordro 19s FM) etki yok. Daha yüksek kesinlik
+       için FM saatleri toplam brüte eklenip tek computeNetFromGross ile netlenebilir. */
     const marginalDayGross = _bordroRound2(findGrossFromNet(W * 31, marital, children, priorYTD, m, undefined, y) - fullGross);
     hrGross = marginalDayGross > 0 ? _bordroRound2(marginalDayGross / _dsh)
             : (fullGross > 0 && payrollHourBasis > 0 ? _bordroRound2(fullGross / payrollHourBasis) : 0);
