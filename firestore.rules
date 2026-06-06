@@ -2,8 +2,16 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Kullanıcı yalnızca kendi userData/{uid} dokümanına ve alt koleksiyonlarına erişir.
     match /userData/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      // [FIX-DÜŞÜK] Temel doğrulama: kimlik + makul boyut sınırı (üst-seviye anahtar
+      // sayısı). Gerçek dokümanda ~10 üst anahtar var; 100 sınırı normal yazmayı
+      // engellemez ama bozuk/şişkin yazımı sınırlar. Şema doğrulaması bilinçli olarak
+      // gevşek tutuldu (istemci-güvenli, kullanıcıya izole).
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().size() < 100;
 
       // Ara-yol: app kullanıcısı metadata dokümanı
       match /users/{appUserId} {

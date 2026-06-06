@@ -1,6 +1,10 @@
 importScripts('./version.js'); // APP_VERSION burada tanımlanır
 
 const CACHE_NAME = APP_VERSION;
+/* [FIX-DÜŞÜK] CDN varlıkları sürümden BAĞIMSIZ kalıcı cache'te tutulur — her sürüm
+   artışında yeniden indirilmesin (değişmeyen 3. parti dosyalar). Çekirdek dosyalar
+   sürümlü cache'te kalır (yeni deploy'da tazelenir). */
+const CDN_CACHE = 'shifttrack-cdn-v1';
 const CORE_ASSETS = ['./', './index.html', './version.js', './app.js', './style.css', './manifest.json', './assets/icons/icon-192.png', './assets/icons/icon-512.png'];
 const CDN_ASSETS = [
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap',
@@ -13,18 +17,23 @@ const CDN_ASSETS = [
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache =>
-      cache.addAll(CORE_ASSETS).then(() =>
-        Promise.allSettled(CDN_ASSETS.map(url => cache.add(url)))
+    Promise.all([
+      caches.open(CACHE_NAME).then(cache => cache.addAll(CORE_ASSETS)),
+      // CDN zaten önbellekteyse tekrar indirme (sürümden bağımsız kalıcı cache)
+      caches.open(CDN_CACHE).then(cache =>
+        Promise.allSettled(CDN_ASSETS.map(url =>
+          cache.match(url).then(hit => hit || cache.add(url))
+        ))
       )
-    ).then(() => self.skipWaiting())
+    ]).then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys => Promise.all(
-      keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+      // Eski SÜRÜMLÜ çekirdek cache'lerini sil; CDN kalıcı cache'i koru.
+      keys.filter(k => k !== CACHE_NAME && k !== CDN_CACHE).map(k => caches.delete(k))
     )).then(() => self.clients.claim())
   );
 });
