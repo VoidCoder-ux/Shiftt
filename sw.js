@@ -54,7 +54,10 @@ function fetchWithTimeout(req, ms) {
   });
 }
 
-const OFFLINE_RESPONSE = new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+/* [FIX SW-RESPONSE] Bir Response gövdesi yalnız BİR kez kullanılabilir — paylaşılan
+   tek nesne ikinci offline istekte "body already used" hatası veriyordu; her istekte
+   yeni Response üretilir. */
+const offlineResponse = () => new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
@@ -69,7 +72,7 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
         }
         return res;
-      }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html').then(r2 => r2 || OFFLINE_RESPONSE)))
+      }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html').then(r2 => r2 || offlineResponse())))
     );
   } else {
     e.respondWith(

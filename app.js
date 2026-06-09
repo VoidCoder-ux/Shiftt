@@ -1321,7 +1321,7 @@ function clearDeepSeekSettings() {
     localStorage.removeItem('st_deepseek_storage');
     localStorage.removeItem('st_deepseek_remote_consent');
     sessionStorage.removeItem('st_deepseek_api_key');
-  } catch(_) {}
+  } catch(e) { console.warn('DeepSeek ayarları temizlenemedi:', e); }
   const keyEl = $('aiDeepSeekKey'); if (keyEl) keyEl.value = '';
   const modelEl = $('aiDeepSeekModel'); if (modelEl) modelEl.value = 'deepseek-chat';
   const consentEl = $('aiDeepSeekConsent'); if (consentEl) consentEl.checked = false;
@@ -1357,36 +1357,41 @@ function buildDeepSeekPayload(question, ctx) {
   };
 }
 
+/* [REFAKTÖR] Ortak DeepSeek chat çağrısı — üç farklı yerde kopyalanan fetch
+   bloğunu tekilleştirir. Key/onay yoksa NO_KEY/NO_CONSENT, HTTP hatasında
+   'HTTP <status>' fırlatır; yanıt metnini (trim) veya null döndürür. */
+async function deepSeekChat(messages, opts) {
+  opts = opts || {};
+  const cfg = getDeepSeekSettings();
+  if (!cfg.apiKey) throw new Error('NO_KEY');
+  if (!cfg.consent) throw new Error('NO_CONSENT');
+  const res = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + cfg.apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: cfg.model || 'deepseek-chat',
+      messages,
+      temperature: (opts.temperature !== undefined) ? opts.temperature : 0.2,
+      max_tokens: opts.maxTokens || 450
+    })
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) ? data.choices[0].message.content.trim() : null;
+}
+
 async function askDeepSeek(question, ctx) {
   const cfg = getDeepSeekSettings();
   if (!cfg.apiKey) return null;
   if (!cfg.consent) return null;
   const payload = buildDeepSeekPayload(question, ctx);
-  const res = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + cfg.apiKey,
-      'Content-Type': 'application/json'
+  return deepSeekChat([
+    {
+      role: 'system',
+      content: 'Sen ShiftTrack Pro içinde çalışan Türkçe vardiya, kazanç ve bordro asistanısın. Yalnızca verilen JSON bağlamına dayan. Hukuki/finansal kesin danışmanlık verme; uygulama içi hesaplama ve bilgilendirme dili kullan. Cevabı kısa, net ve güvenli ver.'
     },
-    body: JSON.stringify({
-      model: cfg.model || 'deepseek-chat',
-      messages: [
-        {
-          role: 'system',
-          content: 'Sen ShiftTrack Pro içinde çalışan Türkçe vardiya, kazanç ve bordro asistanısın. Yalnızca verilen JSON bağlamına dayan. Hukuki/finansal kesin danışmanlık verme; uygulama içi hesaplama ve bilgilendirme dili kullan. Cevabı kısa, net ve güvenli ver.'
-        },
-        {
-          role: 'user',
-          content: JSON.stringify(payload)
-        }
-      ],
-      temperature: 0.2,
-      max_tokens: 450
-    })
-  });
-  if (!res.ok) throw new Error('DeepSeek API HTTP ' + res.status);
-  const data = await res.json();
-  return (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) ? data.choices[0].message.content.trim() : null;
+    { role: 'user', content: JSON.stringify(payload) }
+  ], { temperature: 0.2, maxTokens: 450 });
 }
 
 /* ============================================================
@@ -1424,9 +1429,6 @@ function bracketsToInput(brackets) {
 /* DeepSeek'ten yıla ait resmî Türkiye bordro parametrelerini JSON olarak ister.
    AI eğitim verisine dayalı değerleri döner; resmî onay kullanıcıdan beklenir. */
 async function askDeepSeekFetchPayroll(year) {
-  const cfg = getDeepSeekSettings();
-  if (!cfg.apiKey) throw new Error('NO_KEY');
-  if (!cfg.consent) throw new Error('NO_CONSENT');
   const sys = `Sen Türk bordro mevzuatı veri asistanısın. Kullanıcı ${year} yılı için Türkiye resmî bordro parametrelerini soruyor.
 Eğitim verilerindeki en doğru bilgileri kullanarak YALNIZCA aşağıdaki JSON formatında yanıt ver, başka metin ekleme:
 {
@@ -1441,22 +1443,10 @@ Eğitim verilerindeki en doğru bilgileri kullanarak YALNIZCA aşağıdaki JSON 
   "note": "<kısa kaynak notu>"
 }
 Kurallar: değerleri UYDURMA; bilmiyorsan null ver. SGK işçi 0.14 ve işsizlik 0.01 yasayla sabit. Son dilim upTo her zaman 99999999. Yalnızca JSON döndür.`;
-  const res = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + cfg.apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: cfg.model || 'deepseek-chat',
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: `${year} yılı Türkiye resmî bordro parametrelerini JSON olarak ver.` }
-      ],
-      temperature: 0.1,
-      max_tokens: 700
-    })
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const data = await res.json();
-  const text = (data && data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content.trim() : null;
+  const text = await deepSeekChat([
+    { role: 'system', content: sys },
+    { role: 'user', content: `${year} yılı Türkiye resmî bordro parametrelerini JSON olarak ver.` }
+  ], { temperature: 0.1, maxTokens: 700 });
   if (!text) throw new Error('Boş yanıt');
   let jsonStr = text;
   const m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -1521,28 +1511,13 @@ async function payrollParamsAutoFill() {
 /* DeepSeek'e girilen parametreleri akla yatkınlık/tutarlılık için doğrulatır.
    AI yalnızca UYARI/ONAY metni döner — değeri kendisi UYGULAMAZ. */
 async function askDeepSeekValidatePayroll(year, params) {
-  const cfg = getDeepSeekSettings();
-  if (!cfg.apiKey) throw new Error('NO_KEY');
-  if (!cfg.consent) throw new Error('NO_CONSENT');
   const sys = 'Sen bir Türk bordro mevzuatı kontrol asistanısın. Kullanıcının girdiği YIL için vergi/SGK parametrelerini akla yatkınlık ve iç tutarlılık açısından denetle. ' +
     'Şunları kontrol et: asgari ücret brüt makul mü, SGK işçi payı 0.14 ve işsizlik 0.01 standart mı, gelir vergisi dilimleri artan sıralı ve oranlar 0.15-0.40 aralığında mı, damga vergisi ~0.00759 mu. ' +
     'Resmî kaynağa erişimin yok; rakamları SEN UYDURMA. Yalnızca girilen değerlerin tutarlılığını değerlendir, şüpheli/eksik noktaları kısa madde madde Türkçe belirt. Sonunda "DURUM: TUTARLI" veya "DURUM: KONTROL EDİN" yaz.';
-  const res = await fetch('https://api.deepseek.com/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + cfg.apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: cfg.model || 'deepseek-chat',
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: JSON.stringify({ year, params }) }
-      ],
-      temperature: 0.1,
-      max_tokens: 400
-    })
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const data = await res.json();
-  return (data && data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content.trim() : null;
+  return deepSeekChat([
+    { role: 'system', content: sys },
+    { role: 'user', content: JSON.stringify({ year, params }) }
+  ], { temperature: 0.1, maxTokens: 400 });
 }
 
 /* Girilen parametrelerin yerel (AI'sız) tutarlılık kontrolü — her zaman çalışır. */
@@ -2078,7 +2053,7 @@ function init() {
     if (_vl && typeof APP_VERSION !== 'undefined') {
       _vl.textContent = String(APP_VERSION).replace(/^shifttrack-/, '') + ' Cloud';
     }
-  } catch (e) {}
+  } catch (e) { console.warn('Sürüm etiketi güncellenemedi:', e); }
 
   // [A11Y] Modal dialog semantiği/focus yönetimi + statik içeriğe erişilebilirlik geçişi.
   setupA11yModals();
@@ -4530,7 +4505,7 @@ function _monthGVMatrah(u, y, m, cfg, priorYTDForGross) {
     const _dd = getMD(y, m);
     const _active = (_dd.th > 0) || (_dd.wr > 0) || (_dd.mau > 0) || (_dd.msd > 0) || (_dd.wd > 0) || (_dd.ud > 0);
     if (!_active) return 0;
-  } catch (e) {}
+  } catch (e) { console.warn('Ay aktiflik kontrolü başarısız, tam ay varsayılıyor:', e); }
   /* Kısmi/eksik veri varsa: sabit-net çalışanın brütü dilimler yükseldikçe artar;
      brütü o ana dek birikmiş matrah (priorYTDForGross) ile bul. */
   const priorYTD = Math.max(0, safeNum(priorYTDForGross, 0));
@@ -7069,6 +7044,10 @@ if (typeof FIREBASE_CONFIG === 'undefined') {
 
 let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
 let syncInProgress = false, lastSyncTime = 0;
+/* [FIX SYNC-RACE] Jenerasyon sayacı: timeout ile bayrak sıfırlanıp YENİ bir senkron
+   başladıktan sonra, eski (geç gelen) push/pull yanıtının yeni senkronun
+   syncInProgress bayrağını ve durum göstergesini ezmesini engeller. */
+let _syncGen = 0;
 // [FIX K3] global skipNextPush kaldırıldı — saveLS({noPush:true}) kullanılıyor
 const SYNC_DEBOUNCE = 3000; // 3 saniye debounce
 const SYNC_TIMEOUT = 15000; // 15 saniye timeout
@@ -7336,7 +7315,7 @@ function enterAppAfterAuth() {
   updSyncUI();
   updCloudAccountUI();
   // Buluttan veri çek — arka planda
-  try { pullFromCloud(() => { loadLS(); updLogin(); loadCloudDocs(); }); } catch(e) {}
+  try { pullFromCloud(() => { loadLS(); updLogin(); loadCloudDocs(); }); } catch(e) { notifyCloudFail('giriş sonrası pull', e); }
 }
 
 /* Firestore sub-collection'dan belgeleri yükle — her app kullanıcısı için ayrı */
@@ -7450,10 +7429,11 @@ function pushToCloud(callback) {
   if (!fbDb || !fbUser || syncInProgress) { if (callback) callback(); return; }
   syncInProgress = true;
   setSyncState('syncing');
+  const _gen = ++_syncGen;
 
   // Timeout — takılmayı engelle
   const timeoutId = setTimeout(() => {
-    if (syncInProgress) {
+    if (_gen === _syncGen && syncInProgress) {
       console.warn('Push timeout — syncInProgress sıfırlandı');
       syncInProgress = false;
       setSyncState('error');
@@ -7507,13 +7487,19 @@ function pushToCloud(callback) {
         }
       } catch (e) { console.warn('Push sonrası bellek tazeleme hatası:', e); }
       lastSyncTime = Date.now();
-      setSyncState('online');
-      syncInProgress = false;
+      /* [FIX SYNC-RACE] Timeout sonrası yeni senkron başladıysa onun durumuna dokunma */
+      if (_gen === _syncGen) {
+        setSyncState('online');
+        syncInProgress = false;
+      }
       if (callback) callback();
     })
     .catch(async err => {
       clearTimeout(timeoutId);
       console.error('Push hatası:', err);
+      /* [FIX SYNC-RACE] Geç gelen hata: timeout sonrası yeni senkron başladıysa
+         durum göstergesi/bayrak artık ona ait — yalnızca callback'i çalıştır. */
+      if (_gen !== _syncGen) { if (callback) callback(); return; }
       syncInProgress = false;
       if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
         try {
@@ -7717,9 +7703,10 @@ function pullFromCloud(callback) {
   if (!fbDb || !fbUser || syncInProgress) { if (callback) callback(); return; }
   syncInProgress = true;
   setSyncState('syncing');
+  const _gen = ++_syncGen;
 
   var pullTimeout = setTimeout(function() {
-    if (syncInProgress) { syncInProgress = false; setSyncState('error'); }
+    if (_gen === _syncGen && syncInProgress) { syncInProgress = false; setSyncState('error'); }
   }, SYNC_TIMEOUT);
 
   fbDb.collection('userData').doc(fbUser.uid).get()
@@ -7751,13 +7738,18 @@ function pullFromCloud(callback) {
       }
       clearTimeout(pullTimeout);
       lastSyncTime = Date.now();
-      syncInProgress = false;
-      setSyncState('online');
+      /* [FIX SYNC-RACE] Timeout sonrası yeni senkron başladıysa onun durumuna dokunma */
+      if (_gen === _syncGen) {
+        syncInProgress = false;
+        setSyncState('online');
+      }
       if (callback) callback();
     })
     .catch(async err => {
       clearTimeout(pullTimeout);
       console.error('Pull hatası:', err);
+      /* [FIX SYNC-RACE] Geç gelen hata: yeni senkron başladıysa durum ona ait */
+      if (_gen !== _syncGen) { if (callback) callback(); return; }
       syncInProgress = false;
       if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
         try {
@@ -7938,7 +7930,7 @@ window.addEventListener('storage', function(e) {
   _eBordroSession = {}; // [FIX O11] başka sekmedeki değişiklik sonrası bordro oturumunu tazele
   try { loadLS(); } catch (err) { console.warn('Sekmeler arası senkron yükleme hatası:', err); }
   /* [FIX O11] Başka sekmede aktif kullanıcı silinmiş olabilir → S.cu dangling kalmasın. */
-  if (S.cu && !S.u[S.cu]) { try { logout(); return; } catch (e2) {} }
+  if (S.cu && !S.u[S.cu]) { try { logout(); return; } catch (e2) { console.warn('Sekme senkronu sonrası logout başarısız:', e2); } }
   if (cu()) { renderAll(); updTop(); }
 });
 
@@ -9102,7 +9094,7 @@ function clearPayrollOverride(year) {
   const all = loadPayrollOverrides();
   if (Number.isFinite(yr)) delete all[yr]; else Object.keys(all).forEach(k => delete all[k]);
   _payrollOverrides = all;
-  try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(all)); } catch (e) {}
+  try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(all)); } catch (e) { console.warn('Bordro override temizliği localStorage\'a yazılamadı:', e); }
   _payrollCfgCache = {};
 }
 
@@ -9121,7 +9113,7 @@ function mergePayrollOverridesFromCloud(cloudOverrides) {
   });
   if (changed) {
     _payrollOverrides = local;
-    try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(local)); } catch (e) {}
+    try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(local)); } catch (e) { console.warn('Bulut bordro override\'ları localStorage\'a yazılamadı:', e); }
     _payrollCfgCache = {};
   }
   return changed;
@@ -10144,7 +10136,7 @@ function exportBordroCSV() {
       applyAuto();
       mq.addEventListener('change', applyAuto);
     }
-  } catch(_) {}
+  } catch(e) { console.warn('Otomatik tema tespiti başarısız:', e); }
 })();
 
 // ===== AYARLARA TEMA OTO SEÇENEĞİ EKLE =====
