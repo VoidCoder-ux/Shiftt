@@ -66,7 +66,6 @@ export function loadFns(targets) {
   const ordered = [...seen].filter(n => defs.has(n)).sort((a, b) => defs.get(a)[0] - defs.get(b)[0]);
   const code = ordered.map(bodyOf).join('\n');
   const ret = '\nreturn {' + targets.filter(t => defs.has(t)).join(',') + '};';
-  // eslint-disable-next-line no-new-func
   return Function('"use strict";' + code + ret)();
 }
 

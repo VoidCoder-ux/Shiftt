@@ -34,6 +34,21 @@ npm run preview   # build çıktısını yerelde servis eder
 > ES modüllerine (auth / firebase / payroll / shifts / ui / export / persistence)
 > bölünerek tam tree-shaking devreye alınabilir.
 
+## Güvenlik Notları
+
+- **Firebase config:** `app.js` içindeki varsayılan Firebase web config'i (apiKey dahil)
+  gizli bilgi değildir — istemci tarafı bir tanımlayıcıdır. Veri güvenliği
+  `firestore.rules` (kullanıcı yalnızca kendi `userData/{uid}` dokümanına erişir) ile
+  sağlanır. Yine de kötüye kullanımı (kota tüketimi, auth spam) sınırlamak için
+  Firebase Console'da **HTTP referrer kısıtlaması** ekleyin:
+  *Proje Ayarları → API ve Hizmetler → Kimlik Bilgileri → Browser key → HTTP referans
+  adresleri → yalnızca kendi domain'iniz.*
+- **Kendi projenizi kullanmak için:** `config.example.js`'i `config.js` olarak kopyalayıp
+  kendi değerlerinizi girin — `config.js` gitignore'dadır ve `app.js` içindeki
+  varsayılanı ezer.
+- **DeepSeek API anahtarı** yalnızca `sessionStorage`'da tutulur (oturum kapanınca
+  silinir) ve yalnızca kullanıcı onayıyla dış servise istek atılır.
+
 ## Testler
 
 ```bash
