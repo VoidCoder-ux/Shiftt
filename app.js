@@ -2558,6 +2558,13 @@ function renderCal() {
   /* [FIX] Akıllı Vardiya Önerileri — renderCal başında bir kere hesapla */
   const suggestions = getSmartSuggestions(y, m);
 
+  /* Takvim hücresinde normal + FM ayrımı — yalnızca görsel etiket, hesap mantığı
+     getMD'dedir ve değişmez. Günlük eşik getMD ile aynı formül (min 7,5 / aylık÷30).
+     'weekly45' modunda FM hafta bazlı olduğundan gün içinde ayrıştırılamaz; toplam gösterilir. */
+  const otSplitOn = u.otCalcMode === 'daily75' || u.otCalcMode === 'hybrid';
+  const dailyStdDisplay = Math.min(7.5, Math.max(1, getMonthlyHours(u) / 30));
+  const fmtH = v => (Math.abs(v % 1) < 0.05 ? v.toFixed(0) : v.toFixed(1));
+
   for (let d = 1; d <= dim; d++) {
     const s = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const e = document.createElement('div');
@@ -2594,7 +2601,12 @@ function renderCal() {
       const shiftLabel = sh ? `${escHtml(sh.start)}–${escHtml(sh.end)}` : `${escHtml(partLabel)} (devam)`;
       /* [FIX L-06] FM yasal olarak 45s/hafta bazlıdır, günlük 9s sınırı yoktur.
          CSS sınıfı 'long-shift' olarak yeniden adlandırıldı; 8.5s üstü uzun vardiya göstergesi. */
-      inner += `<div class="hrs-display ${h > 8.5 ? 'long-shift' : ''}">${h.toFixed(1)}s</div>`;
+      const otPart = otSplitOn ? Math.max(0, h - dailyStdDisplay) : 0;
+      if (otPart > 0.05) {
+        inner += `<div class="hrs-display split" title="Toplam ${h.toFixed(1)}s: ${(h - otPart).toFixed(1)}s normal + ${otPart.toFixed(1)}s FM">${fmtH(h - otPart)}<span class="hrs-ot">+${fmtH(otPart)}</span></div>`;
+      } else {
+        inner += `<div class="hrs-display ${h > 8.5 ? 'long-shift' : ''}">${h.toFixed(1)}s</div>`;
+      }
       inner += `<div class="shift-icon">${sType.icon}</div>`;
       inner += `<div class="shift-time">${shiftLabel}${isNightShift(displayShift.start, displayShift.end) ? ' 🌙' : ''}</div>`;
       if (displayShift.note) inner += `<div class="shift-time" style="color:var(--p3);opacity:.7">📝 ${escHtml(displayShift.note.substring(0,20))}</div>`;
