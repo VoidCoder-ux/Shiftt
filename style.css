@@ -223,6 +223,8 @@ body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);c
 .cal-cell .hrs-display{font-size:16px;font-weight:900;color:var(--g);line-height:1;margin:2px 0}
 .cal-cell .hrs-display.overtime{color:var(--acc)}
 .cal-cell .hrs-display.long-shift{color:var(--acc)}
+.cal-cell .hrs-display.split{font-size:13px;letter-spacing:-.3px;white-space:nowrap}
+.cal-cell .hrs-display .hrs-ot{color:var(--acc)}
 .cal-cell .shift-time{font-size:9px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-cell .leave-display{margin-top:2px;display:flex;align-items:center;gap:4px;font-size:10px;font-weight:800}
 .cal-cell .leave-display.ld-annual{color:#60a5fa}.cal-cell .leave-display.ld-weekly{color:var(--p)}.cal-cell .leave-display.ld-sick{color:#fb923c}.cal-cell .leave-display.ld-unpaid{color:#94a3b8}
@@ -639,7 +641,7 @@ tr:hover td{background:var(--bg3)}
 @media(max-width:768px){
 .content{padding:118px 10px 28px;max-width:100%;width:100%;overflow-x:hidden}.grid-2,.grid-3{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}
 .ai-page-grid{grid-template-columns:1fr}.ai-metric-grid{grid-template-columns:repeat(2,1fr)}.ai-hero .value{font-size:24px}.ai-api-grid{grid-template-columns:1fr}.ai-api-actions{justify-content:flex-end}
-.cal-cell{min-height:56px;padding:4px 5px}.cal-cell .shift-time,.cal-cell .leave-label,.cal-cell .hol-tag{display:none}.cal-cell .hrs-display{font-size:13px}.cal-cell .leave-display{font-size:9px}.cal-cell .shift-icon{display:block}.ss-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
+.cal-cell{min-height:56px;padding:4px 5px}.cal-cell .shift-time,.cal-cell .leave-label,.cal-cell .hol-tag{display:none}.cal-cell .hrs-display{font-size:13px}.cal-cell .hrs-display.split{font-size:11px}.cal-cell .leave-display{font-size:9px}.cal-cell .shift-icon{display:block}.ss-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
 .earn-hero .amt{font-size:24px}.nav-tab span{display:none}.nav-tab{padding:10px 12px}.nav-tab i{font-size:17px}
 .login-cards{flex-direction:column;align-items:center}.year-overview{grid-template-columns:repeat(6,1fr)}
 .page-head{flex-direction:column;align-items:flex-start}.cal-earn-bar{flex-direction:column;align-items:flex-start}.result-box .rb-val{font-size:13px}
@@ -661,7 +663,7 @@ tr:hover td{background:var(--bg3)}
 .auth-box{padding:24px 18px;margin:0 8px;max-width:100%}.auth-box .auth-brand h1{font-size:18px}.auth-box .auth-brand p{font-size:11px}.auth-fg input{font-size:16px}.auth-skip{font-size:12px;padding:10px}
 .modal{width:100%;max-width:95vw}.calc-box{max-width:95vw;padding:18px}.employer-box{max-width:95vw;padding:18px}.calc-overlay,.employer-overlay,.overlay{padding:8px}
 /* [FIX CSS-GÖRSEL-01] Takvim hücreleri 480px altında kompakt mod */
-.cal-grid{gap:2px}.cal-cell{min-height:56px;padding:3px 3px}.cal-cell .num{font-size:10px}.cal-cell .hrs-display{font-size:9px;padding:1px 3px}.cal-cell .shift-time{font-size:8px;display:none}.cal-cell .shift-icon{font-size:13px}.cal-cell .leave-display{font-size:9px;padding:2px 3px}.cal-cell .hol-tag{font-size:7px;padding:1px 2px}.cal-dname{font-size:8px;padding:4px 0}}
+.cal-grid{gap:2px}.cal-cell{min-height:56px;padding:3px 3px}.cal-cell .num{font-size:10px}.cal-cell .hrs-display{font-size:9px;padding:1px 3px}.cal-cell .hrs-display.split{font-size:8px}.cal-cell .shift-time{font-size:8px;display:none}.cal-cell .shift-icon{font-size:13px}.cal-cell .leave-display{font-size:9px;padding:2px 3px}.cal-cell .hol-tag{font-size:7px;padding:1px 2px}.cal-dname{font-size:8px;padding:4px 0}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 
 /* ===== EVRAKLARIM ===== */
