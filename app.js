@@ -96,6 +96,9 @@ function mkUser(i) {
     /* [FEAT EK-KAZANÇ] SGK'dan istisna, gelir+damga vergisine tabi aylık ek
        kazanç (örn. alış-veriş/yemek kartı). Brüte eklenir, SGK matrahı dışı. */
     sgkExemptEarn: 0,
+    /* [FEAT TSS-MUAFİYET] Vergiden muaf aylık özel sigorta primi (GVK md.63/3 —
+       TSS/hayat; bordroda "DİĞER MUAFİYET"). GV matrahından düşülür. */
+    tssExempt: 0,
     goalHours: 0,
     goalEarning: 0,
     pin: null,
@@ -653,6 +656,7 @@ function normalizeUserCalculations(u) {
   u.grossSalary = Math.max(0, safeNum(u.grossSalary, 0));
   u.dailyNetWage = Math.max(0, safeNum(u.dailyNetWage, 0));
   u.sgkExemptEarn = Math.max(0, safeNum(u.sgkExemptEarn, 0));
+  u.tssExempt = Math.max(0, safeNum(u.tssExempt, 0));
   syncDerivedNetFromGross(u);
   u.annualLeave = clampInt(u.annualLeave, 0, 40, 0);
   u.monthlyHours = clampInt(u.monthlyHours || 225, 100, 400, 225);
@@ -4128,6 +4132,10 @@ function estimatePayrollForMonth(u, y, m, d, priorYTDOverride) {
   const holPayDays = d.hpd !== undefined ? d.hpd : d.hdw;
   /* [FEAT EK-KAZANÇ] SGK-muaf, vergiye tabi ek kazanç — brüte eklenir, SGK matrahı dışı. */
   const sgkExemptEarn = _bordroRound2(Math.max(0, safeNum(u.sgkExemptEarn, 0)));
+  /* [FEAT TSS-MUAFİYET] Vergiden muaf özel sigorta primi (GVK md.63/3) yalnızca
+     NİHAİ vergi hesabına girer; net→brüt hedefine katılmaz — işveren prim
+     vergi avantajını brütleştirmeye yansıtmaz (gerçek bordroyla birebir uyum). */
+  const tssExempt = _bordroRound2(Math.max(0, safeNum(u.tssExempt, 0)));
   const isDailyNet = u.salaryInputMode === 'dailyNet' && safeNum(u.dailyNetWage, 0) > 0;
 
   let fullGross, baseGross, baseNet, hrGross, drGross, holGross, unpaidGross, dailyNetPaidDays;
@@ -4178,8 +4186,8 @@ function estimatePayrollForMonth(u, y, m, d, priorYTDOverride) {
   const ot125Gross = compMode === 'pay' ? _bordroRound2((d.oh125 || 0) * hrGross * partialRate) : 0;
   const weekendGross = _bordroRound2((d.weekendHours || 0) * hrGross * Math.max(0, (cfg.weekendMultiplier || 1) - 1));
   const totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross) + otGross + ot125Gross + holGross + weekendGross + sgkExemptEarn);
-  const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, { sgkExemptGross: sgkExemptEarn }, y);
-  return { ...res, baseNet, fullGross, baseGross, otGross, ot125Gross, holGross, weekendGross, unpaidGross, sgkExemptEarn, totalGross, holPayDays, payrollHourBasis, cfgYear: cfg.year, dailyNetMode: isDailyNet, dailyNetPaidDays, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
+  const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, { sgkExemptGross: sgkExemptEarn, insurancePremiumExempt: tssExempt }, y);
+  return { ...res, baseNet, fullGross, baseGross, otGross, ot125Gross, holGross, weekendGross, unpaidGross, sgkExemptEarn, tssExempt, totalGross, holPayDays, payrollHourBasis, cfgYear: cfg.year, dailyNetMode: isDailyNet, dailyNetPaidDays, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
 }
 function diffBadge(diff) {
   const abs = Math.abs(diff || 0);
@@ -4360,6 +4368,7 @@ function employeeMonthRows(u, y, m) {
   if (payroll) {
     rows.push(['Tahmini brüt bordro', fm(payroll.gross)]);
     rows.push(['Önceki kümülatif GV matrahı', fm(safeNum(rec.priorYTD, 0))]);
+    if (safeNum(payroll.insurancePremiumExempt, 0) > 0) rows.push(['Özel sigorta primi indirimi (GVK md.63)', fm(payroll.insurancePremiumExempt)]);
     rows.push(['Net gelir vergisi', fm(payroll.netGV)]);
     rows.push(['Net damga vergisi', fm(payroll.stampTax)]);
   }
@@ -4694,6 +4703,7 @@ function loadSet() {
   const sG = $('sGross'); if (sG) sG.value = u.grossSalary || '';
   const sSM = $('sSalaryMode'); if (sSM) sSM.value = u.salaryInputMode || 'net';
   const sSGX = $('sSgkExempt'); if (sSGX) sSGX.value = u.sgkExemptEarn || '';
+  const sTSS = $('sTssExempt'); if (sTSS) sTSS.value = u.tssExempt || '';
   const sDNW = $('sDailyNet'); if (sDNW) sDNW.value = u.dailyNetWage || '';
   _toggleSalaryInputs(u.salaryInputMode || 'net');
   if (sSt) sSt.value = u.startDate || '';
@@ -4734,6 +4744,7 @@ function sSet(k, v) {
   if (k === 'grossSalary') { v = Math.max(0, safeNum(v, 0)); }
   if (k === 'dailyNetWage') { v = Math.max(0, safeNum(v, 0)); }
   if (k === 'sgkExemptEarn') { v = Math.max(0, safeNum(v, 0)); }
+  if (k === 'tssExempt') { v = Math.max(0, safeNum(v, 0)); }
   if (k === 'salaryInputMode') { v = (v === 'gross' || v === 'dailyNet') ? v : 'net'; }
   if (k === 'annualLeave') { v = clampInt(v, 0, 40, 0); }
   if (k === 'monthlyHours') { v = clampInt(v, 100, 400, 225); }
@@ -4791,7 +4802,7 @@ function sSet(k, v) {
   }
   /* [FIX L-04] BUG-R3 ile eklenen settingsUpdatedAt: ayar değişikliklerini zaman damgasıyla işaretle.
      deepMergeUser bu zaman damgasını kullanarak daha yeni değişikliği (yerel/cloud) korur. */
-  const settingsKeys = ['netSalary','grossSalary','dailyNetWage','salaryInputMode','sgkExemptEarn','annualLeave','pin','weeklyTemplate','customPresets',
+  const settingsKeys = ['netSalary','grossSalary','dailyNetWage','salaryInputMode','sgkExemptEarn','tssExempt','annualLeave','pin','weeklyTemplate','customPresets',
     'goalHours','goalEarning','theme','autoTheme','monthlyHours','weeklyContractHours','payMode',
     'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','hideSuggestions'];
   if (settingsKeys.includes(k)) markSettingsUpdated(u);
@@ -5221,7 +5232,7 @@ function loadLS() {
 
 function normalizeImportedUser(i, raw, opts = {}) {
   if (!raw || typeof raw !== 'object') return null;
-  const allowed = ['name','netSalary','grossSalary','dailyNetWage','salaryInputMode','sgkExemptEarn','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
+  const allowed = ['name','netSalary','grossSalary','dailyNetWage','salaryInputMode','sgkExemptEarn','tssExempt','startDate','birthDate','annualLeave','shifts','leaves','deletedShifts','deletedLeaves',
     'customPresets','weeklyTemplate','notes','profileUpdatedAt','notesUpdatedAt','settingsUpdatedAt','lastLogin',
     'theme','monthlyHours','weeklyContractHours','payMode','goalHours','goalEarning','pin','autoTheme','documents','deletedDocs','payrollChecks','conflictLog',
     'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','otCompModeHistory','hideSuggestions'];
@@ -7681,6 +7692,7 @@ function deepMergeUser(local, cloud) {
     if (cloud.grossSalary !== undefined) merged.grossSalary = cloud.grossSalary;
     if (cloud.dailyNetWage !== undefined) merged.dailyNetWage = cloud.dailyNetWage;
     if (cloud.sgkExemptEarn !== undefined) merged.sgkExemptEarn = cloud.sgkExemptEarn;
+    if (cloud.tssExempt !== undefined) merged.tssExempt = cloud.tssExempt;
     /* [FIX] FM Yönetimi & Öneriler ayarlarını senkronize et */
     if (cloud.otCompMode !== undefined) merged.otCompMode = cloud.otCompMode;
     if (cloud.otCalcMode !== undefined) merged.otCalcMode = cloud.otCalcMode;
@@ -9274,7 +9286,18 @@ function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, mon
     safeNum(cfg.disabilityDeductions[disDegree], 0)
   ));
 
-  const gvMatrah   = _bordroRound2(Math.max(0, gross - sgkDeduction - unemployDeduct - disabilityDeduction));
+  /* [FEAT TSS-MUAFİYET] Vergiden muaf özel sigorta primi (GVK md.63/3):
+     çalışan adına ödenen özel sağlık (TSS) / hayat sigortası primi GV
+     matrahından düşülür — aylık brütün %15'i ile sınırlı (yıllık asgari
+     ücret tavanı kullanıcı sorumluluğunda). Bordrolarda "DİĞER MUAFİYET"
+     kalemi. Damga vergisi tabanı etkilenmez. */
+  const insurancePremiumExempt = _bordroRound2(Math.min(
+    Math.max(0, safeNum(opts && opts.insurancePremiumExempt, 0)),
+    gross * 0.15,
+    Math.max(0, gross - sgkDeduction - unemployDeduct - disabilityDeduction)
+  ));
+
+  const gvMatrah   = _bordroRound2(Math.max(0, gross - sgkDeduction - unemployDeduct - disabilityDeduction - insurancePremiumExempt));
   const priorYTD   = priorYTDMatrah || 0;
   const ytdMatrah  = _bordroRound2(priorYTD + gvMatrah);
 
@@ -9289,6 +9312,7 @@ function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, mon
 
   const net = _bordroRound2(gross - sgkDeduction - unemployDeduct - netGV - stampTax);
   return { gross, sgkExemptGross, sgkBase, sgkDeduction, unemployDeduct, disabilityDeduction, disabilityDegree: disDegree,
+    insurancePremiumExempt,
     gvMatrah, ytdMatrah, thisMonthRawGV, incomeTaxExemption, stampTaxExemption, grossStampTax, netGV, stampTax, net,
     cfgYear: cfg.year };
 }
@@ -9354,6 +9378,9 @@ function openEBordroModal(y, m) {
   // SGK-muaf ek kazancı profil'den ön doldur
   const sgkExEl = $('eb-sgkExemptEarn');
   if (sgkExEl && u && safeNum(u.sgkExemptEarn, 0) > 0) sgkExEl.value = safeNum(u.sgkExemptEarn, 0);
+  // Vergiden muaf özel sigorta primini (TSS) profil'den ön doldur
+  const tssEl = $('eb-tssExempt');
+  if (tssEl && u && safeNum(u.tssExempt, 0) > 0) tssEl.value = safeNum(u.tssExempt, 0);
 
   const priorYTDEl = $('eb-priorYTD');
   if (priorYTDEl && u) {
@@ -9463,6 +9490,7 @@ function renderBordroPreview() {
   const manualOT125Hours = _bordroClampMoney('eb-manualOT125Hours', 0, 744, 0);
   const manualNightHours = _bordroClampMoney('eb-manualNightHours', 0, 744, 0);
   const disability   = clampInt(($('eb-disability') || {}).value, 0, 3, 0);
+  const tssExempt    = clampNum(($('eb-tssExempt') || {}).value, 0, 100000000, 0);
   const nightRate    = clampNum(($('eb-nightRate') || {}).value, 0, 1, 0);
   const besRate      = clampNum(($('eb-besRate') || {}).value, 0, 0.15, 0);
   const icra         = clampNum(($('eb-icra') || {}).value, 0, 100000000, 0);
@@ -9602,6 +9630,12 @@ function renderBordroPreview() {
     calcOpts.sgkExemptGross = sgkExemptEarn;
   }
 
+  /* [FEAT TSS-MUAFİYET] Vergiden muaf özel sigorta primi (GVK md.63/3) yalnızca
+     nihai vergi hesabına eklenir — yukarıdaki net→brüt (findGrossFromNet)
+     çağrılarına KATILMAZ: işveren prim vergi avantajını brütleştirme hedefine
+     yansıtmaz (gerçek bordro "DİĞER MUAFİYET" davranışıyla birebir uyum). */
+  if (tssExempt > 0) calcOpts.insurancePremiumExempt = tssExempt;
+
   // 3) Toplam brüt üzerinden vergi/kesinti hesabı (engellilik indirimi dahil)
   const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, calcOpts, y);
   const belowMinWage = totalGross > 0 && totalGross < cfg.minWageGross;
@@ -9695,7 +9729,7 @@ function renderBordroPreview() {
     officialPaidDays: isOfficialNetDaily ? _bordroRound2((manualNormalHours / cfg.dailyStandardHours) + manualWeeklyRestDays + manualPublicHolidayDays + manualPublicHolidayWorkDays) : 0,
     officialNormalDays: isOfficialNetDaily ? _bordroRound2(manualNormalHours / cfg.dailyStandardHours) : 0,
     cfgYear: cfg.year,
-    disability, besRate, besBase, besDeduct, icra, avans, otherDeduct, privateDeducts,
+    disability, tssExempt, besRate, besBase, besDeduct, icra, avans, otherDeduct, privateDeducts,
     annualLeaveDays: d.mau || 0, sickLeaveDays: d.msd || 0, unpaidDays: d.ud || 0, unpaidGross,
     weekendHours: d.weekendHours || 0, weekendWorkedDays: d.weekendWorkedDays || 0,
     weekendMultiplier: cfg.weekendMultiplier || 1,
@@ -9756,6 +9790,8 @@ function renderBordroPreview() {
     <div class="bordro-row deduct"><span class="bl">SGK İşçi Payı (%14)</span><span class="bv">− ${fmb(res.sgkDeduction)}</span></div>
     <div class="bordro-row deduct"><span class="bl">İşsizlik Sigortası (%1)</span><span class="bv">− ${fmb(res.unemployDeduct)}</span></div>
     ${res.disabilityDeduction > 0 ? `<div class="bordro-row add"><span class="bl">Engellilik İndirimi — ${disabilityLabels[res.disabilityDegree]||''} (GVK md.31)</span><span class="bv">− ${fmb(res.disabilityDeduction)}</span></div>` : ''}
+    ${res.insurancePremiumExempt > 0 ? `<div class="bordro-row add"><span class="bl">Özel Sigorta Primi İndirimi — TSS/hayat (GVK md.63)</span><span class="bv">− ${fmb(res.insurancePremiumExempt)}</span></div>` : ''}
+    ${tssExempt > res.insurancePremiumExempt ? `<div class="bordro-row info"><span class="bl">Özel Sigorta Primi Sınırı</span><span class="bv">Brütün %15'i ile sınırlandı</span></div>` : ''}
     <div class="bordro-row sub"><span class="bl">GV Matrahı</span><span class="bv">${fmb(res.gvMatrah)}</span></div>
     <div class="bordro-row deduct"><span class="bl">Gelir Vergisi (brüt, hesaplanan)</span><span class="bv">− ${fmb(res.thisMonthRawGV)}</span></div>
     <div class="bordro-row add"><span class="bl">Asgari Ücret GV İstisnası</span><span class="bv">+ ${fmb(res.incomeTaxExemption)}</span></div>
@@ -9841,6 +9877,7 @@ function downloadBordroPDF() {
     ['Issizlik Sigortasi (%1)','',                     fmb(r.unemployDeduct)],
   );
   if (r.disabilityDeduction > 0) rows.push([`Engellilik Indirimi (Derece ${r.disabilityDegree}) GVK m.31`, fmb(r.disabilityDeduction), '']);
+  if (r.insurancePremiumExempt > 0) rows.push(['Ozel Sigorta Primi Indirimi (TSS) GVK m.63', fmb(r.insurancePremiumExempt), '']);
   // Gelir/Damga vergisi: brüt vergi (kesinti) + asgari ücret istisnası (ekleme).
   // Sütun toplamı net'e ulaşsın diye ayrı "Net" satırı yazılmaz (resmî bordro düzeni;
   // aksi halde brüt + net iki kez kesinti sütununda görünüp çift sayılırdı).
@@ -9950,6 +9987,7 @@ function exportBordroJSON() {
       unemployment:  +r.unemployDeduct.toFixed(2),
       disabilityDegree: r.disabilityDegree || 0,
       disabilityDeduction: +(r.disabilityDeduction || 0).toFixed(2),
+      insurancePremiumExempt: +(r.insurancePremiumExempt || 0).toFixed(2),
       gvMatrah:      +r.gvMatrah.toFixed(2),
       incomeTax:     +r.thisMonthRawGV.toFixed(2),
       incomeTaxExemption: +(r.incomeTaxExemption || 0).toFixed(2),
@@ -10033,6 +10071,7 @@ function exportBordroXML() {
     <SGKIsciPayi oran="0.14">${fv(r.sgkDeduction)}</SGKIsciPayi>
     <IssizlikSigortasi oran="0.01">${fv(r.unemployDeduct)}</IssizlikSigortasi>
     <EngellilikIndirimi derece="${r.disabilityDegree||0}" kanun="GVK m.31">${fv(r.disabilityDeduction||0)}</EngellilikIndirimi>
+    <OzelSigortaPrimiIndirimi kanun="GVK m.63">${fv(r.insurancePremiumExempt||0)}</OzelSigortaPrimiIndirimi>
     <GVMatrahi>${fv(r.gvMatrah)}</GVMatrahi>
     <GelirVergisi>${fv(r.thisMonthRawGV)}</GelirVergisi>
     <AsgariUcretGelirVergisiIstisnasi>${fv(r.incomeTaxExemption||0)}</AsgariUcretGelirVergisiIstisnasi>
@@ -10105,6 +10144,7 @@ function exportBordroCSV() {
     ['SGK Primi (%14)', fv(_sgk), `SGK matrahı: ${fv(r.sgkBase||0)}`],
     ['İşsizlik Primi (%1)', fv(_uns), ''],
     ['Gelir Vergisi', fv(_gv), `GV Matrahı: ${fv(r.gvMatrah||0)} · İstisna: ${fv(r.incomeTaxExemption||0)}`],
+    ['Özel Sigorta Primi İndirimi', fv(r.insurancePremiumExempt || 0), 'TSS/hayat — GV matrahından düşüldü (GVK m.63)'],
     ['Damga Vergisi', fv(_stamp), `Oran: ${((cfg.stampTaxRate||0)*100).toFixed(3)}%`],
     ['BES Kesintisi', fv(_besD), `Oran: ${((r.besRate||0)*100).toFixed(1)}%`],
     ['İcra', fv(_icra), ''],
