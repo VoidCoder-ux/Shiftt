@@ -158,3 +158,30 @@ test('computeNetFromGross — SGK-muaf ek kazanç: SGK tabanı düşer, GV/damga
   assert.equal(r0.sgkExemptGross, 0);
   assert.ok(r0.sgkDeduction > r.sgkDeduction, 'muaf yokken SGK daha yüksek');
 });
+
+// === TSS/özel sigorta primi muafiyeti (GVK md.63/3) — Haziran 2026 (gerçek bordro, golden) ===
+// Bordro: brüt 67.461,77; "DİĞER MUAFİYET" 3.672,99 GV matrahından düşülür →
+// matrah 53.669,52; GV 6.522,57 (istisna 4.211,33 sonrası); SGK 9.444,65;
+// işsizlik 674,62; damga 261,33 (istisna 250,70); yasal net 50.558,59.
+test('computeNetFromGross — TSS muafiyeti: GV matrahı düşer, damga tam brüt (Haziran 2026)', () => {
+  const prior = 267421.40 - 53669.52; // bordro kümülatif − bu ay matrahı
+  const r = f.computeNetFromGross(67461.77, 'single', 0, prior, 5, { insurancePremiumExempt: 3672.99 }, 2026);
+  assert.ok(near(r.insurancePremiumExempt, 3672.99, 0.02), `muafiyet ${r.insurancePremiumExempt}`);
+  assert.ok(near(r.sgkDeduction, 9444.65, 0.02), 'SGK %14');
+  assert.ok(near(r.unemployDeduct, 674.62, 0.02), 'işsizlik %1');
+  assert.ok(near(r.gvMatrah, 53669.52, 0.02), `GV matrahı ${r.gvMatrah}`);
+  assert.ok(near(r.incomeTaxExemption, 4211.33, 0.02), 'asgari ücret GV istisnası');
+  assert.ok(near(r.netGV, 6522.57, 0.02), `GV ${r.netGV}`);
+  assert.ok(near(r.stampTax, 261.33, 0.02), 'damga tam brütten (muafiyet damgayı etkilemez)');
+  assert.ok(near(r.net, 50558.59, 0.02), `yasal net ${r.net}`);
+  // Muafiyet girilmeyince eski davranış birebir korunur
+  const r0 = f.computeNetFromGross(67461.77, 'single', 0, prior, 5, undefined, 2026);
+  assert.equal(r0.insurancePremiumExempt, 0);
+  assert.ok(near(r0.netGV - r.netGV, 3672.99 * 0.20, 0.02), 'GV farkı = muafiyet × %20');
+});
+
+test('computeNetFromGross — TSS muafiyeti brütün %15 tavanıyla sınırlanır', () => {
+  const r = f.computeNetFromGross(30000, 'single', 0, 0, 0, { insurancePremiumExempt: 10000 }, 2026);
+  assert.ok(near(r.insurancePremiumExempt, 4500, 0.02), `tavan 30000×0,15=4500, gelen ${r.insurancePremiumExempt}`);
+  assert.ok(r.gvMatrah >= 0, 'matrah negatif olamaz');
+});
