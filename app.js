@@ -5457,6 +5457,63 @@ function rsSwitch(mode) {
   if (inp) { inp.value = ''; inp.placeholder = mode === 'pct' ? '25' : mode === 'net' ? '35000' : '45000'; inp.step = mode === 'pct' ? '0.5' : '100'; }
   const res = $('rsResult'); if (res) res.innerHTML = '';
 }
+/* [FIX ZAM-SİM] Simülatörün baz çizgisi artık doğrudan bordro motorundan gelir.
+   Önceki sürümde burada AYRI bir "net mod" projeksiyon formülü vardı ve günlük
+   net (yevmiye) modunda Kazanç ekranındaki Net Özet / e-Bordro sonucundan
+   sapıyordu:
+     - taban, ödenen gün-eşdeğeri yerine sabit 30 güne kilitliydi (paidRatio
+       Math.min(1,…) ile kırpılıyordu; 31 günlük ay veya hafta tatili/genel
+       tatil günleri tabana giremiyordu),
+     - yevmiye modelinde tatil günü tabanın İÇİNDE olmasına rağmen ayrıca
+       holGross kalemi ekleniyordu (çift sayım),
+     - FM saat ücreti marjinal brüt yerine ortalama brütten (fullGross /
+       monthlyHours) alınıyordu — [FIX FM-MARJİNAL] ile çelişiyordu,
+     - SGK-muaf ek kazanç ve TSS muafiyeti hiç hesaba katılmıyordu,
+     - devreden GV matrahı yalnızca elle girilmiş payrollChecks.priorYTD'den
+       okunuyordu; otomatik kümülatif matrah yok sayılıp zammın marjinal
+       vergisi yanlış dilimden hesaplanıyordu.
+   Artık her iki ekran da estimatePayrollForMonth ile aynı sonucu üretir. */
+let _rsBaseCache = { key:null, priorYTD:0, cur:null };
+
+/* Kullanıcının ücret giriş birimi: günlük yevmiye, aylık brüt veya aylık net. */
+function _rsBasisOf(u) {
+  if (u && u.salaryInputMode === 'dailyNet' && safeNum(u.dailyNetWage, 0) > 0) return 'dailyNet';
+  if (u && u.salaryInputMode === 'gross' && safeNum(u.grossSalary, 0) > 0) return 'gross';
+  return 'net';
+}
+/* Taban tutar = kullanıcının kendi biriminin 30 günlük aylık karşılığı.
+   dailyNet → yevmiye × 30 (net), gross → aylık brüt, net → aylık net. */
+function _rsBaseAmount(u, basis) {
+  if (basis === 'dailyNet') return _bordroRound2(safeNum(u.dailyNetWage, 0) * 30);
+  if (basis === 'gross') return _bordroRound2(safeNum(u.grossSalary, 0));
+  return _bordroRound2(safeNum(u.netSalary, 0));
+}
+/* Yalnızca ücret tabanı değiştirilmiş sanal kullanıcı — puantaj, FM ayarları,
+   muafiyetler ve giriş modu aynı kalır. */
+function _rsUserWithBase(u, basis, amount) {
+  const c = Object.assign({}, u);
+  const a = Math.max(0, _bordroRound2(amount));
+  if (basis === 'dailyNet') { c.salaryInputMode = 'dailyNet'; c.dailyNetWage = _bordroRound2(a / 30); }
+  else if (basis === 'gross') { c.salaryInputMode = 'gross'; c.grossSalary = a; }
+  else { c.salaryInputMode = 'net'; c.netSalary = a; }
+  syncDerivedNetFromGross(c);
+  return c;
+}
+/* Verilen taban ücretle seçili dönemin bordrosunu çalıştırır.
+   baseNet/baseGross → 30 günlük taban; periodNet → o ayın puantajıyla net. */
+function _rsProject(u, basis, amount, y, m, d, priorYTD) {
+  const c = _rsUserWithBase(u, basis, amount);
+  const p = estimatePayrollForMonth(c, y, m, d, priorYTD);
+  const baseGross = _bordroRound2(p ? p.fullGross : getMonthlyGross(c, 'single', 0, priorYTD, m, undefined, y));
+  /* Taban net, sanal kullanıcının GERÇEK ücret alanından okunur (yevmiye
+     yuvarlaması sonrası) — ekranda gösterilen sayı ile bordronun kullandığı
+     sayı birbirinden kuruş farkıyla bile ayrılmasın. */
+  const baseNet = basis === 'gross'
+    ? _bordroRound2(computeNetFromGross(baseGross, 'single', 0, priorYTD, m, undefined, y).net)
+    : _bordroRound2(safeNum(c.netSalary, amount));
+  const dailyWage = basis === 'dailyNet' ? _bordroRound2(safeNum(c.dailyNetWage, 0)) : 0;
+  return { baseNet, baseGross, dailyWage, periodNet: p ? _bordroRound2(p.net) : baseNet, payroll:p };
+}
 function renderRaiseSim() {
   const u = cu(); const res = $('rsResult'); if (!res) return;
   if (!u || !u.netSalary || u.netSalary <= 0) { res.innerHTML = '<div class="rs-empty">Önce aylık net maaş girin.</div>'; return; }
@@ -5465,86 +5522,78 @@ function renderRaiseSim() {
   const val = safeNum(raw, NaN);
   if (!Number.isFinite(val)) { res.innerHTML = ''; return; }
   try {
-    const curNet = safeNum(u.netSalary, 0);
     /* Seçili kazanç dönemini ve o dönemin gerçek bordro/puantaj etkisini kullan. */
     const _rsY = Number.isInteger(S.ey) ? S.ey : new Date().getFullYear();
     const _rsM = Number.isInteger(S.em) ? S.em : new Date().getMonth();
-    /* [FIX P2] Ocak ayında kümülatif vergi matrahı sıfırlanır */
-    const _priorYTD = (_rsM === 0) ? 0 : safeNum(getPayrollCheck(u, _rsY, _rsM).priorYTD, 0);
-    const _rsCfg = payrollCfg(_rsY);
-    const _rsHourBasis = getPayrollHourBasis(u, _rsY);
     const _rsNow = new Date();
     const _rsMD = getMD(_rsY, _rsM, (_rsY === _rsNow.getFullYear() && _rsM === _rsNow.getMonth()) ? { throughDay:_rsNow.getDate() } : undefined);
-    const _rsEarn = calcEarningForMonth(_rsY, _rsM, curNet);
-    const _paidRatio = curNet > 0 && _rsEarn ? Math.max(0, Math.min(1, safeNum(_rsEarn.basePay, 0) / curNet)) : 1;
-    const _projectByNet = monthlyNet => {
-      const fullGross = _bordroRound2(findGrossFromNet(monthlyNet, 'single', 0, _priorYTD, _rsM, undefined, _rsY));
-      const baseGross = _bordroRound2(fullGross * _paidRatio);
-      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / getMonthlyHours(u)) : 0;
-      const drGross = _bordroRound2(fullGross / 30);
-      const compRate = getOTRate(u);
-      const partialRate = _rsCfg.otPartialMultiplier;
-      const otGross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2((_rsMD.oh || 0) * hrGross * compRate) : 0;
-      const ot125Gross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2((_rsMD.oh125 || 0) * hrGross * partialRate) : 0;
-      const holGross = _bordroRound2((_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross);
-      const unpaidGross = _bordroRound2(Math.max(0, _rsMD.ud || 0) * drGross);
-      const weekendGross = _bordroRound2((_rsMD.weekendHours || 0) * hrGross * Math.max(0, (_rsCfg.weekendMultiplier || 1) - 1));
-      const totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross) + otGross + ot125Gross + holGross + weekendGross);
-      const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM, undefined, _rsY);
-      return { monthlyNet, fullGross, baseGross, totalGross, finalNet:calc.net, calc };
-    };
-    const _projectByGross = monthlyGross => {
-      const fullGross = _bordroRound2(Math.max(0, safeNum(monthlyGross, 0)));
-      const baseGross = _bordroRound2(fullGross * _paidRatio);
-      const hrGross = fullGross > 0 ? _bordroRound2(fullGross / getMonthlyHours(u)) : 0;
-      const drGross = _bordroRound2(fullGross / 30);
-      const compRate = getOTRate(u);
-      const partialRate = _rsCfg.otPartialMultiplier;
-      const otGross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2((_rsMD.oh || 0) * hrGross * compRate) : 0;
-      const ot125Gross = (u.otCompMode || 'pay') === 'pay' ? _bordroRound2((_rsMD.oh125 || 0) * hrGross * partialRate) : 0;
-      const holGross = _bordroRound2((_rsMD.hpd !== undefined ? _rsMD.hpd : _rsMD.hdw) * drGross);
-      const unpaidGross = _bordroRound2(Math.max(0, _rsMD.ud || 0) * drGross);
-      const weekendGross = _bordroRound2((_rsMD.weekendHours || 0) * hrGross * Math.max(0, (_rsCfg.weekendMultiplier || 1) - 1));
-      const totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross) + otGross + ot125Gross + holGross + weekendGross);
-      const calc = computeNetFromGross(totalGross, 'single', 0, _priorYTD, _rsM, undefined, _rsY);
-      return { monthlyNet:calc.net, fullGross, baseGross, totalGross, finalNet:calc.net, calc };
-    };
-    /* [FEAT BRÜT-TABAN] Brüt modda baz çizgi sabit brütten projekte edilir. */
-    const curProjection = (u.salaryInputMode === 'gross' && safeNum(u.grossSalary, 0) > 0)
-      ? _projectByGross(u.grossSalary)
-      : _projectByNet(curNet);
-    const curGross = curProjection.fullGross;
-    let newNet, newGross;
-    if (_rsMode === 'pct') {
-      newNet = curNet * (1 + val / 100);
-      newGross = _projectByNet(newNet).fullGross;
-    } else if (_rsMode === 'net') {
-      newNet = val;
-      newGross = _projectByNet(newNet).fullGross;
-    } else {
-      newGross = val;
-      newNet = _projectByGross(newGross).finalNet;
+    const basis = _rsBasisOf(u);
+    const curAmount = _rsBaseAmount(u, basis);
+    if (!(curAmount > 0)) { res.innerHTML = '<div class="rs-empty">Önce aylık net maaş girin.</div>'; return; }
+
+    /* Baz çizgi ve devreden GV matrahı dönem/puantaj başına bir kez hesaplanır;
+       her tuş vuruşunda yalnızca yeni ücret projeksiyonu yeniden çalışır. */
+    const _ck = `${S.cu}|${_rsY}|${_rsM}|${basis}|${curAmount}|${_bordroRound2(_rsMD.th||0)}|${_bordroRound2(_rsMD.workDayEquiv||0)}|${_bordroRound2(_rsMD.oh||0)}|${_bordroRound2(_rsMD.oh125||0)}|${_bordroRound2(_rsMD.hpd!==undefined?_rsMD.hpd:_rsMD.hdw||0)}`;
+    if (_rsBaseCache.key !== _ck) {
+      /* [FIX P2] Ocak ayında kümülatif vergi matrahı sıfırlanır. Diğer aylarda
+         bordro motorunun KENDİ devreden matrahı (manuel giriş varsa o, yoksa
+         Ocak'tan otomatik kümülatif) baz alınır; zam projeksiyonu da aynı
+         matrahla çalışsın diye override olarak geri verilir. */
+      const p0 = estimatePayrollForMonth(u, _rsY, _rsM, _rsMD);
+      const prior = p0
+        ? Math.max(0, _bordroRound2(safeNum(p0.ytdMatrah, 0) - safeNum(p0.gvMatrah, 0)))
+        : (_rsM === 0 ? 0 : Math.max(0, safeNum(getPayrollCheck(u, _rsY, _rsM).priorYTD, 0)));
+      _rsBaseCache = { key:_ck, priorYTD:prior, cur:_rsProject(u, basis, curAmount, _rsY, _rsM, _rsMD, prior) };
     }
-    const newProjection = _rsMode === 'gross' ? _projectByGross(newGross) : _projectByNet(newNet);
-    const diffNet = newProjection.finalNet - curProjection.finalNet;
-    const diffGross = newGross - curGross;
-    const pctNet = curProjection.finalNet > 0 ? (diffNet / curProjection.finalNet * 100) : 0;
-    const pctGross = curGross > 0 ? (diffGross / curGross * 100) : 0;
+    const _priorYTD = _rsBaseCache.priorYTD;
+    const cur = _rsBaseCache.cur;
+
+    /* Hedefi kullanıcının kendi birimine çevir (yevmiye/net → net, brüt → brüt). */
+    let newAmount;
+    if (_rsMode === 'pct') {
+      newAmount = curAmount * (1 + val / 100);
+    } else if (_rsMode === 'net') {
+      newAmount = (basis === 'gross')
+        ? _bordroRound2(findGrossFromNet(Math.max(0, val), 'single', 0, _priorYTD, _rsM, undefined, _rsY))
+        : val;
+    } else {
+      newAmount = (basis === 'gross')
+        ? val
+        : _bordroRound2(computeNetFromGross(Math.max(0, val), 'single', 0, _priorYTD, _rsM, undefined, _rsY).net);
+    }
+    newAmount = Math.max(0, _bordroRound2(newAmount));
+    const nw = _rsProject(u, basis, newAmount, _rsY, _rsM, _rsMD, _priorYTD);
+
+    const diffNet = nw.baseNet - cur.baseNet;
+    const diffGross = nw.baseGross - cur.baseGross;
+    const pctNet = cur.baseNet > 0 ? (diffNet / cur.baseNet * 100) : 0;
+    const pctGross = cur.baseGross > 0 ? (diffGross / cur.baseGross * 100) : 0;
     const yearlyNet = diffNet * 12;
+    const diffPeriod = nw.periodNet - cur.periodNet;
+    /* Taban ile dönem neti arasındaki fark puantajdan gelir (ödenen gün-eşdeğeri,
+       FM, resmi tatil). Kullanıcı "girdiğim maaş neden farklı görünüyor?" diye
+       şaşırmasın diye iki sayı ayrı satırlarda ve etiketli gösterilir. */
+    const periodDiffers = Math.abs(cur.periodNet - cur.baseNet) >= 1;
     res.innerHTML = `
       <div class="rs-grid">
-        <div class="rs-cell"><div class="rs-l">Mevcut Net</div><div class="rs-v">${fm(curProjection.finalNet)}</div></div>
-        <div class="rs-cell"><div class="rs-l">Yeni Net</div><div class="rs-v" style="color:var(--g)">${fm(newProjection.finalNet)}</div></div>
-        <div class="rs-cell"><div class="rs-l">Mevcut Brüt</div><div class="rs-v">${fm(curGross)}</div></div>
-        <div class="rs-cell"><div class="rs-l">Yeni Brüt</div><div class="rs-v" style="color:var(--g)">${fm(newGross)}</div></div>
+        <div class="rs-cell"><div class="rs-l">Mevcut Net (taban)</div><div class="rs-v">${fm(cur.baseNet)}</div></div>
+        <div class="rs-cell"><div class="rs-l">Yeni Net (taban)</div><div class="rs-v" style="color:var(--g)">${fm(nw.baseNet)}</div></div>
+        <div class="rs-cell"><div class="rs-l">Mevcut Brüt</div><div class="rs-v">${fm(cur.baseGross)}</div></div>
+        <div class="rs-cell"><div class="rs-l">Yeni Brüt</div><div class="rs-v" style="color:var(--g)">${fm(nw.baseGross)}</div></div>
       </div>
       <div class="rs-diff">
-        <div class="rs-diff-row"><span>Net fark</span><b class="${diffNet>=0?'pos':'neg'}">${diffNet>=0?'+':''}${fm(diffNet)} <small>(%${pctNet.toFixed(1)})</small></b></div>
+        ${basis === 'dailyNet' ? `<div class="rs-diff-row"><span>Günlük net yevmiye</span><b>${fm(cur.dailyWage)} → <span style="color:var(--g)">${fm(nw.dailyWage)}</span></b></div>` : ''}
+        <div class="rs-diff-row"><span>Net fark (taban)</span><b class="${diffNet>=0?'pos':'neg'}">${diffNet>=0?'+':''}${fm(diffNet)} <small>(%${pctNet.toFixed(1)})</small></b></div>
         <div class="rs-diff-row"><span>Brüt fark</span><b class="${diffGross>=0?'pos':'neg'}">${diffGross>=0?'+':''}${fm(diffGross)} <small>(%${pctGross.toFixed(1)})</small></b></div>
-        <div class="rs-diff-row"><span>Yıllık net etki</span><b class="${yearlyNet>=0?'pos':'neg'}">${yearlyNet>=0?'+':''}${fm(yearlyNet)}</b></div>
+        <div class="rs-diff-row"><span>Yıllık net etki (taban)</span><b class="${yearlyNet>=0?'pos':'neg'}">${yearlyNet>=0?'+':''}${fm(yearlyNet)}</b></div>
+      </div>
+      <div class="rs-diff">
+        <div class="rs-diff-row"><span>${MTR[_rsM]} ${_rsY} puantajıyla net</span><b>${fm(cur.periodNet)} → <span style="color:var(--g)">${fm(nw.periodNet)}</span></b></div>
+        <div class="rs-diff-row"><span>Dönem net farkı</span><b class="${diffPeriod>=0?'pos':'neg'}">${diffPeriod>=0?'+':''}${fm(diffPeriod)}</b></div>
       </div>
       ${Math.abs(pctNet - pctGross) > 0.5 ? `<div class="rs-note"><i class="fas fa-info-circle"></i> Vergi dilimi etkisi: net zam (%${pctNet.toFixed(1)}) brüt zamdan (%${pctGross.toFixed(1)}) ${pctNet<pctGross?'daha düşük':'daha yüksek'}.</div>` : ''}
-      <div class="rs-note rs-assumption"><i class="fas fa-info-circle"></i> Varsayım: Seçili dönem (${MTR[_rsM]} ${_rsY}) puantajı, FM/tatil etkisi ve ${_priorYTD > 0 ? `YTD matrah ${fm(_priorYTD)}` : 'YTD=0'} kullanıldı. Bekâr, çocuksuz (2023 sonrası AGİ yok). Yıllık ortalama için vergi dilimi etkisi ay ay değişir.</div>
+      ${periodDiffers ? `<div class="rs-note"><i class="fas fa-circle-question"></i> <b>Taban</b> = ${basis === 'dailyNet' ? 'günlük yevmiye × 30' : basis === 'gross' ? 'girilen aylık brütün neti' : 'girilen aylık net'} (${fm(cur.baseNet)}). <b>Dönem neti</b> (${fm(cur.periodNet)}) ${MTR[_rsM]} ${_rsY} puantajından gelir: ödenen gün-eşdeğeri, fazla mesai ve resmi tatil çalışması dahildir — Kazanç ekranındaki Net Özet ile aynı sayıdır.</div>` : ''}
+      <div class="rs-note rs-assumption"><i class="fas fa-info-circle"></i> Varsayım: Seçili dönem (${MTR[_rsM]} ${_rsY}) puantajı, FM/tatil etkisi ve ${_priorYTD > 0 ? `devreden GV matrahı ${fm(_priorYTD)}` : 'devreden GV matrahı yok (YTD=0)'} kullanıldı. Zam, ${basis === 'dailyNet' ? 'günlük yevmiyeye' : basis === 'gross' ? 'aylık brüte' : 'aylık nete'} uygulanır. Bekâr, çocuksuz (2023 sonrası AGİ yok). Yıllık ortalama için vergi dilimi etkisi ay ay değişir.</div>
     `;
   } catch (err) {
     console.error('renderRaiseSim error:', err);

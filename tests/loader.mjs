@@ -14,6 +14,24 @@ const LINES = SRC.split('\n');
 const FN_RE = /^function ([a-zA-Z_$][\w$]*)\s*\(/;
 const CONST_RE = /^(?:const|let|var) ([a-zA-Z_$][\w$]*)\s*=/;
 
+// Satır sonundaki // yorumunu (tırnak içindekiler hariç) at. Yorumsuz bakmazsak
+// `let a = null; // açıklama (x)` gibi bir satır ";" ile bitmiş sayılmaz ve tarama
+// bir SONRAKİ bildirimi de yutar — o bildirim indekslenemez (mdCache, yearlyOTCache).
+function codeOf(line) {
+  let quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; continue; }
+    if (c === '/' && line[i + 1] === '/') return line.slice(0, i);
+  }
+  return line;
+}
+
 // Tüm top-level function ve basit const/var tanımlarını brace eşleyerek indeksle.
 const defs = new Map();
 for (let i = 0; i < LINES.length; ) {
@@ -31,10 +49,11 @@ for (let i = 0; i < LINES.length; ) {
   if (m) {
     let depth = 0, j = i;
     for (; j < LINES.length; j++) {
-      for (const ch of LINES[j]) {
+      const code = codeOf(LINES[j]);
+      for (const ch of code) {
         if ('{[('.includes(ch)) depth++; else if (')]}'.includes(ch)) depth--;
       }
-      if (depth <= 0 && LINES[j].trimEnd().endsWith(';')) break;
+      if (depth <= 0 && code.trimEnd().endsWith(';')) break;
     }
     defs.set(m[1], [i, j]); i = j + 1; continue;
   }
