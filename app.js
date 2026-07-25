@@ -368,12 +368,20 @@ function statutoryAnnualLeaveFromStart(startDate, birthDate) {
   return (age !== null && (age < 18 || age >= 50)) ? Math.max(base, 20) : base;
 }
 
+/* [FIX TARİH-ARALIĞI] Yıl sınırı yoktu: "9999999-01-01" gibi bir anahtar
+   normalize'ı geçiyor, `dsToDate` sessizce BUGÜNE düşüyor ve o kaydın saatleri
+   bu haftanın fazla mesaisine yazılıyordu — takvimde hiçbir yerde görünmeden.
+   (Ayrı satırlarda tanımlı: tek satırda çoklu bildirim test yükleyicisinde
+   yalnızca ilk adı indeksliyor.) */
+const DS_MIN_YEAR = 1970;
+const DS_MAX_YEAR = 2100;
 function parseDS(ds) {
   if (!ds || typeof ds !== 'string') return null;
   const p = ds.split('-');
   if (p.length !== 3) return null;
   const y = parseInt(p[0]), m = parseInt(p[1]) - 1, d = parseInt(p[2]);
   if (isNaN(y) || isNaN(m) || isNaN(d) || m < 0 || m > 11 || d < 1) return null;
+  if (y < DS_MIN_YEAR || y > DS_MAX_YEAR) return null;
   const mx = new Date(y, m + 1, 0).getDate();
   if (d > mx) return null;
   return { y, m, d };
@@ -4925,7 +4933,12 @@ function sSet(k, v) {
     const sS = $('sSalary'); if (sS) sS.value = u.netSalary || '';
   }
   if ((k === 'startDate' || k === 'birthDate') && u.startDate) {
-    u.annualLeave = statutoryAnnualLeaveFromStart(u.startDate, u.birthDate) ?? annualLeaveTotal(u);
+    /* [FIX İZİN-HAKKI] Doğrudan yasal değer atanıyordu: sözleşmeyle 30 gün izni
+       olan biri doğum tarihini düzeltince hakkı 26'ya (veya 14'e) düşüyor,
+       uyarı da geri alma da olmuyordu. `annualLeaveTotal` semantiği zaten
+       max(elle girilen, yasal) — yasal hak yalnızca YÜKSELTİR. */
+    const _statutory = safeInt(statutoryAnnualLeaveFromStart(u.startDate, u.birthDate), 0);
+    u.annualLeave = Math.max(safeInt(u.annualLeave, 0), _statutory);
     const sL = $('sLeave'); if (sL) sL.value = u.annualLeave;
   }
   /* [FIX L-04] BUG-R3 ile eklenen settingsUpdatedAt: ayar değişikliklerini zaman damgasıyla işaretle.
@@ -8437,7 +8450,13 @@ function handleDocFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   const allowedExts = ['jpg','jpeg','png','webp','heic','heif','pdf'];
   const allowedMimes = ['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf',''];
-  if (!allowedExts.includes(ext) && !allowedMimes.includes(file.type)) {
+  /* [FIX BELGE-TÜRÜ] Kontrol `&&` idi: uzantı VEYA MIME'dan biri geçerse yeterli
+     oluyordu. `evil.pdf` adlı ama `text/html` içerikli bir dosya uzantıdan
+     geçiyor, MIME olduğu gibi saklanıyor ve görüntülemede `isPdf` (ada bakar)
+     true olduğu için `text/html` tipli bir Blob iframe'e veriliyordu — blob:
+     URL aynı origin'de olduğundan sayfa script çalıştırıp localStorage ve
+     Firebase oturumuna erişebiliyordu. Artık İKİSİ de uygun olmalı. */
+  if (!allowedExts.includes(ext) || !allowedMimes.includes(file.type)) {
     showDocError('Desteklenmeyen dosya türü. JPG, PNG, WEBP veya PDF yükleyin.'); return;
   }
   currentDocFile = file;
@@ -8621,16 +8640,23 @@ function viewDocument(docId) {
   v.classList.add('show');
 }
 
+/* [FIX BELGE-TÜRÜ] Blob tipi allowlist'e sabitlenir. İçe aktarılan bir kayıt
+   `mimeType`'ı serbestçe taşıyabildiği için (import sanitizer yalnızca 80
+   karaktere kısıyordu), buraya `text/html` gelebiliyor ve blob: URL aynı
+   origin'de script çalıştırabiliyordu. Listede olmayan tip indirilebilir
+   ikili (octet-stream) olarak işlenir — tarayıcı asla çalıştırmaz. */
+const DOC_BLOB_MIMES = ['image/jpeg','image/png','image/webp','image/heic','image/heif','application/pdf'];
 function dataUrlToBlob(dataUrl) {
   if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.includes(',')) return null;
   const [header, data] = dataUrl.split(',');
   const match = header.match(/:(.*?);/);
   if (!match || !match[1]) return null;
+  const safeType = DOC_BLOB_MIMES.includes(match[1]) ? match[1] : 'application/octet-stream';
   try {
     const binary = atob(data);
     const arr = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-    return new Blob([arr], { type: match[1] });
+    return new Blob([arr], { type: safeType });
   } catch(e) { return null; }
 }
 
@@ -8817,7 +8843,17 @@ function runCalc() {
   if (!from || !to) { toast('Tarihleri girin', 'error'); return; }
   if (!start || !end) { toast('Saatleri girin', 'error'); return; }
   const fromD = new Date(from), toD = new Date(to);
+  if (isNaN(fromD.getTime()) || isNaN(toD.getTime())) { toast('Geçersiz tarih', 'error'); return; }
   if (fromD > toD) { toast('Başlangıç bitiş tarihinden sonra olamaz', 'error'); return; }
+  /* [FIX HESAP-ARALIĞI] Aralık sınırsızdı: 1900–2100 seçilirse 73.050 günlük
+     döngü koşuyor ve her yeni yıl için tatil/bordro parametresi uyarısı toast
+     kuyruğuna giriyordu (~384 toast) — arayüz kullanılamaz hale geliyordu. */
+  const _calcDays = Math.floor((toD - fromD) / 86400000) + 1;
+  const CALC_MAX_DAYS = 366;
+  if (_calcDays > CALC_MAX_DAYS) {
+    toast(`Tarih aralığı en fazla ${CALC_MAX_DAYS} gün olabilir (seçilen: ${_calcDays} gün)`, 'error');
+    return;
+  }
 
   const shiftCheck = validateShiftInput(start, end, brk, { allowEqual:false });
   if (!shiftCheck.ok) { toast(shiftCheck.msg, 'error'); return; }
@@ -9707,6 +9743,9 @@ function openEBordroModal(y, m) {
       autoPrior = Math.max(0, safeNum(_cum.ytdMatrah, 0) - safeNum(_cum.monthMatrah, 0));
     }
     priorYTDEl.value = autoPrior > 0 ? autoPrior.toFixed(2) : '0';
+    /* Otomatik değeri sakla: hesaplama anında kullanıcı bunu değiştirmiş mi
+       anlayabilmek için (değiştirmişse manuel olarak kalıcılaştırılır). */
+    priorYTDEl.dataset.autoValue = String(autoPrior > 0 ? +autoPrior.toFixed(2) : 0);
   }
 
   const calcTypeEl = $('eb-calcType');
@@ -9791,6 +9830,25 @@ function renderBordroPreview() {
   const mealDays     = clampInt(($('eb-mealDays') || {}).value, 0, 31, 0);
   const transportDays= clampInt(($('eb-transportDays') || {}).value, 0, 31, 0);
   const priorYTD     = clampNum(($('eb-priorYTD') || {}).value, 0, 1000000000, 0);
+  /* [FIX PRIOR-YTD-KAYDI] Kullanıcının e-Bordro'da elle düzelttiği devreden
+     matrah hiçbir yere yazılmıyordu: bordro doğru neti gösteriyor, ama Net
+     Özet, Zam Simülatörü ve Vergi Dilimi kartı otomatik kümülatiften
+     hesaplamaya devam ediyor, farklı dilim ve farklı net çıkıyordu. Otomatik
+     değerden saparsa manuel olarak kalıcılaştır — diğer ekranlar da aynı
+     matrahı kullansın. */
+  if (u) {
+    const _pyRec = getPayrollCheck(u, y, m);
+    const _pyAuto = safeNum(($('eb-priorYTD') || {}).dataset && $('eb-priorYTD').dataset.autoValue, NaN);
+    if (Number.isFinite(_pyAuto) && Math.abs(priorYTD - _pyAuto) > 0.01) {
+      _pyRec.priorYTD = priorYTD;
+      _pyRec.priorYTDState = 'manual';
+      _pyRec.priorYTDAuto = false;
+      _pyRec.priorYTDSource = { type:'manual', updatedAt:new Date().toISOString() };
+      _pyRec.updatedAt = Date.now();
+      invalidateMDCache(S.cu, y, m);
+      saveLS();
+    }
+  }
   const earningMode  = (($('eb-earningMode') || {}).value || 'auto');
   const manualDailyGross = _bordroClampMoney('eb-dailyGross', 0, 10000000, 0);
   const manualNormalHours = _bordroClampMoney('eb-normalHours', 0, 744, 0);
