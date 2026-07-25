@@ -651,8 +651,21 @@ function normalizeLeaveRecord(lv) {
   return out;
 }
 
-function normalizeUserCalculations(u) {
+/* [FIX AD-TİPİ] Kullanıcı adını her zaman güvenli bir string'e indirge.
+   Baş harf gösterimi `(u.name || 'K')[0]` yaptığı için string olmayan bir ad
+   TypeError üretir; bu da yalnızca ekranı değil, init() zincirinin tamamını
+   (tüm event listener'lar dahil) durdurur. */
+function _safeUserName(v, i) {
+  let s;
+  if (typeof v === 'string') s = v;
+  else if (typeof v === 'number' && Number.isFinite(v)) s = String(v);
+  else s = '';
+  s = s.trim().slice(0, 60);
+  return s || ('Kullanıcı ' + (safeInt(i, 0) || 1));
+}
+function normalizeUserCalculations(u, i) {
   if (!u || typeof u !== 'object') return u;
+  u.name = _safeUserName(u.name, i);
   u.netSalary = Math.max(0, safeNum(u.netSalary, 0));
   /* [FEAT BRÜT-TABAN / GÜNLÜK-NET] net (varsayılan) | gross | dailyNet */
   u.salaryInputMode = (u.salaryInputMode === 'gross' || u.salaryInputMode === 'dailyNet') ? u.salaryInputMode : 'net';
@@ -1436,7 +1449,9 @@ function parseBracketsInput(text) {
     const parts = t.split(':');
     if (parts.length !== 2) return;
     const upRaw = parts[0].trim().toLowerCase();
-    const upTo = (upRaw === 'inf' || upRaw === 'infinity' || upRaw === '∞' || upRaw === 'sonsuz') ? Infinity : Number(upRaw.replace(/[^\d.]/g, ''));
+    /* [FIX DİLİM-TR-FORMAT] `Number(...replace)` TR binlik ayracını ondalık
+       sanıyordu: "158.000" → 158. safeNum TR/EN formatını birlikte çözer. */
+    const upTo = (upRaw === 'inf' || upRaw === 'infinity' || upRaw === '∞' || upRaw === 'sonsuz') ? Infinity : safeNum(upRaw, NaN);
     let rate = Number(parts[1].trim().replace(',', '.'));
     if (rate > 1) rate = rate / 100; // %15 girilirse 0.15'e çevir
     if (!Number.isFinite(upTo) && upTo !== Infinity) return;
@@ -1557,6 +1572,17 @@ function validatePayrollParamsLocal(year, p) {
   if (p.sgkEmployee !== undefined && (p.sgkEmployee < 0 || p.sgkEmployee > 0.3)) issues.push('SGK işçi payı 0–0.30 aralığında olmalı (std 0.14).');
   if (p.unemploymentEmployee !== undefined && (p.unemploymentEmployee < 0 || p.unemploymentEmployee > 0.05)) issues.push('İşsizlik payı sıra dışı (std 0.01).');
   if (p.stampTaxRate !== undefined && (p.stampTaxRate < 0 || p.stampTaxRate > 0.02)) issues.push('Damga vergisi oranı sıra dışı (std 0.00759).');
+  /* [FIX BOŞ-PARAMETRE] Sıfır oran aralık içinde kalıyor ama gerçekte "kesinti
+     yok" demek; kaza eseri girilmesi bordroyu sessizce bozar. Açıkça uyar. */
+  if (p.sgkEmployee === 0) issues.push('SGK işçi payı 0 — kesinti tamamen kapanır (std 0.14). Alanı boş bırakırsanız varsayılan kullanılır.');
+  if (p.unemploymentEmployee === 0) issues.push('İşsizlik payı 0 — kesinti tamamen kapanır (std 0.01). Alanı boş bırakırsanız varsayılan kullanılır.');
+  if (p.stampTaxRate === 0) issues.push('Damga vergisi oranı 0 — damga hiç hesaplanmaz (std 0.00759). Alanı boş bırakırsanız varsayılan kullanılır.');
+  /* İlk dilim üst sınırı asgari ücretin altındaysa büyük olasılıkla TR binlik
+     ayracı yanlış okunmuştur (ör. "158.000" → 158). */
+  if (p.incomeTaxBrackets && Array.isArray(p.incomeTaxBrackets) && p.incomeTaxBrackets.length
+      && p.minWageGross > 0 && p.incomeTaxBrackets[0].upTo < p.minWageGross) {
+    issues.push(`İlk vergi dilimi üst sınırı (${p.incomeTaxBrackets[0].upTo}) asgari ücretin altında — binlik ayracını kontrol edin.`);
+  }
   if (p.incomeTaxBrackets) {
     if (!Array.isArray(p.incomeTaxBrackets) || !p.incomeTaxBrackets.length) issues.push('Gelir vergisi dilimleri okunamadı.');
     else {
@@ -1671,7 +1697,18 @@ function payrollParamsChangeYear(val) {
 }
 
 function payrollParamsCollect() {
-  const num = (id) => { const el = $(id); const n = el ? Number(el.value) : NaN; return Number.isFinite(n) ? n : undefined; };
+  /* [FIX BOŞ-PARAMETRE] `Number('') === 0` olduğu için boş bırakılan bir alan
+     `undefined` değil `0` dönüyordu; savePayrollOverride yalnızca undefined/null
+     alanları elediği için SGK işçi payı, işsizlik ve damga oranı 0 olarak
+     kalıcılaşıyor, yerel doğrulama da 0'ı aralık içinde bulup hiç uyarmıyordu.
+     Sonuç: tüm kesintiler sıfırlanmış bir bordro sessizce buluta yayılıyordu. */
+  const num = (id) => {
+    const el = $(id);
+    const raw = el ? String(el.value == null ? '' : el.value).trim() : '';
+    if (!raw) return undefined;
+    const n = safeNum(raw, NaN);
+    return Number.isFinite(n) ? n : undefined;
+  };
   const year = safeInt(($('ppYear') || {}).value, _payrollParamYear);
   const params = {
     minWageGross: num('ppMinWage'),
@@ -2124,7 +2161,7 @@ function updLogin() {
     const i = parseInt(k);
     const u = S.u[i]; if (!u) return;
     const name = escHtml(u.name || 'Kullanıcı ' + i);
-    const initial = (u.name || 'K')[0].toUpperCase();
+    const initial = String(u.name || 'K')[0].toUpperCase();
     const lastLogin = u.lastLogin
       ? 'Son: ' + new Date(u.lastLogin).toLocaleDateString('tr-TR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })
       : '';
@@ -2207,7 +2244,7 @@ function logout() {
 function updTop() {
   const u = cu(); if (!u) return;
   setTxt('topName', u.name || 'İsimsiz');
-  const ta = $('topAv'); if (ta) ta.textContent = (u.name || 'K')[0].toUpperCase();
+  const ta = $('topAv'); if (ta) ta.textContent = String(u.name || 'K')[0].toUpperCase();
 }
 
 function go(p, btn) {
@@ -5246,7 +5283,7 @@ function loadLS() {
       if (!Array.isArray(S.u[i].otCompModeHistory)) S.u[i].otCompModeHistory = [];
       if (!S.u[i].payrollChecks || typeof S.u[i].payrollChecks !== 'object') S.u[i].payrollChecks = {};
       /* [FIX ERR-HANDLE-03] safeNum/safeInt ile NaN/Infinity propagation engellendi */
-      normalizeUserCalculations(S.u[i]);
+      normalizeUserCalculations(S.u[i], i);
       S.u[i].annualLeave = annualLeaveTotal(S.u[i]);
       if (typeof S.u[i].notes !== 'string') S.u[i].notes = '';
       resolveDayConflicts(S.u[i]);
@@ -5271,6 +5308,12 @@ function normalizeImportedUser(i, raw, opts = {}) {
     'otCompMode','otCalcMode','otCompRate','otBalance','otCompModeChangedAt','otCompModeHistory','hideSuggestions'];
   const u = mkUser(i);
   allowed.forEach(k => { if (raw[k] !== undefined) u[k] = raw[k]; });
+  /* [FIX AD-TİPİ] `name` tip denetimsiz kopyalanıyordu (notes için denetim
+     vardı). Sayı/obje/dizi bir ad, `(u.name || 'K')[0].toUpperCase()` ifadesini
+     patlatıyor; çöküş saveLS()'ten SONRA gerçekleştiği için bozuk kayıt zaten
+     yazılmış oluyor ve sonraki açılışta init() aynı noktada çöküyordu — yani
+     tek bir bozuk içe aktarma uygulamayı kalıcı olarak kullanılamaz kılıyordu. */
+  u.name = _safeUserName(u.name, i);
   if (typeof u.shifts !== 'object' || !u.shifts) u.shifts = {};
   if (typeof u.leaves !== 'object' || !u.leaves) u.leaves = {};
   if (typeof u.deletedShifts !== 'object' || !u.deletedShifts) u.deletedShifts = {};
@@ -8869,7 +8912,7 @@ function renderTeamView() {
 
   userIds.forEach(uid => {
     const u = S.u[uid]; if (!u) return;
-    const initial = (u.name || 'K')[0].toUpperCase();
+    const initial = String(u.name || 'K')[0].toUpperCase();
     const name = escHtml(u.name || 'Kullanıcı ' + uid);
     gridHtml += `<div class="tg-name"><div class="tg-av">${initial}</div>${name}</div>`;
 
@@ -9192,12 +9235,51 @@ const PAYROLL_OVERRIDE_FIELDS = ['minWageGross','sgkEmployee','unemploymentEmplo
 let _payrollOverrides = null;
 let _payrollCfgCache = {};
 
+/* [FIX DİLİM-SONSUZ] JSON.stringify(Infinity) === "null". En üst gelir vergisi
+   dilimi `upTo: Infinity` ile tanımlandığı için, override kaydedilip sayfa
+   yenilendiğinde dilim `upTo: null` olarak geri okunuyor ve `_bordroCalcGV` ile
+   `renderTaxBracketCard`'ın dayandığı `=== Infinity` kontrolü tutmuyordu: en üst
+   dilimin vergisi hiç uygulanmıyor, matrah son sonlu dilimi aştığında yüz
+   binlerce lira eksik vergi hesaplanıyordu. Kalıcılaştırırken açık bir sentinel
+   yazıp okurken geri çeviriyoruz; eski kayıtlardaki null da Infinity'e döner. */
+const PAYROLL_INF_SENTINEL = '__inf__';
+function _payrollBracketsToStorage(brackets) {
+  if (!Array.isArray(brackets)) return brackets;
+  return brackets.map(b => Object.assign({}, b, {
+    upTo: (b && (b.upTo === Infinity || !Number.isFinite(b.upTo))) ? PAYROLL_INF_SENTINEL : b.upTo
+  }));
+}
+function _payrollBracketsFromStorage(brackets) {
+  if (!Array.isArray(brackets)) return brackets;
+  return brackets.map(b => Object.assign({}, b, {
+    upTo: (b && (b.upTo === PAYROLL_INF_SENTINEL || b.upTo === null || b.upTo === undefined
+                 || !Number.isFinite(b.upTo))) ? Infinity : b.upTo
+  }));
+}
+function _payrollOverridesFromStorage(all) {
+  if (!all || typeof all !== 'object') return {};
+  Object.keys(all).forEach(yr => {
+    const ov = all[yr];
+    if (ov && Array.isArray(ov.incomeTaxBrackets)) ov.incomeTaxBrackets = _payrollBracketsFromStorage(ov.incomeTaxBrackets);
+  });
+  return all;
+}
+function _payrollOverridesToStorage(all) {
+  const out = {};
+  Object.keys(all || {}).forEach(yr => {
+    const ov = all[yr];
+    out[yr] = (ov && Array.isArray(ov.incomeTaxBrackets))
+      ? Object.assign({}, ov, { incomeTaxBrackets: _payrollBracketsToStorage(ov.incomeTaxBrackets) })
+      : ov;
+  });
+  return out;
+}
 function loadPayrollOverrides() {
   if (_payrollOverrides) return _payrollOverrides;
   try {
     const raw = localStorage.getItem(PAYROLL_OVERRIDE_KEY);
     const p = raw ? JSON.parse(raw) : {};
-    _payrollOverrides = (p && typeof p === 'object' && !Array.isArray(p)) ? p : {};
+    _payrollOverrides = (p && typeof p === 'object' && !Array.isArray(p)) ? _payrollOverridesFromStorage(p) : {};
   } catch (e) { _payrollOverrides = {}; }
   return _payrollOverrides;
 }
@@ -9210,8 +9292,14 @@ function savePayrollOverride(year, params, meta) {
   PAYROLL_OVERRIDE_FIELDS.forEach(f => { if (params[f] !== undefined && params[f] !== null) clean[f] = params[f]; });
   clean._meta = Object.assign({ savedAt: new Date().toISOString(), source: 'manual' }, meta || {});
   all[yr] = clean;
+  /* [FIX OVERRIDE-GERİ-AL] Yazma başarısızsa (özel sekme / kota dolu) bellek
+     içi override'ı da geri al. Önceden bellek güncellenmiş kalıyor, kullanıcı
+     "kaydedilemedi" uyarısı görmesine rağmen bir sonraki cache temizliğinde
+     reddedildiğini sandığı değer sessizce devreye giriyordu. */
+  const _prevOverrides = _payrollOverrides;
   _payrollOverrides = all;
-  try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(all)); } catch (e) { return false; }
+  try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(_payrollOverridesToStorage(all))); }
+  catch (e) { _payrollOverrides = _prevOverrides; return false; }
   _payrollCfgCache = {};
   return true;
 }
@@ -9221,7 +9309,7 @@ function clearPayrollOverride(year) {
   const all = loadPayrollOverrides();
   if (Number.isFinite(yr)) delete all[yr]; else Object.keys(all).forEach(k => delete all[k]);
   _payrollOverrides = all;
-  try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(all)); } catch (e) { console.warn('Bordro override temizliği localStorage\'a yazılamadı:', e); }
+  try { localStorage.setItem(PAYROLL_OVERRIDE_KEY, JSON.stringify(_payrollOverridesToStorage(all))); } catch (e) { console.warn('Bordro override temizliği localStorage\'a yazılamadı:', e); }
   _payrollCfgCache = {};
 }
 
