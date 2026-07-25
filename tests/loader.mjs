@@ -62,8 +62,32 @@ for (let i = 0; i < LINES.length; ) {
 
 function bodyOf(name) { const [a, b] = defs.get(name); return LINES.slice(a, b + 1).join('\n'); }
 
+// Yorumları (ve string içeriklerini) düşür. Yorumda geçen bir fonksiyon adı
+// GERÇEK bağımlılık değildir; bırakılırsa tek bir açıklama satırı yüzünden
+// bütün UI kapanışı sandbox'a çekilir ve `window is not defined` ile patlar.
+function stripCommentsAndStrings(src) {
+  let out = '', quote = null, i = 0;
+  while (i < src.length) {
+    const c = src[i], n = src[i + 1];
+    if (quote) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === quote) quote = null;
+      i++; continue;                       // string gövdesi tanımlayıcı üretmez
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; i++; continue; }
+    if (c === '/' && n === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+    if (c === '/' && n === '*') {
+      i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i += 2; out += ' '; continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
+
 function depsOf(name) {
-  const b = bodyOf(name);
+  const b = stripCommentsAndStrings(bodyOf(name));
   const ids = new Set();
   for (const mm of b.matchAll(/\b([a-zA-Z_$][\w$]*)\b/g)) {
     if (defs.has(mm[1]) && mm[1] !== name) ids.add(mm[1]);

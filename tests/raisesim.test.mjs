@@ -9,7 +9,7 @@ import { loadFns } from './loader.mjs';
 
 const f = loadFns([
   'S', 'mkUser', 'estimatePayrollForMonth', '_rsProject', '_rsBaseAmount', '_rsBasisOf',
-  '_bordroRound2', 'computeNetFromGross', 'findGrossFromNet',
+  '_rsCacheKey', '_bordroRound2', 'computeNetFromGross', 'findGrossFromNet',
 ]);
 
 const Y = 2026, M = 4;              // Mayıs 2026 — geçmiş ay (tam ay değerlendirilir)
@@ -106,4 +106,67 @@ test('zam simülatörü — SGK-muaf ek kazanç ve TSS muafiyeti hesaba katılı
   const b = f._rsProject(withExtras, 'dailyNet', W * 30, Y, M, MD, prior);
   assert.ok(b.periodNet > a.periodNet, 'ek kazanç + muafiyet neti yükseltmeli (eski simülatör bunları yok sayıyordu)');
   assert.ok(b.periodNet - a.periodNet > 3000, `fark ${(b.periodNet - a.periodNet).toFixed(2)} anlamlı olmalı`);
+});
+
+/* Baz çizgi cache'i, `_rsProject`'in kullandığı HER girdiyi kapsamalı. Kapsamazsa
+   baz çizgi eski ayarlarla cache'te kalır, yeni projeksiyon taze ayarlarla
+   hesaplanır ve %0 zamda bile "hayalet zam" farkı görünür. */
+test('zam simülatörü — cache anahtarı bordroyu etkileyen tüm ayarları kapsar', () => {
+  const base = { salaryInputMode:'dailyNet', dailyNetWage:W, netSalary:W * 30, settingsUpdatedAt:1000 };
+  const keyOf = (patch) => {
+    const u = withUser(Object.assign({}, base, patch));
+    return f._rsCacheKey(u, 'dailyNet', W * 30, Y, M, MD);
+  };
+  const ref = keyOf({});
+  assert.equal(keyOf({}), ref, 'aynı girdi → aynı anahtar');
+
+  // sSet() bordroyu etkileyen her ayar değişiminde settingsUpdatedAt'ı günceller.
+  for (const patch of [
+    { sgkExemptEarn:5710.42, settingsUpdatedAt:2000 },
+    { tssExempt:3672.99, settingsUpdatedAt:2000 },
+    { otCompRate:2, settingsUpdatedAt:2000 },
+    { otCompMode:'leave', settingsUpdatedAt:2000 },
+    { monthlyHours:195, settingsUpdatedAt:2000 },
+    { weeklyContractHours:40, settingsUpdatedAt:2000 },
+  ]) {
+    assert.notEqual(keyOf(patch), ref, `ayar değişimi anahtarı değiştirmeli: ${JSON.stringify(patch)}`);
+  }
+
+  // Puantajın her ücretli-gün bileşeni de anahtarda olmalı.
+  const u = withUser(base);
+  for (const field of ['th','workDayEquiv','wr','mau','msd','otcm','ud','oh','oh125','weekendHours','hpd']) {
+    const md2 = Object.assign({}, MD, { [field]: safeAdd(MD[field]) });
+    assert.notEqual(
+      f._rsCacheKey(u, 'dailyNet', W * 30, Y, M, md2), ref,
+      `puantaj alanı anahtarda yok: ${field}`);
+  }
+  function safeAdd(v) { return (typeof v === 'number' ? v : 0) + 1; }
+});
+
+test('zam simülatörü — priorYTD elle düzenlenince baz çizgi tazelenir', () => {
+  const u = withUser({ salaryInputMode:'dailyNet', dailyNetWage:W, netSalary:W * 30, settingsUpdatedAt:1000 });
+  const before = f._rsCacheKey(u, 'dailyNet', W * 30, Y, M, MD);
+  u.payrollChecks = { '2026-05': { priorYTD:190000, priorYTDState:'manual', updatedAt:12345 } };
+  assert.notEqual(f._rsCacheKey(u, 'dailyNet', W * 30, Y, M, MD), before,
+    'payrollChecks düzenlemesi anahtarı değiştirmeli');
+});
+
+/* Regresyonun kendisi: baz çizgi eski ayarla, projeksiyon yeni ayarla
+   hesaplanırsa %0 zamda sıfırdan farklı bir "dönem farkı" doğar. */
+test('zam simülatörü — %0 zamda hayalet fark üretmez', () => {
+  const prior = 190000;
+  const u0 = withUser({ salaryInputMode:'dailyNet', dailyNetWage:W, netSalary:W * 30, settingsUpdatedAt:1000 });
+  const stale = f._rsProject(u0, 'dailyNet', W * 30, Y, M, MD, prior);   // muafiyet öncesi baz çizgi
+
+  const u1 = withUser({ salaryInputMode:'dailyNet', dailyNetWage:W, netSalary:W * 30,
+                        sgkExemptEarn:5710.42, tssExempt:3672.99, settingsUpdatedAt:2000 });
+  const fresh = f._rsProject(u1, 'dailyNet', W * 30, Y, M, prior === null ? MD : MD, prior);
+
+  // Eski davranış: stale baz çizgi + taze projeksiyon = hayalet fark.
+  assert.ok(Math.abs(fresh.periodNet - stale.periodNet) > 3000, 'senaryo gerçekten fark üretiyor');
+  // Anahtar bu ayarları kapsadığı için baz çizgi tazelenir ve fark sıfırlanır.
+  assert.notEqual(f._rsCacheKey(u1, 'dailyNet', W * 30, Y, M, MD),
+                  f._rsCacheKey(u0, 'dailyNet', W * 30, Y, M, MD));
+  const rebased = f._rsProject(u1, 'dailyNet', W * 30, Y, M, MD, prior);
+  assert.equal(rebased.periodNet - fresh.periodNet, 0, '%0 zam → dönem farkı 0');
 });
