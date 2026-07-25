@@ -127,6 +127,9 @@ let yearlyOTCache = {};
 /* Zam Simülatörü baz çizgisi (renderRaiseSim). Diğer türev cache'lerle aynı
    yerde durur ki invalidateMDCache onu TDZ riski olmadan sıfırlayabilsin. */
 let _rsBaseCache = { key:null, priorYTD:0, cur:null };
+/* e-Bordro oturum içi hesap sonucu (localStorage'a yazılmaz). Aynı gerekçeyle
+   burada tanımlı — invalidateMDCache bunu da düşürür. */
+let _eBordroSession = {};
 
 /* ============================================================
    UNDO STACK
@@ -261,6 +264,12 @@ function getMonthlyHours(u) {
 function getWeeklyContractHours(u) {
   return clampNum(u && u.weeklyContractHours, 15, 45, 45);
 }
+/* [POLİTİKA FM-SAAT-ESASI] Yasal saat esası TÜM sözleşmelerde sabittir
+   (Yargıtay 9.HD: 30 gün × 7,5 saat = 225). `weeklyContractHours` yalnızca
+   fazla çalışma sınıflandırmasında kullanılır (sözleşme–45 bandı %25, 45 üstü
+   %50); saat ÜCRETİNİ değiştirmez. `u` parametresi bilerek kullanılmıyor —
+   imza, esas ileride sözleşmeye bağlanmak istenirse çağıranlar değişmesin diye
+   korunuyor. Bu bilinçli bir karardır, tutarsızlık değildir. */
 function getPayrollHourBasis(u, y) {
   return Math.max(1, safeNum(payrollCfg(y).monthlyStandardHours, 225));
 }
@@ -789,11 +798,13 @@ function isAnnualLeaveChargeable(ds) {
 }
 
 /* [FEAT F3] Yıllık toplam FM (yasal sınır 270s — İş K. Md.41) */
+/* [FIX 270-SAAT] yearlyOvertimeHours ile aynı tanım: 270 saat/yıl sınırı
+   yalnızca fazla ÇALIŞMA (%50, haftalık 45 üstü) içindir. */
 function getYearlyOT(yr) {
   let sum = 0;
   for (let mm = 0; mm < 12; mm++) {
     const md = getMD(yr, mm);
-    sum += safeNum(md.oh, 0) + safeNum(md.oh125, 0);
+    sum += safeNum(md.oh, 0);
   }
   return sum;
 }
@@ -825,6 +836,13 @@ function invalidateMDCache(uid, y, m) {
   /* Zam Simülatörü baz çizgisi de puantaj/bordro türevidir — anahtar tabanlı
      invalidasyonu yakalayamadığı bir durumda bile burada düşsün. */
   _rsBaseCache = { key:null, priorYTD:0, cur:null };
+  /* [FIX EBORDRO-OTURUM] e-Bordro oturum sonucu da puantaj/ayar türevidir. Yalnız
+     login/logout/storage olayında temizleniyordu; vardiya-izin kaydı, ayar
+     değişimi ve bulut senkronundan sonra AI "Bordro Açıklaması" kartı eski
+     brüt/SGK/GV/net rakamlarını anlatmaya devam ediyordu. */
+  const _ebMatches = (uid === undefined && y === undefined && m === undefined)
+    || (_eBordroSession && _eBordroSession.userId === uid && _eBordroSession.y === y && _eBordroSession.m === m);
+  if (_ebMatches) _eBordroSession = {};
 }
 
 /* ============================================================
@@ -1099,7 +1117,7 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
       basePay: 0, overtimePay: 0, overtimePay125: 0, holidayPay: 0, totalEarning: 0,
       paidDays: 0, workedDays: d.wd || 0, workPaidDays: d.workDayEquiv || 0, weeklyDays: d.wr || 0,
       annualDays: d.mau || 0, sickDays: d.msd || 0, unpaidDays: d.ud || 0, otCompDays: d.otcm || 0,
-      missingDays: 0, absentDays: 0, freePassDays: 0,
+      missingDays: 0, absentDays: 0, freePassDays: 0, preStartDays: 0,
       dim, totalHours: d.th || 0, overtimeHours: d.oh || 0, overtimeHours125: d.oh125 || 0,
       holidayHours: d.hh || 0, holidayDays: d.hdw || 0, holidayPayDays: d.hpd !== undefined ? d.hpd : d.hdw,
       hhOT: d.hhOT || 0, otCompMode: u.otCompMode || 'pay', partialRate: payrollCfg(y).otPartialMultiplier,
@@ -1112,9 +1130,21 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
      günü işaretsiz — bu günler ödenen güne katılmadı" uyarısı zaten bu politikayı
      anlatıyordu; burada serbest gün sayılması iki ekranı ayrıştırıyordu. */
   const _dailyNetWage = u.salaryInputMode === 'dailyNet' && safeNum(u.dailyNetWage, 0) > 0;
+  /* [FIX İŞE-BAŞLAMA] `startDate` kazanç/bordro yoluna hiç girmiyordu: ay içinde
+     işe giren biri için, giriş tarihinden ÖNCEKİ hafta sonları "serbest gün"
+     sayılıp ücretli kabul ediliyordu (16 Mart girişte 4,5 gün fazla ödeme).
+     Giriş öncesi günler artık ne ücretli ne "eksik" sayılır; ayrı bir kalem
+     olarak ücretsiz döneme yazılır ve taban buna göre pro-rate edilir. */
+  const _startP = u.startDate ? parseDS(u.startDate) : null;
+  let _firstDay = 1;
+  if (_startP) {
+    if (_startP.y > y || (_startP.y === y && _startP.m > m)) _firstDay = dim + 1;      // ay tamamen giriş öncesi
+    else if (_startP.y === y && _startP.m === m) _firstDay = Math.min(dim + 1, Math.max(1, _startP.d));
+  }
+  const preStartDays = Math.max(0, Math.min(dim, _firstDay - 1));
   let fp = 0;
   if (!_dailyNetWage) {
-    for (let day = 1; day <= ev; day++) {
+    for (let day = _firstDay; day <= ev; day++) {
       const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
       if (u.shifts[ds] || u.leaves[ds]) continue;
       const dt = new Date(y, m, day);
@@ -1127,8 +1157,10 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
   /* [FIX] otcm (FM İzni günleri) ücretli gün sayısına dahil edilir */
   const workPaidDays = Number.isFinite(d.workDayEquiv) ? d.workDayEquiv : d.wd;
   const pd = workPaidDays + d.wr + d.mau + d.msd + (d.otcm || 0);
-  const mis = Math.max(0, ev - pd - d.ud - fp);
-  const ab = d.ud + mis;
+  const evEffective = Math.max(0, ev - preStartDays);
+  const mis = Math.max(0, evEffective - pd - d.ud - fp);
+  /* Giriş öncesi günler de ödenmeyen gün olarak tabandan düşülür. */
+  const ab = d.ud + mis + preStartDays;
   /* [FIX TEK-MOTOR] Taban ücret esası — estimatePayrollForMonth ile aynı olmalı:
      - Yevmiye (dailyNet): ödenen gün-eşdeğeri × günlük net. Ay sonu projeksiyonu
        YAPILMAZ; kayıtlı gün ne ise o ödenir (bordro motoruyla birebir).
@@ -1167,7 +1199,7 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
     basePay: bp, overtimePay: op, overtimePay125: op125, holidayPay: hp, totalEarning: te,
     paidDays: Math.round((dim - ab) * 100) / 100, workedDays: d.wd, workPaidDays: Math.round(workPaidDays * 100) / 100, weeklyDays: d.wr,
     annualDays: d.mau, sickDays: d.msd, unpaidDays: d.ud, otCompDays: d.otcm || 0,
-    missingDays: mis, absentDays: ab, freePassDays: fp,
+    missingDays: mis, absentDays: ab, freePassDays: fp, preStartDays,
     dim, totalHours: d.th, overtimeHours: d.oh, overtimeHours125: d.oh125 || 0,
     holidayHours: d.hh, holidayDays: d.hdw, holidayPayDays: d.hpd !== undefined ? d.hpd : d.hdw,
     hhOT: d.hhOT || 0, otCompMode: compMode, partialRate,
@@ -1221,14 +1253,27 @@ function generateEarningsForecast(ctx) {
   if (e.isCurrentMonth) {
     const evalDays = Math.max(1, e.evaluableDays || new Date().getDate());
     const progress = Math.min(1, evalDays / Math.max(1, e.dim || ctx.md.dim || 30));
+    /* [FIX AI-TAHMİN] `calcEarningForMonth` aylık ücretlide zaten TAM AY tabanı
+       döndürüyor (eksik günler düşülmüş 30 gün esası); bunu bir kez daha ay
+       ilerlemesine bölmek tahmini şişiriyordu — ayın 24'ünde %29'a varan sapma.
+       Taban zaten tam ay olduğu için yalnızca DEĞİŞKEN kalemler (fazla mesai,
+       tatil çalışması) ay sonuna projekte edilir. Yevmiye modelinde ise taban
+       gerçekten gün gün birikir; orada tamamı ölçeklenir. */
+    const _dailyNet = ctx.user && ctx.user.salaryInputMode === 'dailyNet';
     if (evalDays < 7) {
-      projected = ctx.salary;
+      projected = _dailyNet ? e.totalEarning : ctx.salary;
       confidence = 'Düşük';
-      basis = `İlk ${evalDays} gün — temel maaş baz alındı`;
-    } else {
+      basis = `İlk ${evalDays} gün — ${_dailyNet ? 'kayıtlı gün' : 'temel maaş'} baz alındı`;
+    } else if (_dailyNet) {
       projected = progress > 0 ? e.totalEarning / progress : e.totalEarning;
       confidence = evalDays < 10 ? 'Düşük' : evalDays < 20 ? 'Orta' : 'Yüksek';
       basis = `${evalDays} gün üzerinden ay sonu projeksiyonu`;
+    } else {
+      const _variable = Math.max(0, safeNum(e.overtimePay, 0) + safeNum(e.overtimePay125, 0) + safeNum(e.holidayPay, 0));
+      const _base = Math.max(0, safeNum(e.totalEarning, 0) - _variable);
+      projected = _base + (progress > 0 ? _variable / progress : _variable);
+      confidence = evalDays < 10 ? 'Düşük' : evalDays < 20 ? 'Orta' : 'Yüksek';
+      basis = `Taban tam ay + ${evalDays} gün üzerinden FM/tatil projeksiyonu`;
     }
   } else if (e.isFutureMonth) {
     projected = 0;
@@ -4336,13 +4381,19 @@ function buildHolidayWorkRows(u, y, m) {
   Object.values(byDay).sort((a, b) => a.ds.localeCompare(b.ds)).forEach(row => rows.push(row));
   return rows;
 }
+/* [FIX 270-SAAT] 4857/41 ve Fazla Çalışma Yönetmeliği md.5'teki 270 saat/yıl
+   sınırı FAZLA ÇALIŞMAYA (haftalık 45 saati aşan kısım, %50) aittir. "Fazla
+   sürelerle çalışma" (sözleşme saati–45 bandı, %25) bu limite girmez.
+   Önceden bu fonksiyon ikisini topluyor, Panel'deki AI rapor özeti ise yalnız
+   `oh` sayıyordu: 40s sözleşmeli bir çalışan Panel'de "sorun yok", Kazanç
+   ekranında "240 saat aşım" görüyordu. Tek kaynak: yalnız `oh`. */
 function yearlyOvertimeHours(y) {
   const key = `${S.cu}-${y}`;
   if (yearlyOTCache[key] !== undefined) return yearlyOTCache[key];
   let total = 0;
   for (let i = 0; i < 12; i++) {
     const md = getMD(y, i);
-    total += (md.oh || 0) + (md.oh125 || 0);
+    total += (md.oh || 0);
   }
   yearlyOTCache[key] = total;
   return total;
@@ -4351,7 +4402,14 @@ function renderEmployeeRightsPanel(u, y, m, d, e) {
   const rec = getPayrollCheck(u, y, m);
   const payroll = estimatePayrollForMonth(u, y, m, d);
   const actualPaid = safeNum(rec.actualPaid, 0);
-  const paidDiff = actualPaid > 0 && e ? actualPaid - e.totalEarning : null;
+  /* [FIX BEKLENEN-NET-TEK-KAYNAK] Kartın üst yarısı ekran tahminini, alt yarısı
+     ("Bordro Doğrulama → Net") bordro motorunu gösteriyordu; aynı kartta yan yana
+     iki farklı "beklenen net" çıkıyordu. Gerçek yatan tutarla karşılaştırma
+     bordro netiyle yapılmalı — kullanıcının banka hesabına giren sayı odur. */
+  const _expectedNet = payroll && Number.isFinite(payroll.net)
+    ? _bordroRound2(payroll.net)
+    : (e ? e.totalEarning : null);
+  const paidDiff = actualPaid > 0 && _expectedNet !== null ? actualPaid - _expectedNet : null;
   const annualOT = yearlyOvertimeHours(y);
   const otLeft = 270 - annualOT;
   const warnings = buildWorkLawWarnings(u, y, m, d);
@@ -4385,7 +4443,7 @@ function renderEmployeeRightsPanel(u, y, m, d, e) {
         <div class="esb-title"><i class="fas fa-money-check-alt"></i>Maaş Farkı Kontrolü</div>
         <label class="fl">Gerçek yatan net tutar</label>
         ${input('actualPaid','Örn: 42000')}
-        <div style="margin-top:8px;font-size:12px;color:var(--t2)">Beklenen: <strong>${e ? fm(e.totalEarning) : '—'}</strong>${paidDiff !== null ? ` · Fark: ${diffBadge(paidDiff)}` : ''}</div>
+        <div style="margin-top:8px;font-size:12px;color:var(--t2)">Beklenen: <strong>${_expectedNet !== null ? fm(_expectedNet) : '—'}</strong>${paidDiff !== null ? ` · Fark: ${diffBadge(paidDiff)}` : ''}</div>
       </div>
       <div class="esb" style="margin:0">
         <div class="esb-title"><i class="fas fa-receipt"></i>Bordro Doğrulama</div>
@@ -5707,11 +5765,13 @@ function shareMonthReport() {
   let text = `📊 ${u.name} — ${MTR[S.cm]} ${S.cy}\n`;
   text += `━━━━━━━━━━━━━━━\n`;
   text += `⏰ Toplam: ${md.th.toFixed(1)} saat (${md.wd} gün)\n`;
-  text += `🔥 Fazla Mesai: ${md.oh.toFixed(1)} saat\n`;
+  /* [FIX PANEL-FM-TEK-KAYNAK] Paylaşım metni de fazla çalışma + fazla süreli
+     çalışmanın toplamını ve iki FM kaleminin toplam ekini yazsın. */
+  text += `🔥 Fazla Mesai: ${((md.oh || 0) + (md.oh125 || 0)).toFixed(1)} saat\n`;
   text += `📈 Günlük Ort: ${avgDaily} saat\n`;
   if (e) {
     text += `💰 Kazanç: ${fm(e.totalEarning)}\n`;
-    if (e.overtimePay > 0) text += `   FM Eki: +${fm(e.overtimePay)}\n`;
+    if (e.overtimePay + e.overtimePay125 > 0) text += `   FM Eki: +${fm(e.overtimePay + e.overtimePay125)}\n`;
     if (e.holidayPay > 0) text += `   Tatil Eki: +${fm(e.holidayPay)}\n`;
   }
   if (md.wr > 0 || md.mau > 0 || md.msd > 0) {
@@ -6286,16 +6346,20 @@ function renderDashFMTracker() {
   const now = new Date();
   const md = getMD(S.cy, S.cm, (S.cy === now.getFullYear() && S.cm === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
   const e = u.netSalary ? calcEarningForMonth(S.cy, S.cm, u.netSalary) : null;
-  const _mhFM = getMonthlyHours(u);
-  const hr = (u.netSalary > 0 && _mhFM > 0) ? u.netSalary / _mhFM : 0;
-  /* [FIX] 'leave' modunda FM ek ücreti ödenmez; bakiyeye eklenir */
+  /* [FIX PANEL-FM-TEK-KAYNAK] Kart kendi FM/tatil ücretini yeniden hesaplıyor ve
+     yalnızca %50 fazla mesaiyi (`oh`) sayıyordu; Panel'in hemen üstündeki
+     "FÇ/FM" istatistiği ise `oh + oh125` gösteriyordu. Aynı ekranda 50s vs 25s
+     ve FM ekinde binlerce lira fark oluşuyordu. Artık tek kaynak
+     calcEarningForMonth ve saat toplamı da fazla çalışma + fazla süreli
+     çalışmanın toplamı. */
   const compMode = u.otCompMode || 'pay';
-  const fmEarn = compMode === 'leave' ? 0 : md.oh * hr * getOTRate(u);
-  const holEarn = u.netSalary > 0 ? (md.hpd !== undefined ? md.hpd : md.hdw) * (u.netSalary / 30) : 0;
+  const otHoursTotal = (md.oh || 0) + (md.oh125 || 0);
+  const fmEarn = compMode === 'leave' ? 0 : ((e ? safeNum(e.overtimePay, 0) + safeNum(e.overtimePay125, 0) : 0));
+  const holEarn = e ? safeNum(e.holidayPay, 0) : 0;
   const avgDaily = md.wd > 0 ? md.th / md.wd : 0;
-  const fmPct = md.th > 0 ? (md.oh / md.th * 100) : 0;
+  const fmPct = md.th > 0 ? (otHoursTotal / md.th * 100) : 0;
 
-  if (md.oh <= 0 && md.hh <= 0 && md.th <= 0) { el.innerHTML = ''; return; }
+  if (otHoursTotal <= 0 && md.hh <= 0 && md.th <= 0) { el.innerHTML = ''; return; }
 
   const fmEkiLabel = compMode === 'leave'
     ? `<span style="color:var(--acc);font-size:10px">🏖️ Bakiyeye ekleniyor</span>`
@@ -6304,7 +6368,7 @@ function renderDashFMTracker() {
   el.innerHTML = `<div class="fm-tracker">
     <div class="fmt-head">
       <div class="fmt-title"><i class="fas fa-fire"></i>Aylık FM & Ek Ücret</div>
-      <div class="fmt-total">${md.oh.toFixed(1)}s</div>
+      <div class="fmt-total">${otHoursTotal.toFixed(1)}s</div>
     </div>
     <div class="fmt-grid">
       <div class="fmt-item"><div class="fv" style="color:var(--acc)">${fmPct.toFixed(1)}%</div><div class="fl">FM Oranı</div></div>
@@ -7728,9 +7792,14 @@ function deepMergeUser(local, cloud) {
   Object.keys(merged.deletedShifts).forEach(k => {
     const delTime = safeTimestamp(merged.deletedShifts[k], 0);
     const sh = merged.shifts[k];
-    if (sh && safeTimestamp(sh.updatedAt, 0) <= delTime) {
+    /* [FIX TOMBSTONE-EŞİTLİK] `<=` idi: silme kaydıyla AYNI milisaniyede yazılmış
+       bir vardiya sessizce yok oluyordu. Projenin geri kalanı ([FIX K4] ayar
+       merge'i, izin merge'i) eşitlikte yerel kaydı koruyor; toplu işlemler
+       (haftalık şablon uygulama, çoklu yapıştırma) onlarca günü tek Date.now()
+       turunda yazdığı için aynı-ms çakışması gerçekçi. Artık kayıt korunur. */
+    if (sh && safeTimestamp(sh.updatedAt, 0) < delTime) {
       delete merged.shifts[k];
-    } else if (sh && safeTimestamp(sh.updatedAt, 0) > delTime) {
+    } else if (sh && safeTimestamp(sh.updatedAt, 0) >= delTime) {
       // Shift silindikten sonra yeniden oluşturulmuş, silme kaydını temizle
       delete merged.deletedShifts[k];
     }
@@ -7754,9 +7823,10 @@ function deepMergeUser(local, cloud) {
   Object.keys(merged.deletedLeaves).forEach(k => {
     const delTime = safeTimestamp(merged.deletedLeaves[k], 0);
     const lv = merged.leaves[k];
-    if (lv && safeTimestamp(lv.updatedAt, 0) <= delTime) {
+    /* [FIX TOMBSTONE-EŞİTLİK] vardiya tarafıyla aynı politika. */
+    if (lv && safeTimestamp(lv.updatedAt, 0) < delTime) {
       delete merged.leaves[k];
-    } else if (lv && safeTimestamp(lv.updatedAt, 0) > delTime) {
+    } else if (lv && safeTimestamp(lv.updatedAt, 0) >= delTime) {
       delete merged.deletedLeaves[k];
     }
   });
@@ -9233,6 +9303,7 @@ const _payrollWarnedYears = new Set();
 const PAYROLL_OVERRIDE_KEY = 'st_payroll_overrides';
 const PAYROLL_OVERRIDE_FIELDS = ['minWageGross','sgkEmployee','unemploymentEmployee','stampTaxRate','incomeTaxBrackets','disabilityDeductions','mealDailyTaxFree','transportDailyTaxFree','otPartialMultiplier','weekendMultiplier'];
 let _payrollOverrides = null;
+const _payrollFallbackYears = {};   // [FIX YIL-FALLBACK] istenen yıl → ödünç alınan yıl
 let _payrollCfgCache = {};
 
 /* [FIX DİLİM-SONSUZ] JSON.stringify(Infinity) === "null". En üst gelir vergisi
@@ -9381,12 +9452,23 @@ function payrollCfg(y) {
 
   let base = (Number.isFinite(yr) && payrollConfigByYear[yr]) ? payrollConfigByYear[yr] : null;
   if (!base) {
-    const fallbackYear = Object.keys(payrollConfigByYear).map(Number).sort((a,b)=>b-a)[0];
+    /* [FIX YIL-FALLBACK] Önceden HER ZAMAN en yeni yıl seçiliyordu: 2023 için
+       2026 asgari ücreti ve dilimleri kullanılıyor, geçmiş ay hesapları brüt
+       60.000'de ayda ~1.760 ₺ sapıyordu. Doğrusu en YAKIN tanımlı yıl; eşit
+       uzaklıkta küçük yıl (geçmişe doğru) tercih edilir. */
+    const _cfgYears = Object.keys(payrollConfigByYear).map(Number).filter(Number.isFinite);
+    const fallbackYear = Number.isFinite(yr)
+      ? _cfgYears.reduce((best, cand) => {
+          const db = Math.abs(best - yr), dc = Math.abs(cand - yr);
+          return dc < db || (dc === db && cand < best) ? cand : best;
+        }, _cfgYears.sort((a,b)=>b-a)[0])
+      : _cfgYears.sort((a,b)=>b-a)[0];
     if (Number.isFinite(yr) && !_payrollWarnedYears.has(yr) && !loadPayrollOverrides()[yr]) {
       _payrollWarnedYears.add(yr);
       setTimeout(() => toast(`⚠️ ${yr} yılı bordro parametreleri tanımlı değil — ${fallbackYear} değerleri kullanılıyor.`, 'warning'), 200);
     }
     base = payrollConfigByYear[fallbackYear];
+    _payrollFallbackYears[yr] = fallbackYear;
   }
 
   const ov = (Number.isFinite(yr) && loadPayrollOverrides()[yr]) ? loadPayrollOverrides()[yr] : null;
@@ -9398,6 +9480,15 @@ function payrollCfg(y) {
     merged._overrideMeta = ov._meta || null;
   }
   merged = _withSgkCeiling(merged);
+  /* [FIX YIL-FALLBACK] Parametreleri başka bir yıldan ödünç aldığımızı sonuca
+     yaz: export'lar (PDF/JSON/XML) `cfgYear`'ı arşivliyor ve bunun fallback
+     olduğuna dair hiçbir işaret taşımıyordu. */
+  if (Number.isFinite(yr) && _payrollFallbackYears[yr] !== undefined) {
+    merged = (merged === base) ? Object.assign({}, base) : merged;
+    merged.requestedYear = yr;
+    merged.isFallbackYear = true;
+    merged = _withSgkCeiling(merged);
+  }
   _payrollCfgCache[cacheKey] = merged;
   return merged;
 }
@@ -9556,8 +9647,6 @@ function findGrossFromNet(targetNet, maritalStatus, children, priorYTDMatrah, mo
   return (lo + hi) / 2;
 }
 
-// Oturum içi hesap sonucu (localStorage'a yazılmaz)
-let _eBordroSession = {};
 
 // Kazanç sayfasından modal aç
 function openEBordroModal(y, m) {

@@ -158,3 +158,43 @@ test('yevmiye — ödenen gün-eşdeğeri Net Özet ayrıştırmasıyla tutarlı
   assert.ok(near(p.dailyNetPaidDays, f._bordroRound2(beklenen), 0.02));
   assert.ok(near(p.baseNet, W * p.dailyNetPaidDays, 0.02));
 });
+
+// === ORTA grup regresyonları ===
+
+test('işe başlama — ay içi girişte giriş öncesi günler ödenmez', () => {
+  const NET = 43200, y = 2025, m = 2;            // Mart 2025
+  const u = setUser({ netSalary: NET, salaryInputMode: 'net', payMode: 'monthly', startDate: '2025-03-16' });
+  // Yalnızca 16–31 Mart kayıtlı
+  const dim = new Date(y, m + 1, 0).getDate();
+  for (let day = 16; day <= dim; day++) {
+    const ds = `${y}-03-${String(day).padStart(2, '0')}`;
+    const dow = new Date(y, m, day).getDay();
+    if (dow === 0 || dow === 6) u.leaves[ds] = { type: 'weekly' };
+    else u.shifts[ds] = { start: '09:00', end: '16:00', break: 0 };
+  }
+  f.invalidateMDCache();
+  const e = f.calcEarningForMonth(y, m, NET);
+  assert.equal(e.preStartDays, 15, 'giriş öncesi 15 gün ayrı sayılmalı');
+  assert.equal(e.freePassDays, 0, 'giriş öncesi hafta sonları serbest gün sayılmamalı');
+  assert.ok(e.basePay < NET, 'tam maaş ödenmemeli');
+  assert.ok(near(e.basePay, NET * (30 - e.absentDays) / 30, 1),
+    `taban pro-rate edilmeli: ${e.basePay.toFixed(2)}`);
+});
+
+test('işe başlama — giriş tarihinden önceki ay hiç kazanç üretmez', () => {
+  const NET = 43200, y = 2025, m = 0;
+  const u = setUser({ netSalary: NET, salaryInputMode: 'net', payMode: 'monthly', startDate: '2025-03-16' });
+  f.invalidateMDCache();
+  const e = f.calcEarningForMonth(y, m, NET);
+  assert.equal(e.basePay, 0, `giriş öncesi ay 0 olmalı: ${e.basePay}`);
+  assert.equal(e.totalEarning, 0);
+});
+
+test('işe başlama — startDate yoksa davranış değişmez', () => {
+  const NET = 43200, y = 2025, m = 2;
+  const u = setUser({ netSalary: NET, salaryInputMode: 'net', payMode: 'monthly' });
+  fillMonth(u, y, m, { hours: ['09:00', '16:00'] });
+  const e = f.calcEarningForMonth(y, m, NET);
+  assert.equal(e.preStartDays, 0);
+  assert.ok(near(e.basePay, NET, 1));
+});

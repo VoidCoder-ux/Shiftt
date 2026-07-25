@@ -7,6 +7,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadFns } from './loader.mjs';
 
+/* payrollCfg tanımsız yıl için setTimeout ile bir uyarı toast'ı kuyruğa alır;
+   sandbox'ta DOM olmadığı için test bittikten sonra uncaughtException üretir.
+   Ürün davranışı doğru — burada yalnızca DOM'u sessiz stub'lıyoruz. */
+globalThis.document = globalThis.document || { getElementById: () => null, body: {} };
+globalThis.$ = globalThis.$ || (() => null);
+
 const f = loadFns([
   'payrollCfg', '_withSgkCeiling', '_sgkCeilingOf', 'computeNetFromGross',
   'findGrossFromNet', 'payrollConfigByYear', '_payrollCfgCache', '_bordroRound2',
@@ -66,4 +72,23 @@ test("bordro — SGK tavanı üstünde kesinti tavanla sınırlı kalır (overri
   const r = f.computeNetFromGross(2000000, 'single', 0, 0, 0, undefined, 2026);
   assert.equal(r.sgkBase, f._bordroRound2(ceiling), 'matrah tavanda');
   assert.ok(near(r.sgkDeduction, f._bordroRound2(ceiling * 0.14), 0.1));
+});
+
+test('payrollCfg — tanımsız yıl EN YAKIN tanımlı yıla düşer (en yeniye değil)', () => {
+  const years = Object.keys(f.payrollConfigByYear).map(Number).sort((a, b) => a - b);
+  const enEski = years[0], enYeni = years[years.length - 1];
+  // Geçmiş: en eski tanımlı yıldan daha eski bir yıl en eskiye düşmeli
+  const gecmis = f.payrollCfg(enEski - 3);
+  assert.equal(gecmis.year, enEski, `geçmiş yıl en yakına (${enEski}) düşmeli, görülen ${gecmis.year}`);
+  assert.equal(gecmis.isFallbackYear, true, 'fallback bayrağı taşımalı');
+  assert.equal(gecmis.requestedYear, enEski - 3, 'istenen yıl kayıtlı olmalı');
+  // Gelecek: en yeniden sonrası en yeniye düşer
+  const gelecek = f.payrollCfg(enYeni + 5);
+  assert.equal(gelecek.year, enYeni);
+  assert.equal(gelecek.isFallbackYear, true);
+  // Tanımlı yıl fallback bayrağı taşımaz
+  const tanimli = f.payrollCfg(enYeni);
+  assert.ok(!tanimli.isFallbackYear, 'tanımlı yıl fallback sayılmamalı');
+  // Fallback cfg'de de SGK tavanı sağlam olmalı
+  assert.ok(f._sgkCeilingOf(gecmis) > 0);
 });
