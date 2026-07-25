@@ -1094,14 +1094,21 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
     };
   }
 
+  /* [FIX TEK-MOTOR] Yevmiye (G-Net) modelinde işaretsiz gün ÖDENMEZ: ödenen gün
+     yalnızca kayıtlı çalışma/izin günlerinden gelir. Net Özet kartının "ayın N
+     günü işaretsiz — bu günler ödenen güne katılmadı" uyarısı zaten bu politikayı
+     anlatıyordu; burada serbest gün sayılması iki ekranı ayrıştırıyordu. */
+  const _dailyNetWage = u.salaryInputMode === 'dailyNet' && safeNum(u.dailyNetWage, 0) > 0;
   let fp = 0;
-  for (let day = 1; day <= ev; day++) {
-    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    if (u.shifts[ds] || u.leaves[ds]) continue;
-    const dt = new Date(y, m, day);
-    const dow = dt.getDay();
-    if (dow === 0 || dow === 6) fp++;
-    else fp += holidayWeight(ds);
+  if (!_dailyNetWage) {
+    for (let day = 1; day <= ev; day++) {
+      const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      if (u.shifts[ds] || u.leaves[ds]) continue;
+      const dt = new Date(y, m, day);
+      const dow = dt.getDay();
+      if (dow === 0 || dow === 6) fp++;
+      else fp += holidayWeight(ds);
+    }
   }
 
   /* [FIX] otcm (FM İzni günleri) ücretli gün sayısına dahil edilir */
@@ -1109,9 +1116,21 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
   const pd = workPaidDays + d.wr + d.mau + d.msd + (d.otcm || 0);
   const mis = Math.max(0, ev - pd - d.ud - fp);
   const ab = d.ud + mis;
-  /* Günlük (G) sözleşmelerde gerçek ay gün sayısı üzerinden baz ücret hesaplanır.
-     Ocak (31g) → 31×dr, Şubat (28g) → 28×dr. Aylık sabit için 30-günlük ayda fark yok. */
-  const bp = Math.max(0, dim * dr - (ab * dr));
+  /* [FIX TEK-MOTOR] Taban ücret esası — estimatePayrollForMonth ile aynı olmalı:
+     - Yevmiye (dailyNet): ödenen gün-eşdeğeri × günlük net. Ay sonu projeksiyonu
+       YAPILMAZ; kayıtlı gün ne ise o ödenir (bordro motoruyla birebir).
+     - Saatlik (payMode 'hourly'): gerçek ay günü esası korunur (Ocak 31×dr).
+     - Aylık ücretli (varsayılan): Türk bordrosunun 30 GÜN esası. Önceden burada
+       da `dim` kullanılıyordu; Şubat'ta maaş 2/30 eksik, Ocak'ta 1/30 fazla
+       görünüyor, üstelik ekran bunu "Tam ay" etiketiyle sunuyordu. 4857/32 ve
+       bordro pratiğinde aylık ücretlinin ayı 30 gündür. */
+  let bp;
+  if (_dailyNetWage) {
+    bp = Math.max(0, pd * dr);
+  } else {
+    const baseDays = (u.payMode === 'hourly') ? dim : 30;
+    bp = Math.max(0, baseDays * dr - (ab * dr));
+  }
 
   /* Md.47 tatil ilave ücreti = 1 günlük NET ücret (dr). Bordro doğrulaması:
      brüt extra (₺1.930,31) → marjinal vergi/SGK sonrası net = tam ₺1.380 = dr. */
@@ -2249,6 +2268,14 @@ function renderDash() {
   const streak = getStreak();
   setHtml('dashStreak', streak > 0 ? `<div class="streak-badge"><i class="fas fa-fire"></i>${streak} gün seri</div>` : '');
   const e = u.netSalary ? calcEarningForMonth(S.cy, S.cm, u.netSalary) : null;
+  /* [FIX TEK-MOTOR] Yevmiye modunda Panel de Kazanç ekranının "Net Özet"i ile
+     aynı sayıyı göstersin — bordro motoru tek kaynak. Önceden Panel tahmin
+     motorunu, Kazanç ekranı bordro motorunu okuyor ve ikisi ayrışıyordu. */
+  const _dashPayroll = (u.salaryInputMode === 'dailyNet' && safeNum(u.dailyNetWage, 0) > 0)
+    ? estimatePayrollForMonth(u, S.cy, S.cm, d) : null;
+  const _dashEarning = (_dashPayroll && Number.isFinite(_dashPayroll.net))
+    ? _bordroRound2(_dashPayroll.net)
+    : (e ? e.totalEarning : null);
 
   function cmp(c, p) {
     if (p === null || p === undefined) return '<span class="change neutral">—</span>';
@@ -2261,7 +2288,7 @@ function renderDash() {
   setHtml('statsEl', `
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-clock"></i></div><div class="val">${d.th.toFixed(1)}</div><div class="lbl">Toplam Saat</div>${cmp(d.th, prev.th)}</div>
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-fire"></i></div><div class="val">${(d.oh + d.oh125).toFixed(1)}</div><div class="lbl">FÇ/FM</div>${cmp(d.oh + d.oh125, prev.oh + prev.oh125)}</div>
-    <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-wallet"></i></div><div class="val">${e ? fm(e.totalEarning) : '—'}</div><div class="lbl">Kazanç</div></div>
+    <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-wallet"></i></div><div class="val">${_dashEarning !== null ? fm(_dashEarning) : '—'}</div><div class="lbl">Kazanç</div></div>
     <div class="stat"><div class="ribbon"></div><div class="ico"><i class="fas fa-calendar-check"></i></div><div class="val">${d.wd}/${d.dim}</div><div class="lbl">Çalışma Günü</div></div>
   `);
 
@@ -9524,12 +9551,19 @@ function openEBordroModal(y, m) {
       const dd = getMD(y, m, (y === _ebNow.getFullYear() && m === _ebNow.getMonth()) ? { throughDay:_ebNow.getDate() } : undefined);
       const _dsh = payrollCfg(y).dailyStandardHours || 7.5;
       const hdw = dd.hdw || 0;                                  // çalışılan resmi tatil günü
-      const normalDays = Math.max(0, (dd.workDayEquiv || 0) - hdw);
+      /* [FIX TEK-MOTOR] Ücretli izin günleri (yıllık, rapor, FM izni) de ödenen
+         gündür ve yevmiye üzerinden ödenir; önceden ön dolumda hiç yer almıyor,
+         e-Bordro Net Özet'ten bu günler kadar düşük çıkıyordu. Md.47 ilavesi de
+         `hdw` (tam gün sayısı) değil `hpd` (saat-oranlı ağırlık) olmalı —
+         estimatePayrollForMonth ve Net Özet kartı hpd kullanıyor. */
+      const paidLeaveDays = _bordroRound2((dd.mau || 0) + (dd.msd || 0) + (dd.otcm || 0));
+      const holAddDays = _bordroRound2(dd.hpd !== undefined ? dd.hpd : hdw);
+      const normalDays = Math.max(0, _bordroRound2((dd.workDayEquiv || 0) - hdw + paidLeaveDays));
       const setVal = (id, val) => { const el = $(id); if (el) el.value = val; };
       setVal('eb-normalHours', _bordroRound2(normalDays * _dsh));
       setVal('eb-weeklyRestDays', dd.weeklyRestDays || 0);
       setVal('eb-publicHolidayDays', _bordroRound2((dd.publicHolidayPaidDays || 0) + hdw)); // her tatile baz ücret
-      setVal('eb-publicHolidayWorkDays', hdw);                  // çalışılana ayrıca ilave (Md.47)
+      setVal('eb-publicHolidayWorkDays', holAddDays);           // çalışılana ayrıca ilave (Md.47)
       setVal('eb-manualOTHours', _bordroRound2(dd.oh || 0));
       setVal('eb-manualOT125Hours', _bordroRound2(dd.oh125 || 0));
       setVal('eb-manualNightHours', _bordroRound2(dd.nh || 0));
@@ -9642,6 +9676,7 @@ function renderBordroPreview() {
   let hrGross = 0, drGross = 0, nightHrs = 0, holPayDays = 0, holGross = 0, totalGross = 0;
   let otHours = 0, ot125Hours = 0;
   let unpaidGross = 0;
+  let missingDays = 0, missingGross = 0;   // [FIX TEK-MOTOR] işaretsiz iş günleri
   let weekendGross = 0;
 
   if (isOfficialNetDaily) {
@@ -9711,6 +9746,15 @@ function renderBordroPreview() {
     publicHolidayGross = _bordroRound2(Math.max(0, d.publicHolidayPaidDays || 0) * drGross);
     normalGross = _bordroRound2(Math.max(0, baseGross - weeklyRestGross - publicHolidayGross));
     unpaidGross = _bordroRound2(Math.max(0, d.ud || 0) * drGross);
+    /* [FIX TEK-MOTOR] Takvimde hiç işaretlenmemiş iş günleri (eksik gün) de
+       tabandan düşülmeli. Önceden yalnızca ücretsiz izin düşülüyordu; ayın bir
+       kısmı girilmemişse e-Bordro tam ay ödüyor, aynı ekrandaki Net Özet ise
+       pro-rate ediyordu. estimatePayrollForMonth `(30 − ud − eksik)/30` ile
+       hesaplıyor; burada aynı sonucu `eksik × günlük brüt` düşerek üretiyoruz. */
+    const _ebEarn = calcEarningForMonth(y, m, u.netSalary);
+    const _ebAbsent = Math.max(0, safeNum(_ebEarn && _ebEarn.absentDays, 0));
+    missingDays = Math.max(0, _bordroRound2(_ebAbsent - Math.max(0, d.ud || 0)));
+    missingGross = _bordroRound2(missingDays * drGross);
     otHours = d.oh || 0;
     ot125Hours = d.oh125 || 0;
     nightHrs = d.nh || 0;
@@ -9720,7 +9764,7 @@ function renderBordroPreview() {
     nightGross = _bordroRound2(nightHrs * hrGross * nightRate);
     holGross = _bordroRound2(holPayDays * drGross);
     weekendGross = _bordroRound2((d.weekendHours || 0) * hrGross * Math.max(0, (cfg.weekendMultiplier || 1) - 1));
-    totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross) + otGross + ot125Gross + nightGross + holGross + weekendGross);
+    totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross - missingGross) + otGross + ot125Gross + nightGross + holGross + weekendGross);
   }
 
   /* [FEAT EK-KAZANÇ] SGK-muaf, gelir+damga vergisine tabi ek kazancı tüm modlarda
@@ -9831,6 +9875,7 @@ function renderBordroPreview() {
     cfgYear: cfg.year,
     disability, tssExempt, besRate, besBase, besDeduct, icra, avans, otherDeduct, privateDeducts,
     annualLeaveDays: d.mau || 0, sickLeaveDays: d.msd || 0, unpaidDays: d.ud || 0, unpaidGross,
+    missingDays, missingGross,
     weekendHours: d.weekendHours || 0, weekendWorkedDays: d.weekendWorkedDays || 0,
     weekendMultiplier: cfg.weekendMultiplier || 1,
     mealDays: effectiveMealDays, transportDays: effectiveTransportDays,
@@ -9845,7 +9890,7 @@ function renderBordroPreview() {
 
   const fmb = v => formatTRY(v, 2);
   const fmr = v => formatNumTR(v, 2);
-  const hasExtras = unpaidGross > 0 || otGross > 0 || ot125Gross > 0 || nightGross > 0 || holGross > 0 || weekendGross > 0 || sgkExemptEarn > 0;
+  const hasExtras = missingGross > 0 || unpaidGross > 0 || otGross > 0 || ot125Gross > 0 || nightGross > 0 || holGross > 0 || weekendGross > 0 || sgkExemptEarn > 0;
   const annualLeaveDays = d.mau || 0;
   const sickLeaveDays = d.msd || 0;
   const unpaidDays = d.ud || 0;
@@ -9878,6 +9923,7 @@ function renderBordroPreview() {
     ${weekendGross > 0 ? `<div class="bordro-row add"><span class="bl">Hafta Sonu Farkı</span><span class="bv">+ ${fmb(weekendGross)}</span></div>` : ''}
     ${belowMinWage ? `<div class="bordro-row info"><span class="bl">Asgari Ücret Kontrolü</span><span class="bv">Altında</span></div>` : ''}
     ${unpaidDays > 0 ? `<div class="bordro-row deduct"><span class="bl">Ücretsiz İzin (baz brütten düşülür)</span><span class="bv">− ${fmb(unpaidGross)}</span></div>` : ''}
+    ${missingGross > 0 ? `<div class="bordro-row deduct"><span class="bl">Eksik Gün — takvimde işaretsiz (${missingDays.toFixed(2)}g × ${fmr(drGross)}₺)</span><span class="bv">− ${fmb(missingGross)}</span></div>` : ''}
     ${(holGross > 0 && (otGross > 0 || ot125Gross > 0)) ? `<div class="bordro-row info"><span class="bl">Tatil + FM Kuralı</span><span class="bv">Ayrı kalem</span></div>` : ''}
     ${ot125Gross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Çalışma %25 (${ot125Hours.toFixed(1)}s × ${fmr(hrGross)}₺ × ${partialRate})</span><span class="bv">+ ${fmb(ot125Gross)}</span></div>` : ''}
     ${otGross > 0 ? `<div class="bordro-row add"><span class="bl">Fazla Mesai %50 (${otHours.toFixed(1)}s × ${fmr(hrGross)}₺ × ${compRate})</span><span class="bv">+ ${fmb(otGross)}</span></div>` : ''}
@@ -9971,7 +10017,9 @@ function downloadBordroPDF() {
   if (r.holGross > 0) rows.push([`Tatil Cal. Ilavesi (${(r.holPayDays||r.holDays||0).toFixed(2)}g x ${(r.drGross||0).toFixed(2)}) Md.47`, fmb(r.holGross), '']);
   if (r.weekendGross > 0) rows.push([`Hafta Sonu Farki (${(r.weekendHours||0).toFixed(1)}s x ${(r.weekendMultiplier||1).toFixed(2)})`, fmb(r.weekendGross), '']);
   if ((r.unpaidGross || 0) > 0) rows.push([`Ucretsiz Izin (${(r.unpaidDays||0).toFixed(2)}g x ${(r.drGross||0).toFixed(2)})`, '', fmb(r.unpaidGross)]);
-  if (r.otGross > 0 || r.ot125Gross > 0 || r.nightGross > 0 || r.holGross > 0 || r.weekendGross > 0 || (r.unpaidGross || 0) > 0) rows.push(['TOPLAM BRUT', fmb(r.gross), '']);
+  if ((r.missingGross || 0) > 0) rows.push([`Eksik Gun - takvimde isaretsiz (${(r.missingDays||0).toFixed(2)}g x ${(r.drGross||0).toFixed(2)})`, '', fmb(r.missingGross)]);
+  if ((r.sgkExemptEarn || 0) > 0) rows.push(['SGK-Muaf Ek Kazanc (vergiye tabi)', fmb(r.sgkExemptEarn), '']);
+  if (r.otGross > 0 || r.ot125Gross > 0 || r.nightGross > 0 || r.holGross > 0 || r.weekendGross > 0 || (r.unpaidGross || 0) > 0 || (r.missingGross || 0) > 0 || (r.sgkExemptEarn || 0) > 0) rows.push(['TOPLAM BRUT', fmb(r.gross), '']);
   rows.push(
     ['SGK Isci Payi (%14)',    '',                     fmb(r.sgkDeduction)],
     ['Issizlik Sigortasi (%1)','',                     fmb(r.unemployDeduct)],
@@ -10077,6 +10125,8 @@ function exportBordroJSON() {
       sickLeaveDays:      r.sickLeaveDays || 0,
       unpaidDays:         r.unpaidDays || 0,
       unpaidGrossDeduction:+(r.unpaidGross || 0).toFixed(2),
+      missingDays:          +(r.missingDays || 0).toFixed(2),
+      missingGrossDeduction:+(r.missingGross || 0).toFixed(2),
       weekendHours:       +(r.weekendHours || 0).toFixed(2),
       weekendWorkedDays:  r.weekendWorkedDays || 0,
       weekendMultiplier:  +(r.weekendMultiplier || 1).toFixed(2),
@@ -10160,6 +10210,7 @@ function exportBordroXML() {
     <GeceCalismaZammi saat="${(r.nightHours||0).toFixed(2)}" oran="${r.nightRate||0}" kanun="4857/69">${fv(r.nightGross||0)}</GeceCalismaZammi>
     <TatilCalismasiIlavesi gun="${r.holPayDays||r.holDays||0}" takvimGunu="${r.holDays||0}" kanun="Md.47">${fv(r.holGross||0)}</TatilCalismasiIlavesi>
     <UcretsizIzinKesintisi gun="${(r.unpaidDays||0).toFixed(2)}">${fv(r.unpaidGross||0)}</UcretsizIzinKesintisi>
+    <EksikGunKesintisi gun="${(r.missingDays||0).toFixed(2)}" aciklama="takvimde isaretsiz">${fv(r.missingGross||0)}</EksikGunKesintisi>
     <HaftaSonuCalismasi gun="${r.weekendWorkedDays||0}" saat="${(r.weekendHours||0).toFixed(2)}" oran="${r.weekendMultiplier||1}">${fv(r.weekendGross||0)}</HaftaSonuCalismasi>
     <TatilFazlaMesaiPolitikasi>${xe(r.holidayOvertimePolicy || '')}</TatilFazlaMesaiPolitikasi>
     <AsgariUcretAltiUyari>${r.belowMinWage ? 'true' : 'false'}</AsgariUcretAltiUyari>
