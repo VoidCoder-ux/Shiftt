@@ -183,7 +183,8 @@ test('işe başlama — ay içi girişte giriş öncesi günler ödenmez', () =>
 
 test('işe başlama — giriş tarihinden önceki ay hiç kazanç üretmez', () => {
   const NET = 43200, y = 2025, m = 0;
-  const u = setUser({ netSalary: NET, salaryInputMode: 'net', payMode: 'monthly', startDate: '2025-03-16' });
+  // setUser global durumu kurar; calcEarningForMonth kullanıcıyı cu() ile okur
+  setUser({ netSalary: NET, salaryInputMode: 'net', payMode: 'monthly', startDate: '2025-03-16' });
   f.invalidateMDCache();
   const e = f.calcEarningForMonth(y, m, NET);
   assert.equal(e.basePay, 0, `giriş öncesi ay 0 olmalı: ${e.basePay}`);
