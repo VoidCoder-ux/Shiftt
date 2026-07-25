@@ -124,6 +124,9 @@ let confirmCancelCb = null; // [FIX-DÜŞÜK] onay iptal edildiğinde çağrıl�
 let mdCache = {};
 let _payrollChainGuard = false; // [FIX] estimatePayrollForMonth ↔ estimateCumulativeMatrah sonsuz döngü koruması
 let yearlyOTCache = {};
+/* Zam Simülatörü baz çizgisi (renderRaiseSim). Diğer türev cache'lerle aynı
+   yerde durur ki invalidateMDCache onu TDZ riski olmadan sıfırlayabilsin. */
+let _rsBaseCache = { key:null, priorYTD:0, cur:null };
 
 /* ============================================================
    UNDO STACK
@@ -806,6 +809,9 @@ function invalidateMDCache(uid, y, m) {
     yearlyOTCache = {};
     _payrollCfgCache = {};
   }
+  /* Zam Simülatörü baz çizgisi de puantaj/bordro türevidir — anahtar tabanlı
+     invalidasyonu yakalayamadığı bir durumda bile burada düşsün. */
+  _rsBaseCache = { key:null, priorYTD:0, cur:null };
 }
 
 /* ============================================================
@@ -5472,8 +5478,9 @@ function rsSwitch(mode) {
      - devreden GV matrahı yalnızca elle girilmiş payrollChecks.priorYTD'den
        okunuyordu; otomatik kümülatif matrah yok sayılıp zammın marjinal
        vergisi yanlış dilimden hesaplanıyordu.
-   Artık her iki ekran da estimatePayrollForMonth ile aynı sonucu üretir. */
-let _rsBaseCache = { key:null, priorYTD:0, cur:null };
+   Artık her iki ekran da estimatePayrollForMonth ile aynı sonucu üretir.
+   (Baz çizgi cache'i `_rsBaseCache` diğer türev cache'lerle birlikte yukarıda
+   tanımlıdır — invalidateMDCache onu da sıfırlar.) */
 
 /* Kullanıcının ücret giriş birimi: günlük yevmiye, aylık brüt veya aylık net. */
 function _rsBasisOf(u) {
@@ -5498,6 +5505,26 @@ function _rsUserWithBase(u, basis, amount) {
   else { c.salaryInputMode = 'net'; c.netSalary = a; }
   syncDerivedNetFromGross(c);
   return c;
+}
+/* Baz çizgi cache anahtarı. `_rsProject` yalnızca ücret tabanını ve puantajı
+   değil, kullanıcının TÜM bordro girdilerini (muafiyetler, FM katsayısı/modu,
+   saat esasları, devreden matrah) kullanır. Anahtar bunların hepsini kapsamazsa
+   baz çizgi eski ayarlarla cache'te kalırken yeni projeksiyon taze ayarlarla
+   hesaplanır ve %0 zamda bile "hayalet zam" farkı görünür. */
+function _rsCacheKey(u, basis, amount, y, m, d) {
+  const md = d || {};
+  const rec = getPayrollCheck(u, y, m) || {};
+  return [
+    S.cu, y, m, basis, amount,
+    safeNum(u.settingsUpdatedAt, 0),              // her ayar değişiminde damgalanır
+    safeNum(rec.updatedAt, 0),                    // priorYTD / bordro doğrulama alanları
+    _bordroRound2(md.th || 0), _bordroRound2(md.workDayEquiv || 0),
+    _bordroRound2(md.wr || 0), _bordroRound2(md.mau || 0), _bordroRound2(md.msd || 0),
+    _bordroRound2(md.otcm || 0), _bordroRound2(md.ud || 0),
+    _bordroRound2(md.oh || 0), _bordroRound2(md.oh125 || 0),
+    _bordroRound2(md.weekendHours || 0),
+    _bordroRound2(md.hpd !== undefined ? md.hpd : (md.hdw || 0)),
+  ].join('|');
 }
 /* Verilen taban ücretle seçili dönemin bordrosunu çalıştırır.
    baseNet/baseGross → 30 günlük taban; periodNet → o ayın puantajıyla net. */
@@ -5533,7 +5560,7 @@ function renderRaiseSim() {
 
     /* Baz çizgi ve devreden GV matrahı dönem/puantaj başına bir kez hesaplanır;
        her tuş vuruşunda yalnızca yeni ücret projeksiyonu yeniden çalışır. */
-    const _ck = `${S.cu}|${_rsY}|${_rsM}|${basis}|${curAmount}|${_bordroRound2(_rsMD.th||0)}|${_bordroRound2(_rsMD.workDayEquiv||0)}|${_bordroRound2(_rsMD.oh||0)}|${_bordroRound2(_rsMD.oh125||0)}|${_bordroRound2(_rsMD.hpd!==undefined?_rsMD.hpd:_rsMD.hdw||0)}`;
+    const _ck = _rsCacheKey(u, basis, curAmount, _rsY, _rsM, _rsMD);
     if (_rsBaseCache.key !== _ck) {
       /* [FIX P2] Ocak ayında kümülatif vergi matrahı sıfırlanır. Diğer aylarda
          bordro motorunun KENDİ devreden matrahı (manuel giriş varsa o, yoksa
