@@ -4537,7 +4537,7 @@ function _monthGVMatrah(u, y, m, cfg, priorYTDForGross) {
      brütü o ana dek birikmiş matrah (priorYTDForGross) ile bul. */
   const priorYTD = Math.max(0, safeNum(priorYTDForGross, 0));
   const fixedGross = getMonthlyGross(u, 'single', 0, priorYTD, m, undefined, y);
-  const sgkBase = Math.min(fixedGross, cfg.sgkCeiling);
+  const sgkBase = Math.min(fixedGross, _sgkCeilingOf(cfg));
   return Math.max(0, fixedGross - sgkBase * (cfg.sgkEmployee + cfg.unemploymentEmployee));
 }
 
@@ -9227,13 +9227,37 @@ function mergePayrollOverridesForCloud(cloudOverrides) {
 }
 
 function _withSgkCeiling(cfg) {
-  if (!cfg || cfg._withCeiling) return cfg;
+  if (!cfg) return cfg;
   /* [FIX K6] SGK prime esas kazanç (SPEK) tavanı = brüt asgari ücretin 7,5 katı
      (2022 sonrası). Önceki 9× yanlıştı; yüksek maaşlılarda SGK/işsizlik fazla
-     kesiliyordu. cfg.sgkCeilingMult ile yıl bazında özelleştirilebilir. */
-  Object.defineProperty(cfg, 'sgkCeiling', { get(){ return this.minWageGross * (this.sgkCeilingMult || 7.5); }, configurable:true });
-  cfg._withCeiling = true;
+     kesiliyordu. cfg.sgkCeilingMult ile yıl bazında özelleştirilebilir.
+     [FIX SGK-TAVAN-KOPYA] Tavan artık DÜZ (enumerable) alan olarak yazılır ve
+     her çağrıda taze hesaplanır. Önceki hâli Object.defineProperty ile
+     enumerable OLMAYAN bir getter tanımlıyor, nöbetçi bayrağı (_withCeiling)
+     ise normal alan olarak yazıyordu; payrollCfg'nin override dalındaki
+     Object.assign bayrağı kopyalayıp getter'ı kopyalamayınca sgkCeiling
+     undefined kalıyordu. Zincir: Math.min(x, undefined) → NaN →
+     _bordroRound2(NaN) → 0, yani SGK matrahı 0, SGK ve işsizlik kesintisi 0,
+     GV matrahı tam brüt. Kullanıcı herhangi bir yıl için bordro parametresi
+     kaydettiği (veya başka cihazdan override senkronu aldığı) anda tüm
+     ekranlardaki net maaş şişiyordu. */
+  /* Türetme HER ÇAĞRIDA yeniden yapılır: override minWageGross'u değiştirmiş
+     olabilir ve Object.assign ile taşınan eski tavan yapışmamalıdır. */
+  cfg.sgkCeiling = _deriveSgkCeiling(cfg);
   return cfg;
+}
+function _deriveSgkCeiling(cfg) {
+  const derived = safeNum(cfg && cfg.minWageGross, 0) * (safeNum(cfg && cfg.sgkCeilingMult, 0) || 7.5);
+  return Number.isFinite(derived) && derived > 0 ? _bordroRound2(derived) : Infinity;
+}
+/* Tavanı TEK noktadan, sonlu ve pozitif olmayı garanti ederek oku. Tüm
+   Math.min(x, tavan) çağrıları bunu kullanır; böylece tavanın herhangi bir
+   nedenle eksik kaldığı bir cfg, SGK matrahını sessizce sıfıra düşürmek yerine
+   "tavansız" (tam brütten kesinti) davranır — yani hata yönü, çalışandan eksik
+   kesinti değil, tam kesintidir. */
+function _sgkCeilingOf(cfg) {
+  const c = safeNum(cfg && cfg.sgkCeiling, NaN);
+  return (Number.isFinite(c) && c > 0) ? c : _deriveSgkCeiling(cfg);
 }
 function payrollCfg(y) {
   const yr = safeInt(y, NaN);
@@ -9303,7 +9327,7 @@ function _bordroCalcGV(ytdMatrah, y) {
 function _bordroMinWageTaxableBase(gross, y) {
   const cfg = payrollCfg(y);
   const exemptGross = Math.min(Math.max(0, gross || 0), cfg.minWageGross);
-  const sgkBase = Math.min(exemptGross, cfg.sgkCeiling);
+  const sgkBase = Math.min(exemptGross, _sgkCeilingOf(cfg));
   const sgkDeduction = _bordroRound2(sgkBase * cfg.sgkEmployee);
   const unemployDeduct = _bordroRound2(sgkBase * cfg.unemploymentEmployee);
   return _bordroRound2(Math.max(0, exemptGross - sgkDeduction - unemployDeduct));
@@ -9351,7 +9375,7 @@ function computeNetFromGross(gross, maritalStatus, children, priorYTDMatrah, mon
      (örn. alış-veriş kartı / yemek-kartı yan ödemesi). Brüte dahildir; yalnızca
      SGK matrahından düşülür. Gelir vergisi matrahı ve damga tabanı tam brüt kalır. */
   const sgkExemptGross = _bordroRound2(Math.max(0, Math.min(gross, safeNum(opts && opts.sgkExemptGross, 0))));
-  const sgkBase        = _bordroRound2(Math.min(Math.max(0, gross - sgkExemptGross), cfg.sgkCeiling));
+  const sgkBase        = _bordroRound2(Math.min(Math.max(0, gross - sgkExemptGross), _sgkCeilingOf(cfg)));
   const sgkDeduction   = _bordroRound2(sgkBase * cfg.sgkEmployee);
   const unemployDeduct = _bordroRound2(sgkBase * cfg.unemploymentEmployee);
 
@@ -9777,7 +9801,7 @@ function renderBordroPreview() {
 
   // Özel kesintiler (yasal net sonrası — "ele geçen net")
   // BES otomatik katılım: tabanı SGK prime esas kazanç (gross min SGK tavanı), brüt değil.
-  const besBase        = _bordroRound2(Math.min(totalGross, cfg.sgkCeiling));
+  const besBase        = _bordroRound2(Math.min(totalGross, _sgkCeilingOf(cfg)));
   const besDeduct      = _bordroRound2(besBase * besRate);
   const privateDeducts = _bordroRound2(besDeduct + icra + avans + otherDeduct);
   const finalNet       = _bordroRound2(Math.max(0, yasalNet - privateDeducts));
