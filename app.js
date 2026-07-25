@@ -574,6 +574,10 @@ function parseTime(ts) {
   if (!ts || typeof ts !== 'string') return null;
   const p = ts.split(':');
   if (p.length !== 2) return null;
+  /* [FIX SAAT-PARSE] safeInt hex ve üstel gösterimi kabul ediyordu:
+     '0x8:00' → 480, '08:5e1' → 530. `type="time"` alanından gelmesi mümkün
+     değil ama içe aktarılan JSON'dan gelebiliyordu. Yalnızca düz rakam. */
+  if (!/^\d{1,2}$/.test(p[0].trim()) || !/^\d{1,2}$/.test(p[1].trim())) return null;
   const h = safeInt(p[0], NaN), m = safeInt(p[1], NaN);
   if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
   return h * 60 + m;
@@ -2272,7 +2276,7 @@ function login(id) {
   updUndoBtn();
   renderAll();
   scheduleNotifications();
-  toast(`Hoş geldin, ${escHtml(u.name)}!`, 'success');
+  toast(`Hoş geldin, ${u.name}!`, 'success');
 }
 
 function logout() {
@@ -4885,7 +4889,9 @@ function sSet(k, v) {
   if (k === 'annualLeave') { v = clampInt(v, 0, 40, 0); }
   if (k === 'monthlyHours') { v = clampInt(v, 100, 400, 225); }
   if (k === 'weeklyContractHours') { v = clampInt(v, 15, 45, 45); }
-  if (k === 'goalHours') { v = Math.max(0, safeNum(v, 0)); }
+  /* [FIX CLAMP] HTML `max="400"` idi ama JS üst sınır uygulamıyordu; yapıştırma
+     ile 99999 girilebiliyor ve ilerleme yüzdesi ~%0 görünüyordu. */
+  if (k === 'goalHours') { v = clampNum(v, 0, 400, 0); }
   if (k === 'goalEarning') { v = Math.max(0, safeNum(v, 0)); }
   /* [FIX] FM Yönetimi yeni ayarlar */
   if (k === 'otCompRate') { v = clampNum(v, 1.5, 3, 1.5); }
@@ -4913,8 +4919,12 @@ function sSet(k, v) {
   }
   if (k === 'hideSuggestions') { v = !!v; }
   if (k === 'name') {
-    v = (v || '').trim();
-    if (!v) { toast('İsim boş olamaz', 'error'); return; }
+    /* [FIX AD-TİPİ] Boşluk kontrolü HAM değer üzerinde yapılır (_safeUserName
+       asla boş dönmez, varsayılana düşer); ardından uzunluk/tip normalizasyonu
+       tek kaynaktan uygulanır. Oluşturma yolu 30 karakterle sınırlıyken
+       düzenleme yolu sınırsızdı. */
+    if (!String(v == null ? '' : v).trim()) { toast('İsim boş olamaz', 'error'); return; }
+    v = _safeUserName(v, S.cu);
   }
   if (k === 'startDate' && v) {
     const s2 = new Date(v);
@@ -5067,7 +5077,7 @@ function saveCPModal() {
   saveLS();
   renderCustomPresets();
   closeCPModal();
-  toast(`"${escHtml(name)}" eklendi`, 'success');
+  toast(`"${name}" eklendi`, 'success');
 }
 
 function renderCustomPresets() {
@@ -6010,7 +6020,7 @@ function confirmNewUser() {
   saveLS();
   updLogin();
   closeNewUserModal();
-  toast(`${escHtml(name)} eklendi`, 'success');
+  toast(`${name} eklendi`, 'success');
 }
 
 function deleteCurrentUser() {
@@ -8542,7 +8552,7 @@ async function saveDocument() {
   saveLS();
   closeDocUpload();
   renderDocs();
-  toast(`"${escHtml(name)}" eklendi`, 'success');
+  toast(`"${name}" eklendi`, 'success');
 }
 
 /* ---- DELETE ---- */
@@ -9210,7 +9220,7 @@ function importTpl() {
       renderCustomPresets();
       renderTplShare();
       el.value = '';
-      toast(`${escHtml(fromName)}'dan şablon aktarıldı!`, 'success');
+      toast(`${fromName}'dan şablon aktarıldı!`, 'success');
     });
   } catch(e) {
     toast('Geçersiz format', 'error');
@@ -9566,9 +9576,14 @@ function _bordroCalcGV(ytdMatrah, y) {
   return Number.isFinite(tax) ? tax : 0;
 }
 
+/* [FIX YIL-İÇİ-ASGARİ-ÜCRET] Çağıran zaten AYA ÖZEL asgari ücret brütünü
+   (_bordroMinWageGrossForMonth) geçiyor; burada tekrar `cfg.minWageGross`
+   (yıllık tek değer) ile kırpmak yıl içi asgari ücret zammını etkisiz
+   kılıyordu — temmuz zammı olan bir yılda ikinci yarı için gelir vergisi
+   istisnası eksik hesaplanırdı. Kırpma kaldırıldı; sınır çağırana ait. */
 function _bordroMinWageTaxableBase(gross, y) {
   const cfg = payrollCfg(y);
-  const exemptGross = Math.min(Math.max(0, gross || 0), cfg.minWageGross);
+  const exemptGross = Math.max(0, gross || 0);
   const sgkBase = Math.min(exemptGross, _sgkCeilingOf(cfg));
   const sgkDeduction = _bordroRound2(sgkBase * cfg.sgkEmployee);
   const unemployDeduct = _bordroRound2(sgkBase * cfg.unemploymentEmployee);
@@ -10099,7 +10114,11 @@ function renderBordroPreview() {
     ...res, mealTotal, transportTotal, yasalNet, finalNet, marital, children, priorYTD, y, m,
     userId:S.cu, calcType,
     earningMode, baseGross, normalGross, weeklyRestGross, publicHolidayGross, publicHolidayWorkGross,
-    normalHours: isManualEarnings ? manualNormalHours : (d.rh || 0), weeklyRestDays: manualWeeklyRestDays, publicHolidayDays: isManualEarnings ? manualPublicHolidayDays : (d.publicHolidayPaidDays || 0),
+    /* [FIX EXPORT-HAFTA-TATİLİ] `weeklyRestDays` koşulsuz manuel alandan
+       okunuyordu; auto modda tutar `d.wr`'den gelmesine rağmen gün sayısı 0
+       yazılıyor, PDF/JSON/XML "Hafta Tatili (0.00g) 15.000,00 ₺" üretiyordu.
+       publicHolidayDays için bu zaten düzeltilmişti, hafta tatili atlanmış. */
+    normalHours: isManualEarnings ? manualNormalHours : (d.rh || 0), weeklyRestDays: isManualEarnings ? manualWeeklyRestDays : (d.weeklyRestDays || 0), publicHolidayDays: isManualEarnings ? manualPublicHolidayDays : (d.publicHolidayPaidDays || 0),
     otGross, ot125Gross, nightGross, holGross, weekendGross, sgkExemptEarn, totalGross,
     otHours, ot125Hours, nightHours: nightHrs, holDays: isManualEarnings ? manualPublicHolidayWorkDays : d.hdw, holPayDays,
     hrGross, drGross, compRate, partialRate, nightRate,

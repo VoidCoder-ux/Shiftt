@@ -581,7 +581,7 @@
 
       <div class="card s-card">
         <h3><i class="fas fa-user"></i>Kişisel Bilgiler</h3>
-        <div class="fg"><label for="sName">Ad Soyad</label><input type="text" id="sName" placeholder="Adınız" onchange="sSet('name',this.value)"></div>
+        <div class="fg"><label for="sName">Ad Soyad</label><input type="text" id="sName" placeholder="Adınız" onchange="sSet('name',this.value)" maxlength="60"></div>
         <div class="fg"><label for="sStart">İşe Başlama</label><input type="date" id="sStart" onchange="sSet('startDate',this.value)"></div>
         <div class="fg"><label for="sBirth">Doğum Tarihi</label><input type="date" id="sBirth" onchange="sSet('birthDate',this.value)"></div>
         <div id="seniorityInfo"></div>
@@ -941,31 +941,31 @@
           </div>
           <div class="bordro-form-group">
             <label class="bordro-label" for="eb-normalHours">Normal Çalışma (saat)</label>
-            <input id="eb-normalHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="187.50" value="0">
+            <input id="eb-normalHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="187.50" value="0" max="744">
           </div>
           <div class="bordro-form-group">
             <label class="bordro-label" for="eb-weeklyRestDays">Hafta Tatili (gün)</label>
-            <input id="eb-weeklyRestDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="5" value="0">
+            <input id="eb-weeklyRestDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="5" value="0" max="31">
           </div>
           <div class="bordro-form-group">
             <label class="bordro-label" for="eb-publicHolidayDays">Genel Tatil (çalışılmayan gün)</label>
-            <input id="eb-publicHolidayDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="1" value="0">
+            <input id="eb-publicHolidayDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="1" value="0" max="31">
           </div>
           <div class="bordro-form-group">
             <label class="bordro-label" for="eb-publicHolidayWorkDays">Genel Tatil Çalışması (gün)</label>
-            <input id="eb-publicHolidayWorkDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="1" value="0">
+            <input id="eb-publicHolidayWorkDays" class="bordro-input" type="number" min="0" step="0.01" placeholder="1" value="0" max="31">
           </div>
           <div class="bordro-form-group">
             <label class="bordro-label" for="eb-manualOTHours">Fazla Mesai %50 (saat)</label>
-            <input id="eb-manualOTHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+            <input id="eb-manualOTHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0" max="744">
           </div>
           <div class="bordro-form-group">
             <label class="bordro-label" for="eb-manualOT125Hours">Fazla Çalışma %25 (saat)</label>
-            <input id="eb-manualOT125Hours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+            <input id="eb-manualOT125Hours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0" max="744">
           </div>
           <div class="bordro-form-group">
             <label class="bordro-label" for="eb-manualNightHours">Gece Zammı Saati</label>
-            <input id="eb-manualNightHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0">
+            <input id="eb-manualNightHours" class="bordro-input" type="number" min="0" step="0.01" placeholder="0" value="0" max="744">
           </div>
         </div>
       </div>

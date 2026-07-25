@@ -40,3 +40,38 @@ test('dsToDate — aralık dışı anahtar artık sessizce BUGÜNE düşmez', ()
   assert.equal(f.parseDS('9999999-01-01'), null,
     'aralık dışı anahtar normalize aşamasında elenmeli');
 });
+
+test('parseTime — hex/üstel gösterim reddedilir', () => {
+  const g = loadFns(['parseTime']);
+  assert.equal(g.parseTime('08:30'), 510);
+  assert.equal(g.parseTime('00:00'), 0);
+  assert.equal(g.parseTime('23:59'), 1439);
+  // İçe aktarılan bozuk veriden gelebilecek gösterimler
+  assert.equal(g.parseTime('0x8:00'), null, 'hex reddedilmeli');
+  assert.equal(g.parseTime('1e1:00'), null, 'üstel reddedilmeli');
+  assert.equal(g.parseTime('08:5e1'), null, 'dakikada üstel reddedilmeli');
+  assert.equal(g.parseTime('8.5:00'), null, 'ondalık reddedilmeli');
+  assert.equal(g.parseTime('24:00'), null, 'saat aralığı');
+  assert.equal(g.parseTime('08:60'), null, 'dakika aralığı');
+  assert.equal(g.parseTime(' 8:05'), 485, 'baştaki boşluk tolere edilir');
+});
+
+test('goalHours — üst sınır HTML max ile hizalı', () => {
+  const g = loadFns(['clampNum']);
+  assert.equal(g.clampNum(99999, 0, 400, 0), 400);
+  assert.equal(g.clampNum(180, 0, 400, 0), 180);
+  assert.equal(g.clampNum(-5, 0, 400, 0), 0);
+});
+
+test('asgari ücret matrahı — aya özel brüt yıllık değere geri kırpılmaz', () => {
+  const g = loadFns(['_bordroMinWageTaxableBase', 'payrollCfg', '_bordroRound2']);
+  const y = 2026;
+  const cfg = g.payrollCfg(y);
+  const zamli = cfg.minWageGross * 1.25;              // yıl içi zam senaryosu
+  const taban = g._bordroMinWageTaxableBase(zamli, y);
+  const beklenen = g._bordroRound2(zamli - g._bordroRound2(zamli * cfg.sgkEmployee)
+                                        - g._bordroRound2(zamli * cfg.unemploymentEmployee));
+  assert.equal(taban, beklenen, 'zamlı brüt olduğu gibi kullanılmalı');
+  assert.ok(taban > g._bordroMinWageTaxableBase(cfg.minWageGross, y),
+    'zamlı değer, zamsız değerden büyük olmalı (önceden eşitti)');
+});
