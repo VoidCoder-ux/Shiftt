@@ -10,7 +10,7 @@ export default [
 
   // ESM dosyaları: testler + vite config
   {
-    files: ['tests/**/*.mjs', 'vite.config.js', 'eslint.config.js'],
+    files: ['tests/**/*.mjs', 'tools/**/*.mjs', 'vite.config.js', 'eslint.config.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

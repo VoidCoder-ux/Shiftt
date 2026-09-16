@@ -13,7 +13,7 @@
 // index.html'deki manuel SW register'ı yerine plugin'in autoUpdate akışı geçerlidir.
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
-import { copyFileSync } from 'node:fs';
+import { copyFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -32,6 +32,11 @@ const APP_REVISION = _hash('app.js') + '-' + _hash('version.js');
 function copyRootScripts() {
   return {
     name: 'copy-root-scripts',
+    generateBundle() {
+      for (const name of readdirSync(resolve(__dirname, 'assets/icons'))) {
+        this.emitFile({ type:'asset', fileName:'assets/icons/' + name, source:readFileSync(resolve(__dirname, 'assets/icons', name)) });
+      }
+    },
     closeBundle() {
       for (const f of ['app.js', 'version.js']) {
         copyFileSync(resolve(__dirname, f), resolve(__dirname, 'dist', f));
@@ -48,6 +53,8 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
+    rollupOptions: { output: { assetFileNames: asset =>
+      (asset.names || []).includes('manifest.json') ? 'manifest.json' : 'assets/[name]-[hash][extname]' } },
   },
   plugins: [
     copyRootScripts(),
@@ -55,10 +62,10 @@ export default defineConfig({
       registerType: 'autoUpdate',
       // Mevcut manifest.json korunur; plugin onu enjekte eder.
       manifest: false,
-      includeAssets: ['assets/icons/*.png', 'assets/screenshots/*.png'],
+
       workbox: {
         // Tüm build çıktısı içerik-hash'li olduğundan yalnız değişen chunk yeniden iner.
-        globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,json,png,svg,woff2}'],
         // app.js/version.js bundle dışı kopyalandığından precache'e elle dahil et.
         additionalManifestEntries: [
           { url: 'app.js', revision: APP_REVISION },
@@ -72,7 +79,7 @@ export default defineConfig({
               url.origin === 'https://fonts.gstatic.com',
             handler: 'CacheFirst',
             options: {
-              cacheName: 'cdn-cache',
+              cacheName: 'shifttrack-cdn-v1',
               expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 30 },
               cacheableResponse: { statuses: [0, 200] },
             },

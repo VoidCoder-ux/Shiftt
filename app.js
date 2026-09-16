@@ -1098,6 +1098,30 @@ function getPrevMD() {
    EARNING CALCULATION
 ============================================================ */
 function calcEarningForMonth(y, m, ns, opts = {}) {
+  const basis = calcEarningBasisForMonth(y, m, ns, opts);
+  if (!basis || basis.isFutureMonth) return basis;
+  const u = cu();
+  const now = new Date();
+  const d = getMD(y, m, basis.isCurrentMonth && !opts.includeFutureRecords ? { throughDay:now.getDate() } : undefined);
+  const payroll = estimatePayrollForMonth({ ...u, netSalary:ns }, y, m, d, undefined, basis);
+  if (!payroll) return basis;
+  const netAt = gross => computeNetFromGross(gross, 'single', 0, payroll.priorYTD, m, undefined, y).net;
+  let gross = payroll.baseGross;
+  let net = netAt(gross);
+  const basePay = payroll.dailyNetMode ? Math.max(0, _bordroRound2(net - basis.holidayPay)) : net;
+  let holidayPay = payroll.dailyNetMode ? _bordroRound2(net - basePay) : 0;
+  gross += payroll.holGross;
+  holidayPay = _bordroRound2(holidayPay + netAt(gross) - net); net = netAt(gross);
+  gross += payroll.ot125Gross;
+  const overtimePay125 = _bordroRound2(netAt(gross) - net); net = netAt(gross);
+  gross += payroll.otGross;
+  const overtimePay = _bordroRound2(netAt(gross) - net); net = netAt(gross);
+  const otherPay = _bordroRound2(payroll.net - net);
+  return { ...basis, basePay, holidayPay, overtimePay125, overtimePay, otherPay,
+    totalEarning: payroll.net, payrollNet: true };
+}
+
+function calcEarningBasisForMonth(y, m, ns, opts = {}) {
   /* [FIX ERR-HANDLE-08] NaN/Infinity ns input'u red et */
   ns = safeNum(ns, 0);
   if (!ns || ns <= 0 || !Number.isFinite(ns)) return null;
@@ -4098,25 +4122,22 @@ function renderEarn() {
       <div class="esd-head">💰 NET KAZANÇ</div>
       <div class="esd"><span class="ek">Net Maaş</span><span class="ev">${fm(u.netSalary)}</span></div>
       <div class="esd"><span class="ek">Saatlik Ücret</span><span class="ev">${fm(e.hourlyRate)}/s</span></div>
-      <div class="esd" style="font-weight:600"><span class="ek">${e.absentDays > 0 ? `Tam Ay Tabanı (${e.dim}g × ${fm(e.dailyRate)})` : `Baz Ücret (${e.dim}g ay · tam)`}</span><span class="ev">${fm(e.absentDays > 0 ? e.dim * e.dailyRate : e.basePay)}</span></div>
-      ${e.absentDays > 0 ? `
-      <div class="esd-head" style="color:var(--r)">⛔ KESİNTİLER</div>
-      ${e.unpaidDays > 0 ? `<div class="esd"><span class="ek">Ücretsiz İzin (${e.unpaidDays}g × ${fm(e.dailyRate)})</span><span class="ev neg">−${fm(e.unpaidDays*e.dailyRate)}</span></div>` : ''}
-      ${e.missingDays > 0 ? `<div class="esd"><span class="ek">Eksik Gün (${e.missingDays}g × ${fm(e.dailyRate)})</span><span class="ev neg">−${fm(e.missingDays*e.dailyRate)}</span></div>` : ''}
-      ` : ''}
+      <div class="esd"><span class="ek">Baz ücret (eksik günler sonrası net)</span><span class="ev">${fm(e.basePay)}</span></div>
+      ${e.absentDays > 0 ? `<div class="esd"><span class="ek">Ödenmeyen gün</span><span class="ev">${formatDayCount(e.absentDays)} gün</span></div>` : ''}
       ${e.overtimePay > 0 ? `
       <div class="esd-head" style="color:#f97316">🔥 FAZLA MESAİ (${getOTRate(u)}×)</div>
-      <div class="esd"><span class="ek">${e.overtimeHours.toFixed(1)}s × ${fm(e.hourlyRate)} × ${getOTRate(u)}</span><span class="ev pos">+${fm(e.overtimePay)}</span></div>
+      <div class="esd"><span class="ek">${e.overtimeHours.toFixed(1)}s fazla mesainin net katkısı</span><span class="ev pos">+${fm(e.overtimePay)}</span></div>
       ` : ''}
       ${(e.overtimePay125 || 0) > 0 ? `
       <div class="esd-head" style="color:var(--leave-sick)">⚡ FAZLA SÜRELERLE ÇALIŞMA (${e.partialRate || 1.25}×)</div>
-      <div class="esd"><span class="ek">${(e.overtimeHours125||0).toFixed(1)}s × ${fm(e.hourlyRate)} × ${e.partialRate || 1.25}</span><span class="ev pos">+${fm(e.overtimePay125)}</span></div>
+      <div class="esd"><span class="ek">${(e.overtimeHours125||0).toFixed(1)}s fazla çalışmanın net katkısı</span><span class="ev pos">+${fm(e.overtimePay125)}</span></div>
       ` : ''}
       ${e.holidayPay > 0 ? `
       <div class="esd-head" style="color:var(--g)">🏛️ TATİL PRİMLERİ</div>
-      <div class="esd"><span class="ek">${(e.holidayPayDays || e.holidayDays).toFixed(1)}g tatil × ${fm(e.dailyRate)} ilave (Md.47)</span><span class="ev pos">+${fm(e.holidayPay)}</span></div>
+      <div class="esd"><span class="ek">${(e.holidayPayDays || e.holidayDays).toFixed(1)}g tatil çalışmasının net katkısı</span><span class="ev pos">+${fm(e.holidayPay)}</span></div>
       ${(e.hhOT||0) > 0 ? `<div class="esd" style="color:var(--acc);font-size:11px"><span class="ek" style="padding-left:8px">↳ ${e.hhOT.toFixed(1)}s tatil çalışması haftalık 45'i aşıyor; FM zammı ve Md.47 günlük ek ayrı satırlarda uygulanır.</span><span class="ev"></span></div>` : ''}
       ` : ''}
+      ${e.otherPay ? `<div class="esd"><span class="ek">Diğer ekler ve muafiyetlerin net etkisi</span><span class="ev">${fm(e.otherPay)}</span></div>` : ''}
       <div class="esd total"><span class="ek"><i class="fas fa-wallet"></i><b>NET KAZANÇ</b></span><span class="ev">${fm(e.totalEarning)}</span></div>
     </div>
   </div>`}
@@ -4215,7 +4236,7 @@ function savePayrollCheckField(field, raw) {
   saveLS();
   renderEarn();
 }
-function estimatePayrollForMonth(u, y, m, d, priorYTDOverride) {
+function estimatePayrollForMonth(u, y, m, d, priorYTDOverride, earningBasis) {
   if (!u || !u.netSalary || u.netSalary <= 0) return null;
   const now = new Date();
   d = d || getMD(y, m, (y === now.getFullYear() && m === now.getMonth()) ? { throughDay:now.getDate() } : undefined);
@@ -4249,7 +4270,7 @@ function estimatePayrollForMonth(u, y, m, d, priorYTDOverride) {
       }
     }
   }
-  const earning = calcEarningForMonth(y, m, u.netSalary);
+  const earning = earningBasis || calcEarningBasisForMonth(y, m, u.netSalary);
   if (!earning || earning.isFutureMonth) return null;
   const cfg = payrollCfg(y);
   const payrollHourBasis = getPayrollHourBasis(u, y);
@@ -4300,7 +4321,8 @@ function estimatePayrollForMonth(u, y, m, d, priorYTDOverride) {
     /* baseGross'u 30 günlük yasal taban üzerinden pro-rate et.
        Türk bordrosu aylık ücreti 30 gün kabul eder; eksik günler 30'dan düşülür. */
     const absentDays = Math.max(0, safeNum(earning.absentDays, 0));
-    const proRate = Math.max(0, Math.min(1, (30 - absentDays) / 30));
+    const baseDays = u.payMode === 'hourly' ? earning.dim : 30;
+    const proRate = Math.max(0, (baseDays - absentDays) / 30);
     baseGross = _bordroRound2(fullGross * proRate);
     // [FIX O7] FM saat ücreti yasal saat tabanından (payrollHourBasis) — e-Bordro ile tutarlı.
     hrGross = (fullGross > 0 && payrollHourBasis > 0) ? _bordroRound2(fullGross / payrollHourBasis) : 0;
@@ -4312,9 +4334,9 @@ function estimatePayrollForMonth(u, y, m, d, priorYTDOverride) {
   const otGross = compMode === 'pay' ? _bordroRound2((d.oh || 0) * hrGross * compRate) : 0;
   const ot125Gross = compMode === 'pay' ? _bordroRound2((d.oh125 || 0) * hrGross * partialRate) : 0;
   const weekendGross = _bordroRound2((d.weekendHours || 0) * hrGross * Math.max(0, (cfg.weekendMultiplier || 1) - 1));
-  const totalGross = _bordroRound2(Math.max(0, baseGross - unpaidGross) + otGross + ot125Gross + holGross + weekendGross + sgkExemptEarn);
+  const totalGross = _bordroRound2(Math.max(0, baseGross) + otGross + ot125Gross + holGross + weekendGross + sgkExemptEarn);
   const res = computeNetFromGross(totalGross, marital, children, priorYTD, m, { sgkExemptGross: sgkExemptEarn, insurancePremiumExempt: tssExempt }, y);
-  return { ...res, baseNet, fullGross, baseGross, otGross, ot125Gross, holGross, weekendGross, unpaidGross, sgkExemptEarn, tssExempt, totalGross, holPayDays, payrollHourBasis, cfgYear: cfg.year, dailyNetMode: isDailyNet, dailyNetPaidDays, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
+  return { ...res, priorYTD, baseNet, fullGross, baseGross, otGross, ot125Gross, holGross, weekendGross, unpaidGross, sgkExemptEarn, tssExempt, totalGross, holPayDays, payrollHourBasis, cfgYear: cfg.year, dailyNetMode: isDailyNet, dailyNetPaidDays, _assumption: '2023 sonrası AGİ yok — medeni durum/çocuk sayısı hesabı etkilemiyor.' };
 }
 function diffBadge(diff) {
   const abs = Math.abs(diff || 0);
@@ -5246,9 +5268,10 @@ function saveLS(opts) {
     if (d.length > 2 * 1024 * 1024) toast('Veri büyük, yedekleme önerilir', 'warning');
     localStorage.setItem('st_data', d);
     // Cloud'dan gelen veri ise geri push etme
-    if (_noPush) return;
+    if (_noPush) return true;
     // Buluta da gönder (debounced)
     debouncedPush();
+    return true;
   } catch(e) {
     if (e.name === 'QuotaExceededError') {
       // [FIX LOCALSTORAGE-QUOTA-01] Sadece 30 günden eski silme kayıtlarını temizle
@@ -5267,6 +5290,8 @@ function saveLS(opts) {
         const d2 = JSON.stringify({ users:S.u, deletedUsers:S.deletedUsers || {}, version:DATA_VERSION, nextUid:S.nextUid });
         localStorage.setItem('st_data', d2);
         toast('Depolama doldu, 30 günden eski kayıtlar temizlendi', 'warning');
+        if (!_noPush) debouncedPush();
+        return true;
       } catch(e2) {
         // İkinci deneme: tüm silme geçmişini sil
         try {
@@ -5277,6 +5302,8 @@ function saveLS(opts) {
           const d3 = JSON.stringify({ users:S.u, deletedUsers:S.deletedUsers || {}, version:DATA_VERSION, nextUid:S.nextUid });
           localStorage.setItem('st_data', d3);
           toast('Depolama kritik doldu, silme geçmişi temizlendi. Yedek alın!', 'warning');
+          if (!_noPush) debouncedPush();
+          return true;
         } catch(e3) {
           console.error('saveLS quota fatal:', e3);
           toast('Depolama dolu! Veri kaydedilemedi. Yedek alın.', 'error');
@@ -5288,6 +5315,7 @@ function saveLS(opts) {
       toast('Kayıt hatası!', 'error');
     }
   }
+  return false;
 }
 
 function resolveDayConflicts(u) {
@@ -7304,6 +7332,27 @@ let syncInProgress = false, lastSyncTime = 0;
    başladıktan sonra, eski (geç gelen) push/pull yanıtının yeni senkronun
    syncInProgress bayrağını ve durum göstergesini ezmesini engeller. */
 let _syncGen = 0;
+let _authEpoch = 0;
+let _documentUploadTask = null;
+function cloudSession() {
+  return { uid: fbUser ? fbUser.uid : null, epoch: _authEpoch };
+}
+function isCloudSessionCurrent(session) {
+  return session.epoch === _authEpoch && session.uid === (fbUser ? fbUser.uid : null);
+}
+function invalidateCloudSession() {
+  _authEpoch++;
+  _syncGen++;
+  syncInProgress = false;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = null;
+  stopRealtimeSync();
+  lastSnapshotJson = '';
+  lastSyncTime = 0;
+  _cloudFailNotified = false;
+  _documentUploadTask = null;
+  _loadCloudDocsBusy = false;
+}
 // [FIX K3] global skipNextPush kaldırıldı — saveLS({noPush:true}) kullanılıyor
 const SYNC_DEBOUNCE = 3000; // 3 saniye debounce
 const SYNC_TIMEOUT = 15000; // 15 saniye timeout
@@ -7332,6 +7381,7 @@ function initFirebase() {
     // Auth state listener
     fbAuth.onAuthStateChanged(user => {
       try {
+        if ((fbUser && fbUser.uid) !== (user && user.uid)) invalidateCloudSession();
         fbUser = user;
         if (user) {
           // Sayfa yenilendiğinde zaten giriş yapılmış kullanıcı
@@ -7507,7 +7557,9 @@ function firebaseResetPass() {
 // [FIX O2] Bu cihazdaki hassas yerel veriyi temizle (paylaşımlı cihaz koruması).
 // Vardiya/maaş verisi (st_data), DeepSeek anahtarı ve oturum işaretleri silinir.
 function wipeLocalSensitiveData() {
+  invalidateCloudSession();
   try {
+    localStorage.removeItem(PAYROLL_OVERRIDE_KEY);
     localStorage.removeItem('st_data');
     localStorage.removeItem('st_auth_skipped');
     localStorage.removeItem('st_deepseek_api_key');
@@ -7518,15 +7570,21 @@ function wipeLocalSensitiveData() {
   } catch (e) { console.warn('Yerel veri temizleme hatası:', e); }
   // Bellekteki kullanıcı durumunu sıfırla.
   S.u = {}; S.cu = null;
+  S.deletedUsers = {}; S.nextUid = 3;
+  S.clipboard = null; S.selectedDates = []; S.sd = null;
+  undoStack.length = 0;
+  _payrollOverrides = null; _payrollCfgCache = {};
+  _eBordroSession = {}; _rsBaseCache = { key:null, priorYTD:0, cur:null };
+  currentDocFile = null; currentViewDoc = null;
+  _forceSyncBusy = false;
+  invalidateMDCache();
 }
 
 // Logout from Firebase
 function firebaseLogout() {
   if (!fbAuth) return;
   showConfirm('Bulut Çıkış', 'Bulut hesabından çıkış yapılacak. Senkronizasyon durur.', () => {
-    // Bekleyen sync timer'ı temizle
-    if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
-    stopRealtimeSync();
+    invalidateCloudSession();
     fbAuth.signOut().then(() => {
       fbUser = null;
       syncInProgress = false;
@@ -7542,6 +7600,8 @@ function firebaseLogout() {
           setTimeout(() => { try { location.reload(); } catch (e) {} }, 800);
         });
     }).catch(err => {
+      startRealtimeSync();
+      debouncedPush();
       console.error('Çıkış hatası:', err);
       toast('Çıkış yapılamadı. Tekrar deneyin.', 'error');
     });
@@ -7571,7 +7631,7 @@ function enterAppAfterAuth() {
   updSyncUI();
   updCloudAccountUI();
   // Buluttan veri çek — arka planda
-  try { pullFromCloud(() => { loadLS(); updLogin(); loadCloudDocs(); }); } catch(e) { notifyCloudFail('giriş sonrası pull', e); }
+  try { pullFromCloud(() => { loadLS(); updLogin(); loadCloudDocs(); debouncedPush(); }); } catch(e) { notifyCloudFail('giriş sonrası pull', e); }
 }
 
 /* Firestore sub-collection'dan belgeleri yükle — her app kullanıcısı için ayrı */
@@ -7579,7 +7639,8 @@ function enterAppAfterAuth() {
 let _loadCloudDocsBusy = false;
 async function loadCloudDocs() {
   if (!fbDb || !fbUser || _loadCloudDocsBusy) return;
-  _loadCloudDocsBusy = true;
+  const session = cloudSession();
+  _loadCloudDocsBusy = session;
   try {
     let changed = false;
     // Tüm app kullanıcıları için yükle
@@ -7587,9 +7648,10 @@ async function loadCloudDocs() {
       const idx = parseInt(idxStr);
       const u = S.u[idx]; if (!u) continue;
       try {
-        const snap = await fbDb.collection('userData').doc(fbUser.uid)
+        const snap = await fbDb.collection('userData').doc(session.uid)
           .collection('users').doc(String(idx)).collection('docs').get();
-        if (snap.empty) continue;
+        if (!isCloudSessionCurrent(session)) return;
+        if (snap.empty || S.u[idx] !== u) continue;
         if (!Array.isArray(u.documents)) u.documents = [];
         if (!u.deletedDocs) u.deletedDocs = {};
         snap.forEach(docSnap => {
@@ -7599,10 +7661,11 @@ async function loadCloudDocs() {
           if (u.deletedDocs[cd.id]) return;
           const existing = u.documents.find(d => d.id === cd.id);
           if (!existing) {
-            u.documents.push(cd);
+            u.documents.push({ ...cd, cloudStored: true });
             changed = true;
           } else if (!existing.url && cd.url) {
             existing.url = cd.url;
+            existing.cloudStored = true;
             changed = true;
           }
         });
@@ -7610,13 +7673,14 @@ async function loadCloudDocs() {
         console.warn(`Kullanıcı ${idx} belgeleri yüklenemedi:`, e);
       }
     }
+    if (!isCloudSessionCurrent(session)) return;
     if (changed) {
       saveLS();
       const activePage = document.querySelector('.page.active');
       if (activePage && activePage.id === 'pg-documents') renderDocs();
     }
   } finally {
-    _loadCloudDocsBusy = false;
+    if (_loadCloudDocsBusy === session) _loadCloudDocsBusy = false;
   }
 }
 
@@ -7657,6 +7721,7 @@ function cloneUsersForCloud(users) {
       uc.documents = uc.documents.map(d => {
         const dm = Object.assign({}, d);
         delete dm.url;
+        delete dm.cloudStored;
         return dm;
       });
     }
@@ -7686,39 +7751,52 @@ function pushToCloud(callback) {
   syncInProgress = true;
   setSyncState('syncing');
   const _gen = ++_syncGen;
+  const session = cloudSession();
+  const current = () => isCloudSessionCurrent(session) && _gen === _syncGen;
 
   // Timeout — takılmayı engelle
   const timeoutId = setTimeout(() => {
-    if (_gen === _syncGen && syncInProgress) {
+    if (current() && syncInProgress) {
       console.warn('Push timeout — syncInProgress sıfırlandı');
       syncInProgress = false;
       setSyncState('error');
     }
   }, SYNC_TIMEOUT);
 
-  const docRef = fbDb.collection('userData').doc(fbUser.uid);
+  const docRef = fbDb.collection('userData').doc(session.uid);
   let mergedDeletedUsers = null, _cloudUsersSnap = null, _cloudNextUid = 0;
-  fbDb.runTransaction(async tx => {
-    const snap = await tx.get(docRef);
-    const cloud = snap.exists ? (snap.data() || {}) : {};
-    const deletedUsers = mergeDeletedUsers(S.deletedUsers || {}, cloud.deletedUsers || {});
-    mergedDeletedUsers = deletedUsers;
-    _cloudUsersSnap = cloud.users || {};
-    _cloudNextUid = safeInt(cloud.nextUid, 0);
-    const usersForCloud = mergeUsersMap(cloneUsersForCloud(S.u), cloud.users || {}, deletedUsers);
-    const data = {
-      users: usersForCloud,
-      deletedUsers,
-      version: DATA_VERSION,
-      nextUid: Math.max(S.nextUid || 0, cloud.nextUid || 0),
-      payrollOverrides: mergePayrollOverridesForCloud(cloud.payrollOverrides),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      deviceId: getDeviceId()
-    };
-    await tx.set(docRef, data, { merge: true });
+  return uploadPendingDocuments(session).catch(() => {
+    // The document remains queued; its failure must not block shift/payroll sync.
+  }).then(() => {
+    if (!current()) return;
+    // Capture immutable input before a transaction retry or account switch.
+    const localUsers = cloneUsersForCloud(JSON.parse(JSON.stringify(S.u)));
+    const localDeleted = { ...S.deletedUsers };
+    const nextUid = S.nextUid || 0;
+    return fbDb.runTransaction(async tx => {
+      const snap = await tx.get(docRef);
+      if (!current()) throw new Error('Stale cloud session');
+      const cloud = snap.exists ? (snap.data() || {}) : {};
+      const deletedUsers = mergeDeletedUsers(localDeleted, cloud.deletedUsers || {});
+      mergedDeletedUsers = deletedUsers;
+      _cloudUsersSnap = cloud.users || {};
+      _cloudNextUid = safeInt(cloud.nextUid, 0);
+      const usersForCloud = mergeUsersMap(JSON.parse(JSON.stringify(localUsers)), cloud.users || {}, deletedUsers);
+      const data = {
+        users: usersForCloud,
+        deletedUsers,
+        version: DATA_VERSION,
+        nextUid: Math.max(nextUid, cloud.nextUid || 0),
+        payrollOverrides: mergePayrollOverridesForCloud(cloud.payrollOverrides),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        deviceId: getDeviceId()
+      };
+      tx.set(docRef, data, { merge: true });
+    });
   })
     .then(() => {
       clearTimeout(timeoutId);
+      if (!current()) return;
       if (mergedDeletedUsers) {
         S.deletedUsers = mergedDeletedUsers;
         Object.keys(S.deletedUsers).forEach(k => { delete S.u[k]; });
@@ -7753,20 +7831,20 @@ function pushToCloud(callback) {
     .catch(async err => {
       clearTimeout(timeoutId);
       console.error('Push hatası:', err);
-      /* [FIX SYNC-RACE] Geç gelen hata: timeout sonrası yeni senkron başladıysa
-         durum göstergesi/bayrak artık ona ait — yalnızca callback'i çalıştır. */
-      if (_gen !== _syncGen) { if (callback) callback(); return; }
+      // Eski oturumun hatası yeni oturumun durumunu veya callback'lerini çalıştırmaz.
+      if (!current()) return;
       syncInProgress = false;
       if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
         try {
           if (fbAuth && fbAuth.currentUser) {
             await fbAuth.currentUser.getIdToken(true);
+            if (!current()) return;
             setSyncState('error');
           } else {
             setSyncState('offline');
             toast('Oturum süresi doldu, lütfen tekrar giriş yapın', 'warning');
           }
-        } catch(e2) { setSyncState('offline'); toast('Yeniden giriş gerekiyor', 'warning'); }
+        } catch(e2) { if (!current()) return; setSyncState('offline'); toast('Yeniden giriş gerekiyor', 'warning'); }
       } else {
         setSyncState('error');
       }
@@ -7967,13 +8045,16 @@ function pullFromCloud(callback) {
   syncInProgress = true;
   setSyncState('syncing');
   const _gen = ++_syncGen;
+  const session = cloudSession();
+  const current = () => isCloudSessionCurrent(session) && _gen === _syncGen;
 
   var pullTimeout = setTimeout(function() {
-    if (_gen === _syncGen && syncInProgress) { syncInProgress = false; setSyncState('error'); }
+    if (current() && syncInProgress) { syncInProgress = false; setSyncState('error'); }
   }, SYNC_TIMEOUT);
 
-  fbDb.collection('userData').doc(fbUser.uid).get()
+  return fbDb.collection('userData').doc(session.uid).get()
     .then(doc => {
+      if (!current()) { clearTimeout(pullTimeout); return; }
       if (doc.exists) {
         const data = doc.data();
         if (data && data.users) {
@@ -8012,18 +8093,19 @@ function pullFromCloud(callback) {
       clearTimeout(pullTimeout);
       console.error('Pull hatası:', err);
       /* [FIX SYNC-RACE] Geç gelen hata: yeni senkron başladıysa durum ona ait */
-      if (_gen !== _syncGen) { if (callback) callback(); return; }
+      if (!current()) return;
       syncInProgress = false;
       if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
         try {
           if (fbAuth && fbAuth.currentUser) {
             await fbAuth.currentUser.getIdToken(true);
+            if (!current()) return;
             setSyncState('error');
           } else {
             setSyncState('offline');
             toast('Oturum süresi doldu, lütfen tekrar giriş yapın', 'warning');
           }
-        } catch(e2) { setSyncState('offline'); toast('Yeniden giriş gerekiyor', 'warning'); }
+        } catch(e2) { if (!current()) return; setSyncState('offline'); toast('Yeniden giriş gerekiyor', 'warning'); }
       } else {
         setSyncState('error');
       }
@@ -8038,8 +8120,10 @@ let lastSnapshotJson = ''; // Aynı veriyi tekrar işlemeyi engelle
 function startRealtimeSync() {
   if (!fbDb || !fbUser || unsubscribeSnapshot) return;
 
-  unsubscribeSnapshot = fbDb.collection('userData').doc(fbUser.uid)
+  const session = cloudSession();
+  unsubscribeSnapshot = fbDb.collection('userData').doc(session.uid)
     .onSnapshot(doc => {
+      if (!isCloudSessionCurrent(session)) return;
       if (!doc.exists) return;
       const data = doc.data();
       if (!data || !data.users) return;
@@ -8072,8 +8156,7 @@ function startRealtimeSync() {
         // Bordro override'larını (vergi/SGK parametreleri) de birleştir
         if (data.payrollOverrides) mergePayrollOverridesFromCloud(data.payrollOverrides);
 
-        // Cloud'dan gelen veriyi geri push etme — bekleyen timer'ı da iptal et
-        if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
+        // Başka cihazın güncellemesi bekleyen yerel gönderimi iptal etmez.
         saveLS({ noPush: true });
         invalidateMDCache();
         if (cu()) { renderAll(); updTop(); }
@@ -8081,6 +8164,7 @@ function startRealtimeSync() {
         toast('Diğer cihazdan güncelleme alındı', 'info');
       }
     }, async err => {
+      if (!isCloudSessionCurrent(session)) return;
       console.error('Realtime sync hatası:', err);
       if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
         stopRealtimeSync();
@@ -8401,7 +8485,7 @@ function buildDocCard(doc) {
     </div>
     <div class="doc-info">
       <div class="doc-name" title="${escHtml(doc.name)}">${escHtml(doc.name)}</div>
-      <div class="doc-meta">${dateStr}${sizeStr?' · '+sizeStr:''}</div>
+      <div class="doc-meta">${dateStr}${sizeStr?' · '+sizeStr:''}${doc.url && !doc.cloudStored ? ' · Bulut yüklemesi bekliyor' : ''}</div>
       <div class="doc-actions">
         <button class="doc-btn-view" data-doc-view="${escHtml(doc.id)}" title="Görüntüle"><i class="fas fa-eye"></i></button>
         <button class="doc-btn-wa" data-doc-wa="${escHtml(doc.id)}" title="WhatsApp ile paylaş"><i class="fab fa-whatsapp"></i></button>
@@ -8489,15 +8573,17 @@ function handleDocFile(file) {
 
 async function saveDocument() {
   const u = cu(); if (!u) return;
+  const session = cloudSession(), appUserId = S.cu;
+  const file = currentDocFile;
   const ni = $('docNameInput'), cs = $('docCatSelect'), btn = $('docSaveBtn');
   hideDocError();
   const name = (ni ? ni.value.trim() : '');
   if (!name) { showDocError('Belge adı boş olamaz'); return; }
-  if (!currentDocFile) { showDocError('Lütfen bir dosya seçin'); return; }
+  if (!file) { showDocError('Lütfen bir dosya seçin'); return; }
 
   // Boyut limiti: 700KB (Firestore doküman 1MB sınırı için güvenli)
-  if (currentDocFile.size > 700 * 1024) {
-    showDocError('Dosya 700KB sınırını aşıyor (' + (currentDocFile.size/1024).toFixed(0) + 'KB). Lütfen daha küçük bir dosya seçin.');
+  if (file.size > 700 * 1024) {
+    showDocError('Dosya 700KB sınırını aşıyor (' + (file.size/1024).toFixed(0) + 'KB). Lütfen daha küçük bir dosya seçin.');
     return;
   }
 
@@ -8506,9 +8592,9 @@ async function saveDocument() {
 
   const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).substr(2,6);
   const cat = cs ? cs.value : 'other';
-  const ext = currentDocFile.name.split('.').pop().toLowerCase();
+  const ext = file.name.split('.').pop().toLowerCase();
   const mimeMap = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png', webp:'image/webp', pdf:'application/pdf', heic:'image/heic', heif:'image/heif' };
-  const mimeType = currentDocFile.type || mimeMap[ext] || 'application/octet-stream';
+  const mimeType = file.type || mimeMap[ext] || 'application/octet-stream';
 
   // Dosyayı base64'e çevir
   let url;
@@ -8517,7 +8603,7 @@ async function saveDocument() {
       const reader = new FileReader();
       reader.onload = e2 => resolve(e2.target.result);
       reader.onerror = () => reject(new Error('Dosya okunamadı'));
-      reader.readAsDataURL(currentDocFile);
+      reader.readAsDataURL(file);
     });
   } catch(e) {
     showDocError('Dosya okunamadı: ' + e.message);
@@ -8525,50 +8611,90 @@ async function saveDocument() {
     return;
   }
 
+  if (!isCloudSessionCurrent(session) || S.cu !== appUserId || S.u[appUserId] !== u) return;
   const docData = {
+    cloudStored: false,
     id: docId,
     name,
     category: cat,
     url,
-    fileName: currentDocFile.name,
+    fileName: file.name,
     mimeType,
-    fileSize: currentDocFile.size,
+    fileSize: file.size,
     uploadedAt: Date.now()
   };
-
-  // Bulut varsa kullanıcıya özel Firestore sub-collection'a kaydet
-  if (fbDb && fbUser) {
-    try {
-      await fbDb.collection('userData').doc(fbUser.uid)
-        .collection('users').doc(String(S.cu)).collection('docs').doc(docId).set(docData);
-    } catch(e) {
-      console.warn('Belge buluta kaydedilemedi (yerel olarak saklanıyor):', e);
-    }
-  }
 
   if (!Array.isArray(u.documents)) u.documents = [];
   u.documents.push(docData);
 
-  saveLS();
+  if (!saveLS()) {
+    u.documents = u.documents.filter(d => d.id !== docId);
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i>Kaydet';
+    showDocError('Belge cihazda saklanamadı. Depolama alanı açıp tekrar deneyin.');
+    return;
+  }
   closeDocUpload();
   renderDocs();
-  toast(`"${name}" eklendi`, 'success');
+  toast(`"${name}" cihazda saklandı; bulut yüklemesi bekliyor`, 'info');
+}
+
+async function uploadPendingDocuments(session = cloudSession()) {
+  if (!fbDb || !session.uid || !isCloudSessionCurrent(session)) return;
+  if (_documentUploadTask && _documentUploadTask.session.epoch === session.epoch) return _documentUploadTask.promise;
+  const task = { session };
+  task.promise = (async () => {
+    for (const [idx, user] of Object.entries(S.u)) {
+      for (const doc of [...(user.documents || [])]) {
+        if (!isCloudSessionCurrent(session)) return;
+        if (!doc.url || doc.cloudStored || (user.deletedDocs || {})[doc.id]) continue;
+        const ref = fbDb.collection('userData').doc(session.uid).collection('users').doc(idx).collection('docs').doc(doc.id);
+        const data = { ...doc }; delete data.cloudStored;
+        await ref.set(data);
+        if (!isCloudSessionCurrent(session)) return;
+        const liveUser = S.u[idx];
+        const liveDoc = liveUser && (liveUser.documents || []).find(d => d.id === doc.id);
+        if (!liveDoc || (liveUser.deletedDocs || {})[doc.id]) {
+          await ref.delete();
+          continue;
+        }
+        liveDoc.cloudStored = true;
+        saveLS({ noPush:true });
+      }
+    }
+  })().catch(err => {
+    if (isCloudSessionCurrent(session)) {
+      notifyCloudFail('Bekleyen belge yüklemesi', err);
+      if (syncTimer) clearTimeout(syncTimer);
+      syncTimer = setTimeout(() => {
+        syncTimer = null;
+        if (isCloudSessionCurrent(session)) debouncedPush();
+      }, 30000);
+    }
+    throw err;
+  }).finally(() => {
+    if (_documentUploadTask === task) _documentUploadTask = null;
+  });
+  _documentUploadTask = task;
+  return task.promise;
 }
 
 /* ---- DELETE ---- */
 function deleteDocument(docId) {
   const u = cu(); if (!u || !Array.isArray(u.documents)) return;
+  const session = cloudSession(), appUserId = S.cu;
   const doc = u.documents.find(d => d.id === docId); if (!doc) return;
   showConfirm('Belgeyi Sil', `"${escHtml(doc.name)}" silinecek. Geri alınamaz.`, async () => {
+    if (!isCloudSessionCurrent(session) || S.cu !== appUserId) return;
     // Silme kaydını tut (yeniden yüklemede geri gelmesini engeller)
     if (!u.deletedDocs) u.deletedDocs = {};
     u.deletedDocs[docId] = Date.now();
     // Firestore sub-collection'dan sil — önce bulut, sonra yerel (tutarlılık)
     if (fbDb && fbUser) {
       try {
-        await fbDb.collection('userData').doc(fbUser.uid)
-          .collection('users').doc(String(S.cu)).collection('docs').doc(docId).delete();
+        await fbDb.collection('userData').doc(session.uid)
+          .collection('users').doc(String(appUserId)).collection('docs').doc(docId).delete();
       } catch(e) {
+        if (!isCloudSessionCurrent(session)) return;
         notifyCloudFail('Firestore belge silinemedi:', e);
         // Bulut silme başarısız: yerel kaydı koru, kullanıcıya bildir
         delete u.deletedDocs[docId];
@@ -8576,6 +8702,7 @@ function deleteDocument(docId) {
         return;
       }
     }
+    if (!isCloudSessionCurrent(session)) return;
     // Yerel listeden kaldır
     u.documents = u.documents.filter(d => d.id !== docId);
     saveLS();
@@ -8588,6 +8715,7 @@ function deleteDocument(docId) {
 function viewDocument(docId) {
   const u = cu(); if (!u) return;
   const doc = (u.documents||[]).find(d => d.id === docId); if (!doc) return;
+  const session = cloudSession(), appUserId = S.cu;
   currentViewDoc = doc;
   const v = $('docViewer'), dvN = $('dvName'), dvc = $('dvContent');
   if (!v || !dvN || !dvc) return;
@@ -8598,17 +8726,20 @@ function viewDocument(docId) {
     dvc.innerHTML = `<div style="color:#fff;text-align:center;padding:40px"><i class="fas fa-spinner fa-spin" style="font-size:32px"></i><p style="margin-top:12px;font-size:14px">Yükleniyor...</p></div>`;
     v.classList.add('show');
     if (fbDb && fbUser) {
-      fbDb.collection('userData').doc(fbUser.uid)
-        .collection('users').doc(String(S.cu)).collection('docs').doc(docId).get().then(snap => {
+      fbDb.collection('userData').doc(session.uid)
+        .collection('users').doc(String(appUserId)).collection('docs').doc(docId).get().then(snap => {
+        if (!isCloudSessionCurrent(session) || S.cu !== appUserId || currentViewDoc !== doc) return;
         if (snap.exists) {
           const cd = snap.data();
           doc.url = cd.url;
+          doc.cloudStored = true;
           saveLS();
           viewDocument(docId); // tekrar çağır, bu sefer url var
         } else {
           dvc.innerHTML = `<div style="color:#fff;text-align:center;padding:40px"><p>Belge bulunamadı</p></div>`;
         }
       }).catch(err => {
+        if (!isCloudSessionCurrent(session) || currentViewDoc !== doc) return;
         notifyCloudFail('Belge Firestore lazy-load:', err);
         dvc.innerHTML = `<div style="color:#fff;text-align:center;padding:40px"><p>Belge yüklenemedi</p></div>`;
       });
@@ -9988,9 +10119,9 @@ function renderBordroPreview() {
     totalGross = _bordroRound2(baseGross + otGross + ot125Gross + nightGross + holGross + weekendGross);
     if (totalGross <= 0) { toast('Kalem bazlı bordro için en az bir kazanç kalemi girin', 'error'); return; }
   } else {
-    baseGross = _bordroRound2(seedGross);
-    drGross = _bordroRound2(baseGross / 30);
-    hrGross = baseGross > 0 ? _bordroRound2(baseGross / payrollHourBasis) : _bordroRound2((drGross * 30) / payrollHourBasis);
+    baseGross = _bordroRound2(seedGross * (u.payMode === 'hourly' ? d.dim / 30 : 1));
+    drGross = _bordroRound2(seedGross / 30);
+    hrGross = seedGross > 0 ? _bordroRound2(seedGross / payrollHourBasis) : _bordroRound2((drGross * 30) / payrollHourBasis);
     /* [FIX] Resmi bordro düzeni: Temel Brüt'ü Normal Çalışma / Hafta Tatili / Genel Tatil kalemlerine ayır */
     weeklyRestGross = _bordroRound2(Math.max(0, d.wr || 0) * drGross);
     publicHolidayGross = _bordroRound2(Math.max(0, d.publicHolidayPaidDays || 0) * drGross);
