@@ -33,7 +33,7 @@ self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys => Promise.all(
       // Eski SÜRÜMLÜ çekirdek cache'lerini sil; CDN kalıcı cache'i koru.
-      keys.filter(k => k !== CACHE_NAME && k !== CDN_CACHE).map(k => caches.delete(k))
+      keys.filter(k => /^shifttrack-v\d+$/.test(k) && k !== CACHE_NAME).map(k => caches.delete(k))
     )).then(() => self.clients.claim())
   );
 });
