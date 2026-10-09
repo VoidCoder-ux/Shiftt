@@ -13,7 +13,17 @@
 ## Genel Durum
 
 **36 tekil bulgu.** 1 BLOKE, 9 KRİTİK, 14 ORTA, 12 DÜŞÜK.
-**Kapatılan: 35.** Açık kalan: 1 (veri kapsamı) + 1 bilinçli erteleme.
+**Kapatılan: 36.** Açık kalan: 1 (veri kapsamı — dini tatil tablosu 2024–2032).
+
+> **Tur 3 eki · Ekim 2026.** Önceki turun "bilinçli erteleme" olarak bıraktığı
+> madde (FM/Md.47 net etkisi iki motorda farklı) **kapatıldı — ama bu turda
+> değil, paralel olarak `main`'e giren PR #113 ile.** Bu tur sapmayı bağımsız
+> olarak ölçtü (net 43.200 ₺'de ayda 117–234 ₺, 6 ayda **965,19 ₺**; yön her
+> zaman ekran > bordro) ve PR #113 sonrası pariteyi doğruladı. Bu turda fiilen
+> kapatılan bulgular: `dsToDate`'in geçersiz tarihte sessizce bugüne düşmesi ve
+> 7 bağımlılık güvenlik açığı. FM saat esası ayrışması ise PR #113 ile dolaylı
+> olarak kapandı; değişmez bir regresyon testiyle kilitlendi.
+> Ayrıntı: aşağıdaki "Tur 3 Eki" bölümü.
 
 Baskın kusur sınıfı tekti: **aynı büyüklüğün iki ayrı motorla hesaplanması.**
 `calcEarningForMonth` (ekran tahmini) ile `estimatePayrollForMonth` (bordro) farklı
@@ -27,7 +37,8 @@ Dört bağımsız denetim şeridi (formül, alan/girdi, tutarsızlık, uç durum
 izole sandbox'ta koşturdu. Her bulgu sayısal olarak kanıtlandı; doğrulanamayan şüpheler
 bulgu olarak raporlanmadı. 124 açık iddia + 400 senaryoluk fuzz taraması yürütüldü.
 
-Regresyon testi: **66 test** (`npm test`), tur başında 25 idi.
+Regresyon testi: **88 test** (`npm test`); Tur 2 başında 25, Tur 2 sonunda 66 idi.
+(Aradaki artışın bir kısmı PR #113'ün eklediği cloudsync/pwa testlerinden gelir.)
 
 ## Özet Tablo
 
@@ -36,7 +47,7 @@ Regresyon testi: **66 test** (`npm test`), tur başında 25 idi.
 | BLOKE  | 1  | 1  | 0 |
 | KRİTİK | 9  | 9  | 0 |
 | ORTA   | 14 | 14 | 0 |
-| DÜŞÜK  | 12 | 11 | 1 |
+| DÜŞÜK  | 12 | 12 | 0 |
 | **Toplam** | **36** | **35** | **1** |
 
 ---
@@ -163,15 +174,18 @@ hicri takvim üreticisi eklemek gerekiyor — veri işi, kod işi değil.
 ama ekran bu kalemleri **net** birim ücretle ekliyor; bordro **brüt** ekleyip marjinal
 vergiye tabi tutuyor. 20 saat FM'de sapma ~297 ₺ (kalemin %11,5'i).
 
-`tests/engineparity.test.mjs` içinde **"bilinen açık fark"** olarak işaretli; test farkın
-varlığını ve yönünü kilitliyor (ekran hiçbir zaman bordronun altına düşmemeli, fark ilave
-kalemin tamamını aşmamalı). Kapatıldığında bu test parity'ye çevrilmelidir.
+**KAPATILDI — PR #113 (`main`), Eylül 2026.** `tests/engineparity.test.mjs`
+içindeki **"bilinen açık fark"** testi parite testine çevrildi: artık
+`assert.equal(e.totalEarning, p.net)` ile **tam eşitlik** arıyor.
 
-Kapatmak için gereken: `calcEarningForMonth` ile `estimatePayrollForMonth` arasındaki
-gün-muhasebesini ortak bir yardımcıya çıkarmak (şu an bordro motoru kazanç motorunu
-çağırdığı için ters yönde delegasyon döngü yaratır) ve ardından bir bordro sonuç cache'i
-eklemek — `calcEarningForMonth` 12 aylık döngülerde çağrılıyor, cache'siz delegasyon
-binlerce ikili arama iterasyonu üretir.
+Kapatma, bu raporun öngördüğü "ortak gün-muhasebesi yardımcısı + bordro cache'i"
+yolunu izlemedi. Bunun yerine delegasyonun yönü tersine çevrildi:
+`calcEarningBasisForMonth` tabanı üretiyor, `estimatePayrollForMonth` bu tabanı
+`earningBasis` parametresiyle alıyor (artık kazanç motorunu kendisi çağırmıyor),
+`calcEarningForMonth` ise bordro sonucunu alıp kalemleri **artımlı marjinal
+netleme** ile ayrıştırıyor ve `totalEarning: payroll.net` döndürüyor. Böylece
+parite yapısal olarak garanti altında — iki motorun aynı sayıyı üretmesi bir
+tesadüf değil, tanım gereği. Döngü de oluşmuyor çünkü delegasyon tek yönlü.
 
 **Politika kararı (kapalı):** Yasal saat esası tüm sözleşmelerde **225** sabit kalır
 (Yargıtay 9.HD: 30 gün × 7,5 saat). `weeklyContractHours` yalnızca %25/%50
@@ -193,7 +207,114 @@ kullanılmayan `u` parametresi bu yüzden bilinçli olarak duruyor.
 - [x] `.pdf` adlı `text/html` dosya reddediliyor
 - [x] Aralık dışı tarih anahtarları eleniyor
 - [x] Tanımsız yıl en yakın tanımlı yıla düşüyor ve bayrak taşıyor
-- [ ] FM/Md.47 net etkisi iki motorda aynı (bilinçli erteleme — yukarı bkz.)
+- [x] FM/Md.47 net etkisi iki motorda aynı (PR #113 — tam eşitlik)
+- [x] FM brüt saat ücreti `monthlyHours` ayarından etkilenmiyor (yasal esas 225)
+- [x] Geçersiz tarih anahtarı `dsToDate`'te bugüne düşmüyor (null döner)
+
+---
+
+## Tur 3 Eki — Ekim 2026
+
+Bağımsız bir denetim turunda dört bulgu çıktı. **Üçü bu turda kapatıldı; biri
+(en büyüğü) paralel olarak `main`'de PR #113 ile zaten kapatılmıştı** — aşağıda
+bunu açıkça ayırıyoruz, çünkü Tur 1'in hatası tam olarak kapanmamış maddeleri
+kapanmış göstermekti.
+
+### 1. İlave kalemler net birim ücretle ekleniyordu — PR #113 ile KAPATILDI
+
+Tur 2'nin "bilinçli erteleme"si. Ekran Md.47 tatil ilavesini `gün × net günlük
+ücret`, fazla mesaiyi `saat × net saatlik ücret` olarak ekliyordu. Dayandığı
+varsayım kodun kendi yorumunda yazılıydı — *"brüt extra ₺1.930,31 → marjinal
+vergi sonrası net = tam ₺1.380 = dr"* — ve yalnızca **tek bir maaş ve tek bir
+vergi diliminde** doğruydu. Başka dilimlerde ekran, eline geçecekten fazlasını
+gösteriyordu.
+
+Bu denetim turunda sapma bağımsız olarak ölçüldü (net 43.200 ₺, hafta içi
+09:00–17:30): 2025 Ocak **+117,11 ₺**, Nisan/Mayıs **+234,21 ₺**, Ekim
+**+230,91 ₺**, 2026 Ocak **+148,75 ₺** — 6 ayda **+965,19 ₺**, yön her zaman
+aynı (ekran > bordro).
+
+**Çözüm bu turda üretilmedi.** `main`'deki PR #113 aynı maddeyi daha temiz bir
+mimariyle kapatmıştı: `calcEarningBasisForMonth` tabanı ayırıyor,
+`estimatePayrollForMonth` bu tabanı parametre olarak alıyor (delegasyon aşağı
+yönlü, döngü yok) ve `calcEarningForMonth` artık kalemleri **artımlı marjinal
+netleme** ile ayrıştırıp `totalEarning: payroll.net` döndürüyor. Yani parite
+yapısal olarak garanti; testi de `assert.equal(e.totalEarning, p.net)` ile tam
+eşitlik arıyor. Bu tur yalnızca bulguyu bağımsız doğruladı.
+
+### 2. FM saat esası ayrışması — PR #113 ile dolaylı olarak kapandı
+
+Ekran FM brüt saat ücretini `getMonthlyHours(u)` (kullanıcının ayarlanabilir
+aylık saat hedefi), bordro `getPayrollHourBasis` (yasal 225) ile hesaplıyordu.
+Kullanıcı `monthlyHours`'u 225'ten farklı ayarladığı anda iki motor farklı FM
+saat ücreti üretiyordu; bu, dosyanın kendi **[POLİTİKA FM-SAAT-ESASI]** kararına
+da aykırıydı. Varsayılan 225 olduğu için etki yalnızca ayarı değiştirenlerde
+görünüyordu — Tur 2'de bu yüzden yakalanmadı.
+
+PR #113'ten sonra ekran kalemleri doğrudan bordro motorundan aldığı için sapma
+kendiliğinden ortadan kalktı; ölçümle doğrulandı (`monthlyHours` 180/225/300 →
+FM eki ve toplam kazanç birebir aynı). `calcEarningBasisForMonth` içindeki
+`hrGross` artık yalnızca okunmayan bir `hourlyRateGross` alanını besliyor.
+Değişmezi kilitlemek için regresyon testi eklendi — ekran ileride kendi saat
+ücretini yeniden hesaplamaya başlarsa test bunu yakalar.
+
+### 3. `dsToDate` geçersiz tarihte sessizce BUGÜNE düşüyordu — bu turda kapatıldı
+
+`dsToDate('2026-02-30')` bugünün tarihini döndürüyordu. Canlı bir hata değildi —
+normalize aşaması (`normalizeUserCalculations`) bozuk anahtarları `delete` ile
+siliyor — ama savunma tek bir yukarı-akış noktasına bağlıydı.
+
+Tur 2'deki test adı (*"artık sessizce BUGÜNE düşmez"*) doğruladığından fazlasını
+iddia ediyordu: gövdesi yalnızca `parseDS`'i sınıyor, `dsToDate`'e hiç
+dokunmuyordu; kendi yorumu da bunu kabul ediyordu (*"dsToDate fallback'i yine
+bugündür"*). Artık fonksiyon `null` dönüyor, **15 çağrı noktasının tamamı**
+null'a karşı korundu, `getISOWeek` null girdide çökmüyor ve test adının iddia
+ettiği şeyi gerçekten doğruluyor.
+
+Riskli olan üç nokta özellikle ele alındı: `checkRestTime` (`new Date(null)`
+1970 epoch'una düşüyordu — dinlenme süresi sessizce yanlış hesaplanırdı),
+`openM` (geçersiz tarihle modal açılıp yanlış güne kayıt yazılabilirdi) ve
+ot_comp izin bakiyesi (örtük `null >= Date` karşılaştırması).
+
+### 4. Bağımlılık açıkları — bu turda kapatıldı
+
+`npm audit` 7 açık veriyordu (1 orta, 6 yüksek); `audit-report.md` ise
+Haziran'dan beri "0 açık" diyordu. Kod değişmemişti, yeni CVE'ler yayınlanmıştı.
+`npm audit fix` ile kapatıldı (`package.json` değişmedi, yalnız lock dosyası).
+Yedisi de devDependency olduğu için kullanıcıya giden çıktıya girmiyor.
+Ayrıntı ve CI önerisi: `audit-report.md` → DEP-01 Notu.
+
+### Doğrulama
+
+PR #113 sonrası parite, 672 senaryoluk bir taramayla bağımsız olarak doğrulandı
+(4 mod × 7 maaş × 8 ay × 3 vardiya deseni), ekranın kullandığı çağrı biçimiyle
+(`estimatePayrollForMonth(u, y, m)` — `priorYTDOverride` verilmeden):
+
+| Mod | Senaryo | Ort. \|sapma\| | En büyük |
+|---|---:|---:|---:|
+| aylık | 168 | **0,00** | 0,00 |
+| saatlik | 168 | **0,00** | 0,00 |
+| yevmiye | 168 | **0,00** | 0,00 |
+| brüt | 168 | **0,00** | 0,00 |
+
+Parite dört modda da tam. `calcEarningBasisForMonth` içindeki saatlik taban
+farkı (saatlik sözleşmede `dim`, aylıkta 30 gün) duruyor, ancak
+`calcEarningForMonth` toplamı bordro netiyle değiştirdiği için kullanıcıya
+görünen hiçbir sayıda sapma üretmiyor.
+
+> **Ölçüm notu.** Bu tarama ilk denemede `estimatePayrollForMonth`'u
+> `priorYTDOverride = 0` ile çağırıyordu ve aylık/saatlik/brüt modlarda sahte
+> sapmalar üretti — ekran bu parametreyi vermediği için bordro gerçek kümülatif
+> matrahı çözüyor, override verilince marjinal dilim kayıyor. Parite ölçerken
+> iki motor **aynı çağrı biçimiyle** karşılaştırılmalı.
+
+### Ders
+
+Tur 2'nin "bilinçli erteleme"si bir tur boyunca açık kaldı ve bu sürede
+kullanıcılara yanlış tutar gösterildi. Ertelenen maddeler için sapmanın
+**sayısal büyüklüğü** rapora yazılmalı (bu turda yapıldı: ayda 117–234 ₺);
+"ileride bakılacak" etiketi tek başına önceliklendirme için yeterli bilgi
+taşımıyor.
 
 ## Test Dosyaları
 

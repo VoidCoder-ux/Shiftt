@@ -387,12 +387,19 @@ function parseDS(ds) {
   return { y, m, d };
 }
 
+/* [FIX DS-NULL] Geçersiz tarih anahtarı artık BUGÜNE düşmez — null döner.
+   Eski davranış sessizdi: `2026-02-30` ya da bozuk bir yedekten gelen anahtar
+   bugünün tarihine çözülüyor, hesap yanlış aya yazılıyordu. Normalize aşaması
+   (normalizeUserCalculations) bozuk anahtarları zaten siliyor; bu yüzden null
+   üretimi pratikte beklenmez, ama normalize'ı atlayan bir çağrı noktası
+   eklenirse hata artık sessizce yanlış sonuç vermek yerine görünür olur.
+   TÜM çağrı noktaları null'a karşı korunmuştur. */
 function dsToDate(ds) {
   const p = parseDS(ds);
-  if (!p) return new Date();
+  if (!p) return null;
   /* [FIX ERR-HANDLE-02] Date constructor month overflow koruması (ör. 31 Nisan → 1 Mayıs) */
   const d = new Date(p.y, p.m, p.d);
-  if (d.getFullYear() !== p.y || d.getMonth() !== p.m || d.getDate() !== p.d) return new Date();
+  if (d.getFullYear() !== p.y || d.getMonth() !== p.m || d.getDate() !== p.d) return null;
   return d;
 }
 
@@ -734,6 +741,8 @@ function isNightShift(start, end) {
 /* [N-07] Date.UTC() kullanımı DST-safe'dir: yerel saat diliminden bağımsız UTC zaman damgaları karşılaştırılır.
    Yıl sınırı geçişleri (Aralık 31 → sonraki yılın W01) "YYYY-Wnn" formatı sayesinde doğru işlenir. */
 function getISOWeek(d) {
+  /* [FIX DS-NULL] dsToDate artık null dönebildiği için savunmacı kontrol. */
+  if (!(d instanceof Date) || isNaN(d.getTime())) return null;
   const y = d.getFullYear(), m = d.getMonth(), day2 = d.getDate();
   const ts      = Date.UTC(y, m, day2);
   const jan4    = Date.UTC(y, 0, 4);
@@ -2558,6 +2567,7 @@ function renderDashReports(u, d, e) {
     recentShifts.forEach(part => {
       const ds = part.ds, sh = part.sh;
       const dd = dsToDate(ds);
+      if (!dd) return; /* [FIX DS-NULL] */
       const h = Math.max(0, safeNum(part.hours, 0));
       const st = getShiftType(sh);
       perfMini += `<div class="dr-row"><span class="drk">${st.icon} ${dd.getDate()} ${MTR[dd.getMonth()].substring(0,3)}</span><span class="drv">${part.startLabel}–${part.endLabel} <small style="color:var(--t3)">${h.toFixed(1)}s</small></span></div>`;
@@ -3116,8 +3126,11 @@ function getAllPresets() {
    SHIFT MODAL
 ============================================================ */
 function openM(ds) {
-  S.sd = ds;
+  /* [FIX DS-NULL] Geçersiz tarihle modal açılmaz — eskiden bugünün tarihine
+     düşüp yanlış güne kayıt yazılmasına yol açabilirdi. */
   const d = dsToDate(ds);
+  if (!d) { toast('Geçersiz tarih', 'error'); return; }
+  S.sd = ds;
   const dow = d.getDay();
   const dn = DFL[dow === 0 ? 6 : dow - 1];
   setTxt('mTitle', d.getDate() + ' ' + MTR[d.getMonth()]);
@@ -3267,13 +3280,17 @@ function applyPreset(key, el) {
 /* [FIX] Haftalık FM hesabı: seçili gün dahil, o haftadaki tüm saatleri toplar */
 function getWeekOTForDay(ds, currentNet, currentShift) {
   const u = cu(); if (!u || !ds) return { ot: 0, ot125: 0, weekTotal: 0 };
-  const wk = getISOWeek(dsToDate(ds));
+  const _d = dsToDate(ds);
+  /* [FIX DS-NULL] Geçersiz tarihte hafta hesabı yapılamaz. */
+  if (!_d) return { ot: 0, ot125: 0, weekTotal: 0 };
+  const wk = getISOWeek(_d);
   let weekTotal = 0;
   getShiftPartRows(u, part => part.wk === wk && part.sourceDs !== ds)
     .forEach(part => { weekTotal += Math.max(0, part.hours || 0); });
   if (currentShift && currentShift.start && currentShift.end) {
     getShiftDayParts(ds, currentShift).forEach(part => {
-      if (getISOWeek(dsToDate(part.ds)) === wk) weekTotal += Math.max(0, part.hours || 0);
+      const _pd = dsToDate(part.ds); /* [FIX DS-NULL] */
+      if (_pd && getISOWeek(_pd) === wk) weekTotal += Math.max(0, part.hours || 0);
     });
   } else {
     weekTotal += Math.max(0, safeNum(currentNet, 0));
@@ -3861,6 +3878,7 @@ function renderLeaveTable() {
   let t = '<table><thead><tr><th>Tarih</th><th>Gün</th><th>Tür</th><th>Not</th><th></th></tr></thead><tbody>';
   all.forEach(([k, v]) => {
     const dd = dsToDate(k);
+    if (!dd) return; /* [FIX DS-NULL] */
     const dow = dd.getDay();
     t += `<tr>
       <td>${dd.getDate()} ${MTR[dd.getMonth()]}</td>
@@ -5573,6 +5591,7 @@ function exportCSV() {
     shiftRows.forEach(part => {
       workedDates.add(part.ds);
       const d = dsToDate(part.ds);
+      if (!d) return; /* [FIX DS-NULL] */
       const dow = d.getDay();
       const dayName = DFL[dow === 0 ? 6 : dow - 1];
       const gross = Math.max(0, (safeNum(part.endMin, 0) - safeNum(part.startMin, 0)) / 60);
@@ -5583,6 +5602,7 @@ function exportCSV() {
     Object.entries(u.leaves || {}).sort((a,b) => a[0].localeCompare(b[0])).forEach(([ds, lv]) => {
       if (!lv || !lv.type || workedDates.has(ds)) return;
       const d = dsToDate(ds);
+      if (!d) return; /* [FIX DS-NULL] */
       const dow = d.getDay();
       const dayName = DFL[dow === 0 ? 6 : dow - 1];
       const tl = {annual:'Yıllık İzin',weekly:'Hafta Tatili',public_holiday:'Resmi Tatil',sick:'Rapor',unpaid:'Ücretsiz',ot_comp:'FM İzni'};
@@ -6487,6 +6507,9 @@ function getOTBalance() {
   Object.entries(u.leaves).forEach(([ds, l]) => {
     if (l && l.type === 'ot_comp') {
       const lDate = dsToDate(ds);
+      /* [FIX DS-NULL] Geçersiz anahtarlı kayıt yok sayılır (normalize onu zaten
+         siler). Örtük `null >= Date` karşılaştırmasına güvenmemek için açık. */
+      if (!lDate) return;
       const leaveHours = getOTCompLeaveHours(u, l);
       if (lDate >= windowStart) bal -= leaveHours;
     }
@@ -6549,7 +6572,13 @@ function getSmartSuggestions(y, m) {
   // Haftalık saat toplamlarını hesapla
   const weekHrs = {};
   getShiftPartRows(u).forEach(part => {
-    const wk2 = part.wk || getISOWeek(dsToDate(part.ds));
+    let wk2 = part.wk;
+    if (!wk2) {
+      const _pd = dsToDate(part.ds); /* [FIX DS-NULL] */
+      if (!_pd) return;
+      wk2 = getISOWeek(_pd);
+      if (!wk2) return;
+    }
     weekHrs[wk2] = (weekHrs[wk2] || 0) + Math.max(0, safeNum(part.hours, 0));
   });
 
@@ -6824,6 +6853,9 @@ function renderGoals() {
 function checkRestTime(ds, startTime) {
   const u = cu(); if (!u) return null;
   const d = dsToDate(ds);
+  /* [FIX DS-NULL] `new Date(null)` 1970 epoch'una düşer; dinlenme süresi
+     sessizce yanlış hesaplanırdı. */
+  if (!d) return null;
   const prev = new Date(d); prev.setDate(prev.getDate() - 1);
   const prevDs = dStr(prev);
   const prevShift = u.shifts[prevDs];
@@ -9151,7 +9183,9 @@ function renderTeamView() {
   weekDates.forEach((ds, i) => {
     const d = dsToDate(ds);
     const isToday = ds === dStr(new Date());
-    gridHtml += `<div class="tg-header" style="${isToday ? 'color:var(--p);font-weight:900' : ''}">${DTR[i]}<br>${d.getDate()}</div>`;
+    /* [FIX DS-NULL] Gün numarası çözülemezse başlık boş kalır, satır kaymaz. */
+    const dayNum = d ? d.getDate() : '—';
+    gridHtml += `<div class="tg-header" style="${isToday ? 'color:var(--p);font-weight:900' : ''}">${DTR[i]}<br>${dayNum}</div>`;
   });
 
   // Per-user rows and summary data

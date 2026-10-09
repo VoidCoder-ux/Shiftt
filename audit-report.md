@@ -34,9 +34,26 @@
 | PWA-02 | manifest `shortcuts`/`screenshots` | 🟢 Opsiyonel iyileştirme |
 | PWA-03 | Google Fonts `crossorigin` | 🟢 Opsiyonel iyileştirme |
 | PERF-01 | Tek büyük dosya | ✅ Vite build: minify + içerik-hash'li precache |
-| DEP-01 | Bağımlılık güvenlik açıkları | ✅ (2026-06-20) Vite 5→8, vite-plugin-pwa 0.20→1.3; `npm audit` → 0 açık |
+| DEP-01 | Bağımlılık güvenlik açıkları | ✅ (2026-10-09) Yeniden kapatıldı — aşağıdaki nota bakın |
 
 **Kapatıldı:** çoğunluk · **Açık (opsiyonel):** PWA-01/02/03 (düşük öncelik)
+
+### DEP-01 Notu (2026-10-09) — "0 açık" kalıcı bir durum değil
+
+20 Haziran'da `npm audit` 0 açık veriyordu; 9 Ekim'de **7 açık** vardı
+(1 orta, 6 yüksek): `brace-expansion`, `browserslist`, `fast-uri`, `nanoid`,
+`postcss`, `source-map-js`, `baseline-browser-mapping`. Kod değişmedi — yeni
+CVE'ler yayınlandı. `npm audit fix` ile kapatıldı; `package.json` değişmedi,
+yalnızca `package-lock.json` güncellendi (semver-uyumlu, major atlama yok).
+
+**Gerçek risk düşük:** yedisinin tamamı devDependency, yani vite/eslint'in alt
+bağımlılıkları. Prod bağımlılığı toplam **1** tane; bu paketler son kullanıcıya
+gönderilen çıktıya girmiyor, yalnızca build makinesinde çalışıyor.
+
+**Ders:** bu satır tarihsiz "✅" olarak okunmamalı. Bağımlılık açıkları zamanla
+birikir; `npm audit` CI'a eklenmediği sürece sessizce büyür. Öneri: `ci.yml`'ye
+`npm audit --audit-level=high` adımı eklemek (devDependency olduğu için
+`--omit=dev` ile prod'a daraltmak da bir seçenek).
 
 ---
 

@@ -212,3 +212,27 @@ test('net, brüt, yevmiye — FM, muafiyet ve manuel matrahta ekran kalemleri bo
     assert.ok(near(e.basePay+e.holidayPay+e.overtimePay125+e.overtimePay+e.otherPay,p.net),mode);
   }
 });
+
+/* [DS-NULL turu, Ekim 2026] Değişmez kilidi: kullanıcının ayarlayabildiği
+   `monthlyHours` FM ÜCRETİNİ değiştirmemeli. Yasal saat esası tüm sözleşmelerde
+   sabittir ([POLİTİKA FM-SAAT-ESASI]); `monthlyHours` yalnızca kullanıcının
+   kendi saat hedefi/göstergesidir. Bu, PR #113'ün kazanç→bordro delegasyonu
+   sayesinde şu an KENDİLİĞİNDEN sağlanıyor (ekran kalemleri bordro motorundan
+   alıyor, o da getPayrollHourBasis kullanıyor). Test, ileride ekran kendi
+   saat ücretini yeniden hesaplamaya başlarsa bunu yakalasın diye var. */
+test('FM ücreti monthlyHours ayarından etkilenmez (yasal saat esası sabit)', () => {
+  const NET = 43200, y = 2025, m = 3;
+  const run = (mh) => {
+    const u = setUser({ netSalary: NET, salaryInputMode: 'net', payMode: 'monthly', monthlyHours: mh });
+    fillMonth(u, y, m, { hours: ['08:00', '20:00'] });   // bol FM
+    return f.calcEarningForMonth(y, m, NET);
+  };
+  const a = run(225), b = run(180), c = run(300);
+  assert.ok(a.overtimeHours > 0, 'senaryo FM içermeli');
+  assert.ok(near(a.overtimePay, b.overtimePay, 0.02),
+    `monthlyHours=180 FM ekini değiştirmemeli (${a.overtimePay} vs ${b.overtimePay})`);
+  assert.ok(near(a.overtimePay, c.overtimePay, 0.02),
+    `monthlyHours=300 FM ekini değiştirmemeli (${a.overtimePay} vs ${c.overtimePay})`);
+  assert.ok(near(a.totalEarning, b.totalEarning, 0.02) && near(a.totalEarning, c.totalEarning, 0.02),
+    'toplam kazanç da monthlyHours\'tan bağımsız olmalı');
+});
