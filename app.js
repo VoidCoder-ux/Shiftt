@@ -387,12 +387,19 @@ function parseDS(ds) {
   return { y, m, d };
 }
 
+/* [FIX DS-NULL] Geçersiz tarih anahtarı artık BUGÜNE düşmez — null döner.
+   Eski davranış sessizdi: `2026-02-30` ya da bozuk bir yedekten gelen anahtar
+   bugünün tarihine çözülüyor, hesap yanlış aya yazılıyordu. Normalize aşaması
+   (normalizeUserCalculations) bozuk anahtarları zaten siliyor; bu yüzden null
+   üretimi pratikte beklenmez, ama normalize'ı atlayan bir çağrı noktası
+   eklenirse hata artık sessizce yanlış sonuç vermek yerine görünür olur.
+   TÜM çağrı noktaları null'a karşı korunmuştur. */
 function dsToDate(ds) {
   const p = parseDS(ds);
-  if (!p) return new Date();
+  if (!p) return null;
   /* [FIX ERR-HANDLE-02] Date constructor month overflow koruması (ör. 31 Nisan → 1 Mayıs) */
   const d = new Date(p.y, p.m, p.d);
-  if (d.getFullYear() !== p.y || d.getMonth() !== p.m || d.getDate() !== p.d) return new Date();
+  if (d.getFullYear() !== p.y || d.getMonth() !== p.m || d.getDate() !== p.d) return null;
   return d;
 }
 
@@ -734,6 +741,8 @@ function isNightShift(start, end) {
 /* [N-07] Date.UTC() kullanımı DST-safe'dir: yerel saat diliminden bağımsız UTC zaman damgaları karşılaştırılır.
    Yıl sınırı geçişleri (Aralık 31 → sonraki yılın W01) "YYYY-Wnn" formatı sayesinde doğru işlenir. */
 function getISOWeek(d) {
+  /* [FIX DS-NULL] dsToDate artık null dönebildiği için savunmacı kontrol. */
+  if (!(d instanceof Date) || isNaN(d.getTime())) return null;
   const y = d.getFullYear(), m = d.getMonth(), day2 = d.getDate();
   const ts      = Date.UTC(y, m, day2);
   const jan4    = Date.UTC(y, 0, 4);
@@ -1114,8 +1123,35 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
   /* [FIX OT-GROSS] FM ve fazla çalışma ücreti 4857/41 gereği BRÜT saatlik ücret bazında
      hesaplanmalı. findGrossFromNet ikili arama ile net → brüt dönüşümü yapar.
      Taban maaş ve eksik gün hesabı net (dr) üzerinden kalmaya devam eder. */
-  const _fullGrossForOT = getMonthlyGross(u, 'single', 0, 0, m, undefined, y);
-  const hrGross = (_mh > 0 && _fullGrossForOT > 0) ? _fullGrossForOT / _mh : 0;
+  /* [FIX PARITE-YTD] Marjinal vergi için devreden GV matrahı. Bordro motoru bunu
+     estimateCumulativeMatrah ile çözüyor; kazanç motoru onu ÇAĞIRAMAZ (bordro
+     motoru zaten kazanç motorunu çağırıyor — ters yön döngü yaratır). Bu yüzden
+     bordro motoru kendi çözdüğü matrahı opts ile AŞAĞI geçirir; doğrudan ekran
+     çağrılarında Ocak konvansiyonu (0) korunur. Veri tek yön akar, döngü yok. */
+  const _priorYTD = Math.max(0, safeNum(opts && opts.priorYTDMatrah, 0));
+  const _fullGrossForOT = getMonthlyGross(u, 'single', 0, _priorYTD, m, undefined, y);
+  /* [FIX PARITE-SAAT] FM brüt saat ücreti YASAL saat esasından (225) alınır —
+     bordro motoruyla aynı. Önceden getMonthlyHours(u) kullanılıyordu; kullanıcı
+     monthlyHours'u 225'ten farklı ayarlayınca ekran ile e-Bordro farklı FM saat
+     ücreti üretiyordu. Bu, dosyadaki [POLİTİKA FM-SAAT-ESASI] kararına da
+     aykırıydı: yasal saat esası tüm sözleşmelerde sabittir, monthlyHours yalnızca
+     kullanıcının kendi saat hedefi/göstergesidir, saat ÜCRETİNİ değiştirmez. */
+  const _hourBasis = getPayrollHourBasis(u, y);
+  /* Yevmiye sözleşmesi: bordro motoru FM saatlik brütünü "30→31. gün" marjinal
+     noktasından alıyor (asgari ücret istisnasından arınmış). Ekran da aynı
+     noktadan almalı, yoksa yevmiyede FM iki motorda farklı çıkar. */
+  const _dailyNetWage = u.salaryInputMode === 'dailyNet' && safeNum(u.dailyNetWage, 0) > 0;
+  let hrGross;
+  if (_dailyNetWage) {
+    const _dsh = Math.max(1, payrollCfg(y).dailyStandardHours || 7.5);
+    const _g30 = safeNum(findGrossFromNet(dr * 30, 'single', 0, _priorYTD, m, undefined, y), 0);
+    const _g31 = safeNum(findGrossFromNet(dr * 31, 'single', 0, _priorYTD, m, undefined, y), 0);
+    const _marginalDayGross = Math.max(0, _g31 - _g30);
+    hrGross = _marginalDayGross > 0 ? _marginalDayGross / _dsh
+            : (_g30 > 0 ? _g30 / _hourBasis : 0);
+  } else {
+    hrGross = (_hourBasis > 0 && _fullGrossForOT > 0) ? _fullGrossForOT / _hourBasis : 0;
+  }
   const hr = _mh > 0 ? ns / _mh : 0;  // net saatlik oran (geriye dönük uyumluluk / display)
 
   let ev;
@@ -1141,7 +1177,7 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
      yalnızca kayıtlı çalışma/izin günlerinden gelir. Net Özet kartının "ayın N
      günü işaretsiz — bu günler ödenen güne katılmadı" uyarısı zaten bu politikayı
      anlatıyordu; burada serbest gün sayılması iki ekranı ayrıştırıyordu. */
-  const _dailyNetWage = u.salaryInputMode === 'dailyNet' && safeNum(u.dailyNetWage, 0) > 0;
+  /* `_dailyNetWage` yukarıda (FM saat esası dalında) tanımlı — tek kaynak. */
   /* [FIX İŞE-BAŞLAMA] `startDate` kazanç/bordro yoluna hiç girmiyordu: ay içinde
      işe giren biri için, giriş tarihinden ÖNCEKİ hafta sonları "serbest gün"
      sayılıp ücretli kabul ediliyordu (16 Mart girişte 4,5 gün fazla ödeme).
@@ -1189,19 +1225,72 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
     bp = Math.max(0, baseDays * dr - (ab * dr));
   }
 
-  /* Md.47 tatil ilave ücreti = 1 günlük NET ücret (dr). Bordro doğrulaması:
-     brüt extra (₺1.930,31) → marjinal vergi/SGK sonrası net = tam ₺1.380 = dr. */
   const _hpd = (d.hpd !== undefined ? d.hpd : d.hdw) || 0;
-  const hp = _hpd * dr;
   /* [FIX] otCompMode: 'leave' modunda FM eki ödenmez, saatler bakiyeye eklenir */
   const compMode = u.otCompMode || 'pay';
   const compRate = getOTRate(u);
   const partialRate = payrollCfg(y).otPartialMultiplier;
-  /* Ekran TAHMİNİ NET gösterdiği için FM net saatlik ücret (hr) üzerinden hesaplanır.
-     hrGross referans/bilgi amaçlı return objesinde tutulmaya devam eder. */
-  const op    = compMode === 'leave' ? 0 : (d.oh    || 0) * hr * compRate;
-  /* [FIX P4] Sözleşme <45s sözleşmeli için fazla sürelerle çalışma %25 zamlı (4857/41/4) */
-  const op125 = compMode === 'leave' ? 0 : (d.oh125 || 0) * hr * partialRate;
+
+  /* [FIX PARITE-İLAVE] İlave kalemler (Md.47 tatil ilavesi + fazla mesai) artık
+     BRÜT hesaplanıp MARJİNAL vergiyle netleştiriliyor — bordro motoruyla aynı.
+
+     ÖNCEKİ HATA: ekran bu kalemleri NET birim ücretle ekliyordu
+     (`hp = _hpd * dr`, `op = d.oh * hr * compRate`). Bunun dayandığı varsayım
+     kodun kendi yorumunda yazılıydı: "brüt extra ₺1.930,31 → marjinal vergi
+     sonrası net = tam ₺1.380 = dr". Bu eşitlik YALNIZCA tek bir maaş ve tek bir
+     vergi diliminde doğru. Başka maaşlarda/dilimlerde marjinal oran değiştiği
+     için ekran, eline geçecekten FAZLASINI gösteriyordu (ölçüm: net 43.200 ₺'de
+     ayda 117–234 ₺, 6 ayda ~965 ₺; yön her zaman aynı: ekran > bordro).
+
+     YÖNTEM: bordro motoru tüm kalemleri tek bir brüte toplayıp tek
+     computeNetFromGross çağrısıyla netliyor (bkz. estimatePayrollForMonth →
+     totalGross). Burada aynı sonucu döngü yaratmadan elde ediyoruz: ekranın
+     kendi net tabanının brüt karşılığını bulup, ilaveleri brüt ekleyip farkı
+     alıyoruz. computeNetFromGross/findGrossFromNet kazanç ya da bordro motoruna
+     bağlı DEĞİL (saf brüt↔net matematiği), bu yüzden çağrı zinciri tek yön. */
+  /* YEVMİYE İSTİSNASI: yevmiye sözleşmesinde Md.47 tatil ilavesi NET tabanın
+     içindedir — işçi gün başına W net alır, çalışılan genel tatil 2×W net eder.
+     Bordro motoru da bu modda `holGross = 0` diyor ("çalışılan tatil ek günü baz
+     içinde"). Dolayısıyla burada tatil ilavesi marjinal vergiye TABİ DEĞİL;
+     yalnızca fazla mesai brütleştirilip marjinal vergilenir. Aylık/saatlik
+     ücrette ise üç kalemin hepsi brüt eklenip marjinal vergilenir. */
+  const _drGross = _fullGrossForOT > 0 ? _fullGrossForOT / 30 : 0;
+  const hpGross    = _dailyNetWage ? 0 : _hpd * _drGross;
+  const opGross    = compMode === 'leave' ? 0 : (d.oh    || 0) * hrGross * compRate;
+  const op125Gross = compMode === 'leave' ? 0 : (d.oh125 || 0) * hrGross * partialRate;
+  const _extrasGross = hpGross + opGross + op125Gross;
+
+  /* Yevmiyede tatil ilavesi net ve taban içinde; marjinal hesabın tabanı bu
+     ilaveyi de içermeli, yoksa FM yanlış dilimden vergilenir. */
+  const _hpNetInBase = _dailyNetWage ? _hpd * dr : 0;
+  const _baseNetForMarginal = bp + _hpNetInBase;
+
+  let hp, op, op125;
+  if (_extrasGross > 0 && _baseNetForMarginal > 0 && Number.isFinite(_extrasGross)) {
+    const _baseGross = findGrossFromNet(_baseNetForMarginal, 'single', 0, _priorYTD, m, undefined, y);
+    const _netBase   = computeNetFromGross(_baseGross, 'single', 0, _priorYTD, m, undefined, y);
+    const _netAll    = computeNetFromGross(_baseGross + _extrasGross, 'single', 0, _priorYTD, m, undefined, y);
+    const _nb = safeNum(_netBase && _netBase.net, 0);
+    const _na = safeNum(_netAll  && _netAll.net,  0);
+    const _extrasNet = Math.max(0, _na - _nb);
+    /* Tek bir marjinal net'i kalemlere brüt paylarıyla dağıt — ekranda kalem
+       kırılımı korunsun ve toplam birebir tutsun. */
+    if (_extrasNet > 0 && Number.isFinite(_extrasNet)) {
+      const k = _extrasNet / _extrasGross;
+      hp = _dailyNetWage ? _hpNetInBase : hpGross * k;
+      op = opGross * k; op125 = op125Gross * k;
+    } else {
+      /* Marjinal hesap sonuç üretmediyse (uç/bozuk girdi) eski net-oran
+         davranışına düş — ekran asla boş kalmasın. */
+      hp = _hpd * dr;
+      op    = compMode === 'leave' ? 0 : (d.oh    || 0) * hr * compRate;
+      op125 = compMode === 'leave' ? 0 : (d.oh125 || 0) * hr * partialRate;
+    }
+  } else {
+    /* Brüt ilave yok. Yevmiyede tatil ilavesi net olarak yine ödenir. */
+    hp = _hpNetInBase; op = 0; op125 = 0;
+  }
+
   /* [FIX ERR-HANDLE-08] NaN propagation engellendi — bozuk md sonuçları 0'a sabitlenir */
   const teRaw = bp + op + op125 + hp;
   const te = Number.isFinite(teRaw) ? Math.max(0, teRaw) : 0;
@@ -1209,6 +1298,9 @@ function calcEarningForMonth(y, m, ns, opts = {}) {
   return {
     dailyRate: dr, hourlyRate: hr, hourlyRateGross: hrGross, dailyRateGross: _fullGrossForOT > 0 ? _fullGrossForOT / 30 : dr,
     basePay: bp, overtimePay: op, overtimePay125: op125, holidayPay: hp, totalEarning: te,
+    /* [FIX PARITE-İLAVE] Brüt karşılıklar — e-Bordro/denetim izi için. */
+    holidayPayGross: hpGross, overtimePayGross: opGross, overtimePay125Gross: op125Gross,
+    extrasGross: _extrasGross, priorYTDMatrah: _priorYTD, payrollHourBasis: _hourBasis,
     paidDays: Math.round((dim - ab) * 100) / 100, workedDays: d.wd, workPaidDays: Math.round(workPaidDays * 100) / 100, weeklyDays: d.wr,
     annualDays: d.mau, sickDays: d.msd, unpaidDays: d.ud, otCompDays: d.otcm || 0,
     missingDays: mis, absentDays: ab, freePassDays: fp, preStartDays,
@@ -2534,6 +2626,7 @@ function renderDashReports(u, d, e) {
     recentShifts.forEach(part => {
       const ds = part.ds, sh = part.sh;
       const dd = dsToDate(ds);
+      if (!dd) return; /* [FIX DS-NULL] */
       const h = Math.max(0, safeNum(part.hours, 0));
       const st = getShiftType(sh);
       perfMini += `<div class="dr-row"><span class="drk">${st.icon} ${dd.getDate()} ${MTR[dd.getMonth()].substring(0,3)}</span><span class="drv">${part.startLabel}–${part.endLabel} <small style="color:var(--t3)">${h.toFixed(1)}s</small></span></div>`;
@@ -3092,8 +3185,11 @@ function getAllPresets() {
    SHIFT MODAL
 ============================================================ */
 function openM(ds) {
-  S.sd = ds;
+  /* [FIX DS-NULL] Geçersiz tarihle modal açılmaz — eskiden bugünün tarihine
+     düşüp yanlış güne kayıt yazılmasına yol açabilirdi. */
   const d = dsToDate(ds);
+  if (!d) { toast('Geçersiz tarih', 'error'); return; }
+  S.sd = ds;
   const dow = d.getDay();
   const dn = DFL[dow === 0 ? 6 : dow - 1];
   setTxt('mTitle', d.getDate() + ' ' + MTR[d.getMonth()]);
@@ -3243,13 +3339,17 @@ function applyPreset(key, el) {
 /* [FIX] Haftalık FM hesabı: seçili gün dahil, o haftadaki tüm saatleri toplar */
 function getWeekOTForDay(ds, currentNet, currentShift) {
   const u = cu(); if (!u || !ds) return { ot: 0, ot125: 0, weekTotal: 0 };
-  const wk = getISOWeek(dsToDate(ds));
+  const _d = dsToDate(ds);
+  /* [FIX DS-NULL] Geçersiz tarihte hafta hesabı yapılamaz. */
+  if (!_d) return { ot: 0, ot125: 0, weekTotal: 0 };
+  const wk = getISOWeek(_d);
   let weekTotal = 0;
   getShiftPartRows(u, part => part.wk === wk && part.sourceDs !== ds)
     .forEach(part => { weekTotal += Math.max(0, part.hours || 0); });
   if (currentShift && currentShift.start && currentShift.end) {
     getShiftDayParts(ds, currentShift).forEach(part => {
-      if (getISOWeek(dsToDate(part.ds)) === wk) weekTotal += Math.max(0, part.hours || 0);
+      const _pd = dsToDate(part.ds); /* [FIX DS-NULL] */
+      if (_pd && getISOWeek(_pd) === wk) weekTotal += Math.max(0, part.hours || 0);
     });
   } else {
     weekTotal += Math.max(0, safeNum(currentNet, 0));
@@ -3837,6 +3937,7 @@ function renderLeaveTable() {
   let t = '<table><thead><tr><th>Tarih</th><th>Gün</th><th>Tür</th><th>Not</th><th></th></tr></thead><tbody>';
   all.forEach(([k, v]) => {
     const dd = dsToDate(k);
+    if (!dd) return; /* [FIX DS-NULL] */
     const dow = dd.getDay();
     t += `<tr>
       <td>${dd.getDate()} ${MTR[dd.getMonth()]}</td>
@@ -4249,7 +4350,9 @@ function estimatePayrollForMonth(u, y, m, d, priorYTDOverride) {
       }
     }
   }
-  const earning = calcEarningForMonth(y, m, u.netSalary);
+  /* [FIX PARITE-YTD] Çözülmüş devreden matrahı kazanç motoruna AŞAĞI geçir —
+     ilave kalemlerin marjinal vergisi iki motorda aynı dilimden hesaplansın. */
+  const earning = calcEarningForMonth(y, m, u.netSalary, { priorYTDMatrah: priorYTD });
   if (!earning || earning.isFutureMonth) return null;
   const cfg = payrollCfg(y);
   const payrollHourBasis = getPayrollHourBasis(u, y);
@@ -5545,6 +5648,7 @@ function exportCSV() {
     shiftRows.forEach(part => {
       workedDates.add(part.ds);
       const d = dsToDate(part.ds);
+      if (!d) return; /* [FIX DS-NULL] */
       const dow = d.getDay();
       const dayName = DFL[dow === 0 ? 6 : dow - 1];
       const gross = Math.max(0, (safeNum(part.endMin, 0) - safeNum(part.startMin, 0)) / 60);
@@ -5555,6 +5659,7 @@ function exportCSV() {
     Object.entries(u.leaves || {}).sort((a,b) => a[0].localeCompare(b[0])).forEach(([ds, lv]) => {
       if (!lv || !lv.type || workedDates.has(ds)) return;
       const d = dsToDate(ds);
+      if (!d) return; /* [FIX DS-NULL] */
       const dow = d.getDay();
       const dayName = DFL[dow === 0 ? 6 : dow - 1];
       const tl = {annual:'Yıllık İzin',weekly:'Hafta Tatili',public_holiday:'Resmi Tatil',sick:'Rapor',unpaid:'Ücretsiz',ot_comp:'FM İzni'};
@@ -6459,6 +6564,9 @@ function getOTBalance() {
   Object.entries(u.leaves).forEach(([ds, l]) => {
     if (l && l.type === 'ot_comp') {
       const lDate = dsToDate(ds);
+      /* [FIX DS-NULL] Geçersiz anahtarlı kayıt yok sayılır (normalize onu zaten
+         siler). Örtük `null >= Date` karşılaştırmasına güvenmemek için açık. */
+      if (!lDate) return;
       const leaveHours = getOTCompLeaveHours(u, l);
       if (lDate >= windowStart) bal -= leaveHours;
     }
@@ -6521,7 +6629,13 @@ function getSmartSuggestions(y, m) {
   // Haftalık saat toplamlarını hesapla
   const weekHrs = {};
   getShiftPartRows(u).forEach(part => {
-    const wk2 = part.wk || getISOWeek(dsToDate(part.ds));
+    let wk2 = part.wk;
+    if (!wk2) {
+      const _pd = dsToDate(part.ds); /* [FIX DS-NULL] */
+      if (!_pd) return;
+      wk2 = getISOWeek(_pd);
+      if (!wk2) return;
+    }
     weekHrs[wk2] = (weekHrs[wk2] || 0) + Math.max(0, safeNum(part.hours, 0));
   });
 
@@ -6796,6 +6910,9 @@ function renderGoals() {
 function checkRestTime(ds, startTime) {
   const u = cu(); if (!u) return null;
   const d = dsToDate(ds);
+  /* [FIX DS-NULL] `new Date(null)` 1970 epoch'una düşer; dinlenme süresi
+     sessizce yanlış hesaplanırdı. */
+  if (!d) return null;
   const prev = new Date(d); prev.setDate(prev.getDate() - 1);
   const prevDs = dStr(prev);
   const prevShift = u.shifts[prevDs];
@@ -9020,7 +9137,9 @@ function renderTeamView() {
   weekDates.forEach((ds, i) => {
     const d = dsToDate(ds);
     const isToday = ds === dStr(new Date());
-    gridHtml += `<div class="tg-header" style="${isToday ? 'color:var(--p);font-weight:900' : ''}">${DTR[i]}<br>${d.getDate()}</div>`;
+    /* [FIX DS-NULL] Gün numarası çözülemezse başlık boş kalır, satır kaymaz. */
+    const dayNum = d ? d.getDate() : '—';
+    gridHtml += `<div class="tg-header" style="${isToday ? 'color:var(--p);font-weight:900' : ''}">${DTR[i]}<br>${dayNum}</div>`;
   });
 
   // Per-user rows and summary data

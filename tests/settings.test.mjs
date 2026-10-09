@@ -34,11 +34,33 @@ test('parseDS — makul yıl aralığı dışı reddedilir', () => {
   assert.equal(f.parseDS('2026-13-01'), null);
 });
 
-test('dsToDate — aralık dışı anahtar artık sessizce BUGÜNE düşmez', () => {
-  // parseDS null döndüğü için normalize aşaması bu anahtarları atar;
-  // dsToDate fallback'i yine bugündür ama artık oraya ulaşan kayıt kalmaz.
-  assert.equal(f.parseDS('9999999-01-01'), null,
-    'aralık dışı anahtar normalize aşamasında elenmeli');
+test('dsToDate — geçersiz anahtar BUGÜNE düşmez, null döner', () => {
+  // [FIX DS-NULL] Önceden dsToDate geçersiz her girdide `new Date()` (bugün)
+  // döndürüyordu; savunma yalnızca normalize aşamasının anahtarları silmesine
+  // bağlıydı. Artık fonksiyonun kendisi null dönüyor ve bu test adının
+  // iddia ettiği şeyi gerçekten doğruluyor.
+  const g = loadFns(['dsToDate', 'parseDS', 'getISOWeek']);
+  const bugun = new Date();
+  const bugunDS = `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, '0')}-${String(bugun.getDate()).padStart(2, '0')}`;
+
+  for (const ds of ['9999999-01-01', '2026-02-30', '2026-13-01', '2026-00-10',
+                    '1899-01-01', '2200-01-01', 'not-a-date', '', null, undefined, 42]) {
+    const r = g.dsToDate(ds);
+    assert.equal(r, null, `${JSON.stringify(ds)} için null beklenir, görülen: ${r}`);
+  }
+
+  // Geçerli tarihler aynen çalışmaya devam etmeli (davranış değişmedi).
+  const ok = g.dsToDate('2026-03-15');
+  assert.ok(ok instanceof Date, 'geçerli tarih Date döndürmeli');
+  assert.equal(ok.getFullYear(), 2026);
+  assert.equal(ok.getMonth(), 2);
+  assert.equal(ok.getDate(), 15);
+  assert.ok(g.dsToDate(bugunDS) instanceof Date, 'bugünün kendisi hâlâ çözülmeli');
+
+  // getISOWeek null girdide çökmemeli (dsToDate zinciri).
+  assert.equal(g.getISOWeek(null), null, 'getISOWeek(null) çökmemeli');
+  assert.equal(g.getISOWeek(new Date('invalid')), null, 'geçersiz Date null dönmeli');
+  assert.equal(typeof g.getISOWeek(new Date(2026, 2, 15)), 'string', 'geçerli Date hafta kodu vermeli');
 });
 
 test('parseTime — hex/üstel gösterim reddedilir', () => {

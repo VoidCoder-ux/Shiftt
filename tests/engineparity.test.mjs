@@ -76,18 +76,66 @@ test('aylık ücretli — tatil/FM içermeyen ayda ekran tahmini = bordro neti',
    varlığını ve YÖNÜNÜ kilitler: ekran her zaman bordrodan yüksek ya da eşit
    olmalı (ekran vergiyi hiç uygulamıyor), ve fark yalnızca ilave kalem varken
    doğmalı. Madde kapatıldığında bu test parity'ye çevrilmeli. */
-test('bilinen açık fark — ilave kalemler ekranda brütleştirilmiyor', () => {
-  const NET = 43200, y = 2025, m = 0;      // Ocak: 1 Ocak resmi tatili çalışılıyor
+/* [FIX PARITE-İLAVE] Madde KAPATILDI — eski "bilinen açık fark" testi artık
+   gerçek parite testi. Önceki davranış: ekran Md.47 tatil ilavesini ve fazla
+   mesaiyi NET birim ücretle ekliyor, bordro BRÜT ekleyip marjinal vergiliyordu;
+   ekran her zaman eline geçecekten fazlasını gösteriyordu (net 43.200 ₺'de ayda
+   117–234 ₺). Artık ekran da brüt ekleyip tek computeNetFromGross ile netliyor. */
+test('parite — ilave kalemler iki motorda aynı net etkiyi üretir (aylık ücretli)', () => {
+  // Birden çok maaş seviyesi: marjinal oran dilime göre değişir, eski kod bunu
+  // tek bir dilimde doğru varsayıyordu. Dilimler arası da tutmalı.
+  for (const NET of [22104, 30000, 43200, 60000, 90000, 150000]) {
+    for (const [y, m] of [[2025, 0], [2025, 3], [2025, 4], [2025, 9], [2026, 0]]) {
+      const u = setUser({ netSalary: NET, salaryInputMode: 'net', payMode: 'monthly' });
+      fillMonth(u, y, m);
+      const e = f.calcEarningForMonth(y, m, NET);
+      const p = f.estimatePayrollForMonth(u, y, m, undefined, 0);
+      assert.ok(e && p, `${y}-${m + 1} @${NET}: iki motor da sonuç üretmeli`);
+      const ilave = e.holidayPay + e.overtimePay + e.overtimePay125;
+      assert.ok(near(e.basePay, NET, 1), `taban hizalı olmalı: ${e.basePay.toFixed(2)}`);
+      assert.ok(near(e.totalEarning, p.net, 1),
+        `${y}-${m + 1} @${NET}: ekran ${e.totalEarning.toFixed(2)} = bordro ${p.net.toFixed(2)} olmalı (ilave ${ilave.toFixed(2)})`);
+    }
+  }
+});
+
+test('parite — ilave kalem NET birim ücretle değil MARJİNAL vergiyle netleşir', () => {
+  // Regresyon kilidi: eski hata, ilaveyi net günlük/saatlik ücretle eklemekti.
+  // Marjinal vergi uygulandığında ilavenin neti, brütünden MUTLAKA küçük olmalı
+  // ve net birim ücret çarpımına EŞİT OLMAMALI (yüksek dilimde fark belirgin).
+  const NET = 90000, y = 2025, m = 0;      // 1 Ocak çalışılıyor → Md.47 ilavesi
   const u = setUser({ netSalary: NET, salaryInputMode: 'net', payMode: 'monthly' });
   fillMonth(u, y, m);
   const e = f.calcEarningForMonth(y, m, NET);
-  const p = f.estimatePayrollForMonth(u, y, m, undefined, 0);
-  const ilave = e.holidayPay + e.overtimePay + e.overtimePay125;
-  assert.ok(ilave > 0, 'senaryo ilave kalem içermeli');
-  assert.ok(near(e.basePay, NET, 1), `taban hizalı olmalı: ${e.basePay.toFixed(2)}`);
-  assert.ok(e.totalEarning >= p.net - 1, 'ekran bordrodan düşük olmamalı');
-  assert.ok(e.totalEarning - p.net < ilave,
-    `fark ilave kalemin tamamını aşmamalı (fark ${(e.totalEarning - p.net).toFixed(2)}, ilave ${ilave.toFixed(2)})`);
+  assert.ok(e.holidayPay > 0, 'senaryo Md.47 ilavesi içermeli');
+  assert.ok(e.extrasGross > 0, 'brüt ilave karşılığı raporlanmalı');
+  const ilaveNet = e.holidayPay + e.overtimePay + e.overtimePay125;
+  assert.ok(ilaveNet < e.extrasGross,
+    `ilave net (${ilaveNet.toFixed(2)}) brütten (${e.extrasGross.toFixed(2)}) küçük olmalı — vergi uygulanmış`);
+  // Eski (hatalı) yöntem: tatil ilavesi = gün × net günlük ücret.
+  const eskiYontem = (e.holidayPayDays || e.holidayDays) * e.dailyRate;
+  assert.ok(Math.abs(e.holidayPay - eskiYontem) > 1,
+    `tatil ilavesi artık net günlük ücret çarpımı OLMAMALI (yeni ${e.holidayPay.toFixed(2)}, eski ${eskiYontem.toFixed(2)})`);
+});
+
+test('parite — FM brüt saat ücreti yasal saat esasından (225), monthlyHours etkilemez', () => {
+  /* [FIX PARITE-SAAT] Ekran eskiden getMonthlyHours(u) kullanıyordu; kullanıcı
+     monthlyHours'u değiştirince ekran ile e-Bordro farklı FM saat ücreti
+     üretiyordu. Dosyadaki [POLİTİKA FM-SAAT-ESASI] kararı: yasal saat esası
+     sabittir, monthlyHours saat ÜCRETİNİ değiştirmez. */
+  const NET = 43200, y = 2025, m = 3;
+  const mk = (mh) => {
+    const u = setUser({ netSalary: NET, salaryInputMode: 'net', payMode: 'monthly', monthlyHours: mh });
+    fillMonth(u, y, m, { hours: ['08:00', '20:00'] });   // bol FM
+    return f.calcEarningForMonth(y, m, NET);
+  };
+  const a = mk(225), b = mk(180), c = mk(300);
+  assert.ok(a.overtimeHours > 0, 'senaryo FM içermeli');
+  assert.equal(a.payrollHourBasis, 225, 'yasal esas 225 olmalı');
+  assert.ok(near(a.hourlyRateGross, b.hourlyRateGross, 0.01),
+    `monthlyHours=180 FM brüt saat ücretini değiştirmemeli (${a.hourlyRateGross.toFixed(4)} vs ${b.hourlyRateGross.toFixed(4)})`);
+  assert.ok(near(a.hourlyRateGross, c.hourlyRateGross, 0.01),
+    `monthlyHours=300 FM brüt saat ücretini değiştirmemeli (${a.hourlyRateGross.toFixed(4)} vs ${c.hourlyRateGross.toFixed(4)})`);
 });
 
 test('aylık ücretli — eksik gün iki motorda da AYNI gün sayısıyla düşer', () => {
